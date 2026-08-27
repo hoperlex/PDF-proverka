@@ -3,7 +3,7 @@
 **Статус:** proposed — программный roadmap для утверждения; согласован по
 терминам с ADR Bible и действующим планом хранения.<br>
 **Редакция:** 2026-08-27.<br>
-**Горизонт:** два несмешиваемых planning scenario: 10–17 календарных месяцев
+**Горизонт:** два несмешиваемых planning scenario: 11–19 календарных месяцев
 для четырёх опытных специалистов либо 15–34 месяца для одного human integrator
 с агентами. Это диапазоны до калибровки волнами 0–1, а не обещание срока;
 решение фиксируется ADR-0015.
@@ -40,8 +40,14 @@ Roadmap организует уже согласованные работы по
 strangler уже способны принимать новую работу. До G1 действует sustainment
 budget:
 
-- максимум **1 активный product-capability slot на волну** и максимум **20% human
-  integration capacity**; применяется более строгий предел;
+- максимум **1 активный product-capability slot на волну** — это измеримый
+  pre-G1 gate;
+- доля human integration capacity, затраченная на слот, еженедельно считается
+  как `legacy integration hours / available integration hours`; denominator —
+  зафиксированные в начале недели часы назначенного integrator за вычетом
+  отпуска/on-call/обязательного support, numerator — task/time log capability
+  slot; до появления observed baseline целевые 20% являются отчётной метрикой,
+  а не stop gate;
 - слот выбирается владельцем продукта на contract gate волны, имеет измеримый
   пользовательский результат, owner, deadline и парную target-contour task;
 - список не ограничен только уже начатыми обязательствами, но новый слот не
@@ -194,7 +200,8 @@ shadow `W2-INT-01/02`. Тем самым зависимость от незак�
   восьми полным неделям.
 
 Если baseline недоступен или метод измерения различается между контурами, gate
-не считается пройденным. Default canary budgets до принятия ADR-0011:
+не считается пройденным. Следующая таблица — **черновик входных данных для
+`W0-ADR-07`/ADR-0011**, а не действующая политика до принятия ADR:
 
 | Показатель | Gate G2 | Gate G4 |
 | --- | --- | --- |
@@ -207,11 +214,16 @@ shadow `W2-INT-01/02`. Тем самым зависимость от незак�
 | Critical accessibility violations | 0 | 0 |
 | Непрерывное observation | ≥ 7 суток и ≥ `max(10, ceil(B_runs_7d))` runs | ≥ 14 суток и ≥ `max(30, ceil(2 × B_runs_7d))` runs |
 
-Изменение этих формул требует accepted ADR-0011, а не устного решения на gate.
+Gate G0 требует принять ADR-0011 до первого использующего budgets production
+canary. Только значения из accepted ADR-0011 обязательны на G2/G4: он может
+принять, изменить или отклонить этот черновик. Устное решение на gate формулы не
+меняет.
 
 ## 6. Волна 0. Конституция и доказательства текущего поведения
 
-**Оценка:** 4–6 недель.<br>
+**Оценка:** сценарий A — 7–9 недель; default-сценарий B — 9–12 недель.<br>
+**Fallback:** 10–14 недель, если один из review-batch распался либо provisioning
+или внешнее решение добавило lead time.<br>
 **Production behavior:** бизнес-семантика не меняется, кроме одного управляемого
 legacy capability slot; security fail-closed hardening может включаться отдельным
 runbook/change.
@@ -236,20 +248,54 @@ baseline. Это единственная волна с намеренно ог�
 | W0-ADR-04 | AI/ARC | принять ADR-0013: analysis profile/replay/cost | W0-LLM-01, W0-LLM-02 | нет: один contract owner |
 | W0-DATA-01 | MIG | inventory writers/readers/volumes/orphans | нет | да |
 | W0-DATA-02 | MIG | mapping legacy identity → UID и ambiguity report | текущие identity rules | да |
-| W0-LEG-01 | ARC/ENG | sustainment register: 1 active capability slot/волна, ≤20% capacity, owner/deadline/target task | inventory текущего backlog | да |
+| W0-LEG-01 | ARC/ENG | sustainment register: ≤1 active capability slot/волна; weekly human hours/available-hours и 20% reporting target; owner/deadline/target task | inventory текущего backlog | да |
 | W0-OPS-01 | OPS | baseline: latency/errors/RSS/disk/job duration, runs/week и cost/audit | нет | да |
 | W0-WEB-01 | WEB | route/feature inventory старого UI и deeplinks | нет | да |
 | W0-SEC-01 | OPS/API | auth/data-flow threat model без изменения кода | нет | да |
 | W0-SEC-02 | OPS/MIG | data classification inventory и draft retention matrix | W0-SEC-01, W0-DATA-01 | да после inventory |
-| W0-SEC-03 | OPS/API | до 2026-10-08 закрыть EXC-0001: production auth preflight, enabled/fail-closed вне local mode | W0-SEC-01 | security change, отдельный runbook/rollback |
+| W0-SEC-03 | OPS/API | до 2026-10-15 закрыть EXC-0001: production auth preflight, staff credential provisioning, enabled/fail-closed вне local mode | W0-SEC-01 + подтверждённый список пользователей | security change, отдельный runbook/provisioning/rollback |
 | W0-ADR-05 | ARC/OPS | ADR-0014: решение либо owner/deadline каждой незакрытой TTL | W0-SEC-02 | нет: business/legal decision |
-| W0-ADR-01 | META/OPS | принять ADR-0007 PostgreSQL topology/migrations | W0-DATA-01 | да после фактов inventory |
-| W0-ADR-02 | STO/OPS | принять ADR-0008 S3 provider/bucket/RPO/RTO/C-07 | W0-DATA-01, W0-OPS-01 | да после фактов inventory |
+| W0-ADR-01 | META/OPS | принять ADR-0007 PostgreSQL topology/migrations | W0-DATA-01 | нет: co-review `CB-W0-01` с W0-ADR-02; отдельный acceptance |
+| W0-ADR-02 | STO/OPS | принять ADR-0008 S3 provider/bucket/RPO/RTO/C-07 | W0-DATA-01, W0-OPS-01 | нет: co-review `CB-W0-01` с W0-ADR-01; отдельный acceptance |
 | W0-ADR-03 | JOB/ARC | принять ADR-0009 durable jobs/outbox | W0-BEH-01, W0-DATA-01 | да после inventory |
-| W0-ADR-06 | API/OPS | принять ADR-0010 AuthN/AuthZ/object scope | W0-SEC-01 | да после threat model |
-| W0-ADR-07 | OPS/ARC | принять ADR-0011 Observability/SLO и числовые budgets | W0-OPS-01 | да после baseline |
+| W0-ADR-06 | API/OPS | принять ADR-0010 AuthN/AuthZ/object scope | W0-SEC-01 | нет: co-review `CB-W0-02` с W0-ADR-07; отдельный acceptance |
+| W0-ADR-07 | OPS/ARC | принять ADR-0011 Observability/SLO и числовые budgets | W0-OPS-01 | нет: co-review `CB-W0-02` с W0-ADR-06; отдельный acceptance |
 | W0-ADR-08 | ENG/ARC | принять ADR-0012 legacy analysis package protocol | W0-BEH-01, W0-LLM-01 | да после inventory |
 | W0-ADR-09 | WEB/API | принять ADR-0017 typed pilot/FSD/route strangler | W0-WEB-01, W0-BEH-01 | да после route inventory |
+
+### Очередь решений и календарь W0
+
+Волна содержит 13 owner-only решений. Два заранее ограниченных review-batch
+сокращают очередь до 11 shared contract slots:
+
+- `CB-W0-01`: `W0-ADR-01/02` — совместная topology/data-ownership сессия;
+- `CB-W0-02`: `W0-ADR-06/07` — совместная production-boundary/SLO сессия.
+
+Batch не объединяет ADR: каждый документ принимается или возвращается отдельно,
+а W1 зависит от соответствующего individual acceptance. Если пару нельзя
+рассмотреть на общей evidence base, она распадается на два slots и W0 переходит
+в fallback 10–14 недель. Inventories, проекты ADR и provisioning могут
+готовиться параллельно; очередь acceptance остаётся WIP=1.
+
+Review-slot открывается только после готовности обоих проектов batch и общей
+evidence base; третья contract task в это время запрещена. Planning allowance
+равен 2–3 owner-days на slot: 11 slots дают 22–33 последовательных owner-days.
+Evidence/inventory (2–4 недели) перекрывается с ранними решениями, provisioning
+и G0 reconciliation добавляют 1–2 недели с частичным перекрытием.
+
+`W0-SEC-03` включает не только переключение конфигурации. До rollout оператор:
+
+1. подтверждает список трёх-четырёх сотрудников и владельца lifecycle доступа;
+2. генерирует уникальные credentials/hashes утверждённым способом, не помещая
+   секреты в git, task tracker, manifest или logs;
+3. передаёт начальные credentials по утверждённому защищённому каналу и получает
+   подтверждение входа;
+4. документирует rotation/revocation и проверяет login/logout, cookie/WS,
+   liveness, fail-closed startup и rollback на production-like deployment.
+
+Provisioning имеет собственный недельный lead-time внутри оценки W0. Дедлайн
+исключения синхронизирован на 2026-10-15; отсутствие подтверждённого списка или
+безопасного канала выдачи блокирует rollout, а не разрешает общий пароль.
 
 ### Gate G0
 
@@ -265,8 +311,10 @@ baseline. Это единственная волна с намеренно ог�
 - baseline содержит P50/P95/MAX, error rate, RSS, disk и стоимость;
 - `W0-SEC-03` закрыла EXC-0001 либо G0 не пройден;
 - target layout даёт непересекающиеся ownership zones;
-- legacy sustainment register соблюдает предел 1 active capability slot и 20%
-  human integration capacity; contract-hardening помечается отдельно;
+- legacy sustainment register соблюдает предел 1 active capability slot;
+  human integration hours имеют явный denominator и еженедельный 20% reporting
+  target, но до baseline не используются как stop gate; contract-hardening
+  помечается отдельно;
 - неизвестные/неоднозначные данные имеют статус, владельца и решение.
 
 Если G0 не пройден, массовая генерация нового кода не начинается.
@@ -595,17 +643,19 @@ WIP:
 - максимум 4 implementation tasks одновременно;
 - максимум одна implementation task на фактического владельца; отдельные
   логические lanes сами по себе не создают дополнительную capacity;
-- максимум 1 shared contract task;
+- максимум 1 shared contract review-slot; только `CB-W0-01/02` могут включать
+  по две заранее подготовленные ADR-задачи, все остальные slots — ровно одну;
 - максимум 1 integration task;
 - один migration head и один root lockfile owner на волну;
 - не более одного production cutover одновременно.
 
-Planning range: 10–17 календарных месяцев, 40–68 human engineer-months до
+Planning range: 11–19 календарных месяцев, 44–76 human engineer-months до
 калибровки W0/W1.
 
 ### Сценарий B: один human integrator + agents
 
-- максимум 1 shared contract task;
+- максимум 1 shared contract review-slot; только `CB-W0-01/02` могут включать
+  по две заранее подготовленные ADR-задачи, все остальные slots — ровно одну;
 - максимум 1–2 implementation tasks одновременно и только в разных ownership
   zones;
 - максимум 1 integration task; новый contract не открывается, пока integration
@@ -645,8 +695,9 @@ Planning range: 15–34 календарных месяца до калибро�
 - reconciliation backlog;
 - данные без UID/manifest/blob/FK;
 - время rollback/restore;
-- до G1: число/загрузка legacy capability slots (`≤1`, `≤20%` human integration
-  capacity); после G1: новые legacy endpoints/capabilities = 0;
+- до G1: число legacy capability slots (`≤1`) и отдельно отчётная доля human
+  integration capacity с явными numerator/denominator и целью 20%; после G1:
+  новые legacy endpoints/capabilities = 0;
 - legacy contract-hardening changes учитываются отдельно и должны иметь golden
   compatibility evidence;
 - открытые legacy exceptions и просроченные expiry.
@@ -681,8 +732,9 @@ Planning range: 15–34 календарных месяца до калибро�
 - новая система требует прямого legacy path/DB/S3 обхода;
 - error budget canary превышен;
 - owner или on-call для новой критической зависимости отсутствует;
-- до G1 legacy capability WIP/effort превышает `1 slot`/`20%`, либо после G1
-  появляется новая legacy capability без действующего исключения;
+- до G1 legacy capability WIP превышает `1 slot`, либо после G1 появляется
+  новая legacy capability без действующего исключения; отклонение отчётной
+  метрики 20% само по себе до появления baseline не является stop condition;
 - contract меняется быстрее, чем независимые tasks успевают интегрироваться.
 
 ## 16. Ближайшие следующие решения
@@ -701,6 +753,7 @@ migrations.
 - [Реестр ADR](ADR_INDEX.md)
 - [Разбор архитектурного ревью](REVIEW_DISPOSITION_2026-08-27.md)
 - [Разбор архитектурного ревью R2](REVIEW_DISPOSITION_2026-08-27_R2.md)
+- [Разбор архитектурного ревью R3](REVIEW_DISPOSITION_2026-08-27_R3.md)
 - [План развития хранения](../data_storage_modernization/00_global_plan.md)
 - [Кодовый план identity](../data_storage_modernization/01_storage_and_identity_code_plan.md)
 - [Потоковый ingest](../data_storage_modernization/02_01_streaming_ingest.md)

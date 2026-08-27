@@ -53,6 +53,11 @@
 нормативным решение становится только после создания файла и статуса
 `accepted`.
 
+Для календаря W0 разрешены два review-batch: `W0-ADR-01/02` (`CB-W0-01`) и
+`W0-ADR-06/07` (`CB-W0-02`). Batch занимает один shared contract review-slot,
+но owning task, ADR-файл, статус и downstream acceptance каждого решения
+остаются отдельными.
+
 ## Как добавить ADR
 
 1. Скопировать [ADR_TEMPLATE.md](ADR_TEMPLATE.md) в `adr/ADR-NNNN-slug.md`.
@@ -69,3 +74,4 @@
 - [Реестр исключений](EXCEPTIONS.md)
 - [Разбор ревью 2026-08-27](REVIEW_DISPOSITION_2026-08-27.md)
 - [Разбор ревью R2](REVIEW_DISPOSITION_2026-08-27_R2.md)
+- [Разбор ревью R3](REVIEW_DISPOSITION_2026-08-27_R3.md)

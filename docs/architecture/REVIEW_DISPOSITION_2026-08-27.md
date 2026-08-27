@@ -12,7 +12,7 @@ Bible, ADR и roadmap; этот файл является журналом ра�
 | 3 | Принято | Создан ADR-0013; в источники истины добавлены `AnalysisProfile`, `PromptBundle`, `NormsSnapshot`, `ModelCallRecord`; в волну 0 добавлены inventory и replay cassettes |
 | 4 | Принято | Parity разделена на contour, analysis replay и live quality; G2 больше не требует совпадения двух live LLM-ответов |
 | 5 | Принято | В граф добавлено явное ребро от storage-facing gate этапа 1Б к `W2-INT-03` |
-| 6 | Принято, затем уточнено R2 | До G1 разрешён один bounded legacy capability slot/волна и ≤20% human integration capacity; после G1 бюджет новых endpoint/capability равен нулю; contract-hardening разрешён всегда |
+| 6 | Принято, затем уточнено R2/R3 | До G1 разрешён один bounded legacy capability slot/волна; доля human integration capacity с целью 20% до baseline является отчётной метрикой. После G1 бюджет новых endpoint/capability равен нулю; contract-hardening разрешён всегда |
 | 7 | Принято | Добавлены стоимость аудита, принятого замечания и расхождение estimate/billing |
 | 8 | Принято | Canary/observation gates получили формулы latency/error/cost и минимальные дни/runs от baseline волны 0 |
 | 9 | Принято | `accepted plan contract` удалён как несуществующий ADR-статус; тип документа и статус теперь отдельные поля |
