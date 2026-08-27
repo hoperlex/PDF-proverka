@@ -1,0 +1,707 @@
+# Roadmap гибридной миграции AuditManager
+
+**Статус:** proposed — программный roadmap для утверждения; согласован по
+терминам с ADR Bible и действующим планом хранения.<br>
+**Редакция:** 2026-08-27.<br>
+**Горизонт:** два несмешиваемых planning scenario: 10–17 календарных месяцев
+для четырёх опытных специалистов либо 15–34 месяца для одного human integrator
+с агентами. Это диапазоны до калибровки волнами 0–1, а не обещание срока;
+решение фиксируется ADR-0015.
+
+Roadmap организует уже согласованные работы по identity, S3 и PostgreSQL вместе
+с новым frontend и изоляцией pipeline. Он не отменяет детальные этапы хранения:
+они становятся capability lanes внутри общей гибридной миграции.
+
+## 1. Целевой результат программы
+
+- Next.js/React/TypeScript является основным пользовательским приложением;
+- новый модульный control plane владеет API и бизнес-переходами;
+- PostgreSQL является источником изменяемых метаданных;
+- private S3 является источником долговечных байтов;
+- jobs/runs имеют durable state, retries и observability;
+- pipeline работает через versioned input/result package;
+- legacy frontend, файловая каноника и прямые JSON writers отключены;
+- отдельные stage алгоритмы могут оставаться Python-модулями, если соблюдают
+  новый контракт и проходят quality gates.
+
+## 2. Что не делаем
+
+- не строим второй полностью независимый продукт до первого production slice;
+- не переписываем весь pipeline до PostgreSQL/S3/control plane;
+- не дробим новый backend на microservices заранее;
+- не переносим старые каталоги как новую domain model;
+- не обещаем feature parity по списку endpoint: parity определяется критическими
+  пользовательскими маршрутами и бизнес-инвариантами;
+- не удаляем legacy до observation и restore drill.
+
+### 2.1. Ступенчатый бюджет изменений legacy
+
+Полный capability freeze начинается на G1, когда contracts, skeleton и route
+strangler уже способны принимать новую работу. До G1 действует sustainment
+budget:
+
+- максимум **1 активный product-capability slot на волну** и максимум **20% human
+  integration capacity**; применяется более строгий предел;
+- слот выбирается владельцем продукта на contract gate волны, имеет измеримый
+  пользовательский результат, owner, deadline и парную target-contour task;
+- список не ограничен только уже начатыми обязательствами, но новый слот не
+  открывается, пока прежний не завершён или явно снят;
+- capability slot не разрешает создавать новую файловую канонику, независимый
+  writer или storage format: такая работа сразу проектируется в новом контуре;
+- security/data-loss/production bugfix не расходует capability slot;
+- characterization tests, response models, JSON Schema, snapshots, telemetry и
+  backward-compatible validation существующего endpoint разрешены всегда, если
+  golden test доказывает отсутствие изменения бизнес-поведения;
+- рефакторинг без characterization test и прямой пользы текущему обязательству
+  не начинается.
+
+После G1 новые legacy endpoint/capability равны **0**. Срочное исключение
+регистрируется по §10 Bible и дополнительно доказывает, что новый контур не
+может закрыть потребность в согласованный срок. Уже спроектированная функция не
+считается автоматически разрешённой ни до, ни после G1.
+
+## 3. Единицы планирования
+
+### 3.1. Волна
+
+Набор задач, использующих frozen contract versions. Внутри волны общие
+контракты не меняются. Волна заканчивается integration gate и доказательствами.
+
+### 3.2. Capability lane
+
+Долгоживущая область владения с непересекающимися по умолчанию файлами:
+
+| Lane | Ответственность | Целевая зона владения после ADR layout |
+| --- | --- | --- |
+| ARC | ADR, contracts, dependency rules | `docs/architecture/**`, contract registry |
+| META | domain model, PostgreSQL, migrations | metadata modules, `db/migrations/**` |
+| STO | ingest, blobs, manifests, S3/cache | storage/ingest modules |
+| JOB | jobs, outbox, run state, worker control | job/orchestration modules |
+| ENG | legacy bridge и analysis stages | analysis port/adapter, stage runners |
+| AI | prompts, norms, routing, model calls, evals и cost | analysis profiles, prompt/norm registry, replay/evals |
+| API | HTTP/BFF, auth integration | API composition и route contracts |
+| WEB | Next.js, design system, routes | новое web-приложение |
+| MIG | inventory, backfill, parity, reconciliation | migration tools/reports |
+| OPS | CI, telemetry, infra, backup/DR | `infra/**`, runbooks, dashboards |
+
+Фактические каталоги утверждает ADR target layout. До него таблица задаёт
+логическое, а не физическое владение.
+
+### 3.3. Integration task
+
+Отдельная задача, которая единственная имеет право соединить несколько lanes,
+изменить composition root, root lockfile или общий deployment manifest. Такой
+код не прячется внутри одной implementation-задачи.
+
+## 4. Правила независимой параллельной работы
+
+1. В начале волны frozen contracts публикуются одним commit/change set.
+2. Одна task редактирует одну ownership zone; shared files принадлежат
+   интегратору.
+3. Provider, consumer, contract tests и migration scanner работают параллельно
+   на fixtures/mocks одной версии.
+4. Task размером больше трёх инженерных дней дробится, если не является
+   миграцией или integration gate.
+5. Изменение общего контракта не совмещается с его реализацией несколькими
+   исполнителями.
+6. В одном checkout не запускаются две задачи на один hotspot.
+7. Каждый change обратим флагом/route gate до завершения observation.
+8. Незавершённый эксперимент не пишет в production root и не меняет defaults.
+9. Merge-ready означает: локальная проверка, contract version, telemetry и
+   отсутствие скрытых TODO на соседнюю задачу.
+10. Новый WIP стартует только при свободной ownership zone и понятном integration
+    slot; количество агентов само по себе не является причиной начать задачу.
+
+### Шаблон task card
+
+```text
+task_id:
+lane:
+outcome:
+parallel_safe: yes/no
+frozen_inputs:
+depends_on:
+allowed_paths:
+forbidden_shared_files:
+non_goals:
+deliverables:
+verification:
+telemetry:
+feature_mode_or_rollback:
+integration_task:
+```
+
+## 5. Граф зависимостей программы
+
+```text
+W0: constitution + behavior/data baselines
+   │
+   ├──────────────┬──────────────┬──────────────┬──────────────┐
+   ▼              ▼              ▼              ▼              ▼
+W1 META         W1 STO       W1 JOB/ENG/AI     W1 API/WEB     W1 OPS/MIG
+   └──────────────┴──────────────┴──────────────┴──────────────┘
+                                  │
+                                  ▼
+                    G1: platform walking skeleton
+                                  │
+                                  ▼
+             W2: build + local/production-copy shadow slice
+                                  │
+                                  ▼
+                  W2-INT-01/02 passed
+                                  │
+                                  ├───────────────┐
+                                  │               │
+                                  │      X1B: storage-facing minimum
+                                  │      этапа 1Б (`projects_v2_primary`)
+                                  │               │
+                                  └───────┬───────┘
+                                          ▼
+                              W2-INT-03: opt-in canary
+                                          │
+                                          ▼
+                              G2: production canary gate
+                                  │
+                 ┌────────────────┼────────────────┐
+                 ▼                ▼                ▼
+          W3 decisions/KB   W3 comparison     W3 export/admin
+                 └────────────────┼────────────────┘
+                                  ▼
+                     G3: journey/contour parity
+                                  │
+                                  ▼
+                  W4: PG/S3/Next primary cutovers
+                                  │
+                                  ▼
+                 W5: pipeline ports + legacy retirement
+```
+
+`X1B` блокирует только публикацию `W2-INT-03`, а не parallel-safe разработку и
+shadow `W2-INT-01/02`. Тем самым зависимость от незакрытого этапа 1Б видна в
+графе и не превращает все задачи W1/W2 в последовательные.
+
+### 5.1. Числовая политика gates
+
+`W0-OPS-01` фиксирует по каждому критическому journey:
+
+- `B_p95` — baseline P95 latency;
+- `B_error` — долю технически неуспешных операций;
+- `B_cost` — P95 фактической или явно помеченной estimated стоимости аудита;
+- `B_quality` — baseline утверждённого expert-eval score vector (минимум
+  precision/critical-recall или их доменные эквиваленты; одной acceptance rate
+  недостаточно);
+- `B_runs_7d` — медиану завершённых production-аудитов за 7 дней по последним
+  восьми полным неделям.
+
+Если baseline недоступен или метод измерения различается между контурами, gate
+не считается пройденным. Default canary budgets до принятия ADR-0011:
+
+| Показатель | Gate G2 | Gate G4 |
+| --- | --- | --- |
+| Потеря/неверная привязка данных | 0 | 0 |
+| Contour invariant mismatch | 0 | 0 |
+| P95 latency нового route | `≤ 1.20 × B_p95` | `≤ 1.10 × B_p95` либо принятый absolute SLO |
+| Technical error rate | `≤ max(B_error, 1%)` | `≤ max(B_error, 0.5%)` |
+| P95 cost/audit | `≤ 1.20 × B_cost` либо отдельный принятый budget | `≤ 1.10 × B_cost` либо отдельный принятый budget |
+| Live analysis quality | каждая primary metric `≥ B_quality − 5 п.п.`, critical regression = 0 | каждая primary metric `≥ B_quality`, critical regression = 0 |
+| Critical accessibility violations | 0 | 0 |
+| Непрерывное observation | ≥ 7 суток и ≥ `max(10, ceil(B_runs_7d))` runs | ≥ 14 суток и ≥ `max(30, ceil(2 × B_runs_7d))` runs |
+
+Изменение этих формул требует accepted ADR-0011, а не устного решения на gate.
+
+## 6. Волна 0. Конституция и доказательства текущего поведения
+
+**Оценка:** 4–6 недель.<br>
+**Production behavior:** бизнес-семантика не меняется, кроме одного управляемого
+legacy capability slot; security fail-closed hardening может включаться отдельным
+runbook/change.
+
+Цель — превратить неформализованное поведение в frozen contracts и измеримый
+baseline. Это единственная волна с намеренно ограниченным параллелизмом на
+архитектурных решениях.
+
+### Параллельные задачи волны 0
+
+| Task ID | Lane | Результат | Зависимости | Parallel-safe |
+| --- | --- | --- | --- | --- |
+| W0-DEC-01 | ARC | явная запись: Bible/ADR-0002 и сценарий исполнения ADR-0015 | нет | нет: решение владельца программы |
+| W0-WS-01 | ARC/OPS | non-production pilot worktree isolation в disposable clone или по time-boxed exception | ADR-0005 | да, не меняет production/release default |
+| W0-DEC-02 | ARC/OPS | принять shared checkout или hybrid worktrees по ADR-0016 evidence | W0-WS-01 | нет: процессное решение владельца |
+| W0-ARC-01 | ARC | ADR-0006 target layout и dependency boundaries | W0-DEC-01, ADR-0001–0005 | нет: один владелец shared layout |
+| W0-ARC-02 | ARC/API | glossary + domain contract v1: IDs, states, errors | ADR-0003 | после W0-ARC-01 |
+| W0-BEH-01 | ENG | каталог 20–30 критических user journeys | нет | да |
+| W0-BEH-02 | ENG/MIG | golden fixtures для deterministic contour upload/audit/findings/decisions | W0-BEH-01 | после W0-BEH-01; не вызывает live LLM |
+| W0-LLM-01 | AI | inventory prompts/norms/routing/transports/model parameters и mutable sources | нет | да |
+| W0-LLM-02 | AI/ENG | sanitized cassettes, replay и expert-eval `B_quality` одного critical journey | W0-LLM-01, W0-BEH-01 | после inventory; параллельно data/storage |
+| W0-ADR-04 | AI/ARC | принять ADR-0013: analysis profile/replay/cost | W0-LLM-01, W0-LLM-02 | нет: один contract owner |
+| W0-DATA-01 | MIG | inventory writers/readers/volumes/orphans | нет | да |
+| W0-DATA-02 | MIG | mapping legacy identity → UID и ambiguity report | текущие identity rules | да |
+| W0-LEG-01 | ARC/ENG | sustainment register: 1 active capability slot/волна, ≤20% capacity, owner/deadline/target task | inventory текущего backlog | да |
+| W0-OPS-01 | OPS | baseline: latency/errors/RSS/disk/job duration, runs/week и cost/audit | нет | да |
+| W0-WEB-01 | WEB | route/feature inventory старого UI и deeplinks | нет | да |
+| W0-SEC-01 | OPS/API | auth/data-flow threat model без изменения кода | нет | да |
+| W0-SEC-02 | OPS/MIG | data classification inventory и draft retention matrix | W0-SEC-01, W0-DATA-01 | да после inventory |
+| W0-SEC-03 | OPS/API | до 2026-10-08 закрыть EXC-0001: production auth preflight, enabled/fail-closed вне local mode | W0-SEC-01 | security change, отдельный runbook/rollback |
+| W0-ADR-05 | ARC/OPS | ADR-0014: решение либо owner/deadline каждой незакрытой TTL | W0-SEC-02 | нет: business/legal decision |
+| W0-ADR-01 | META/OPS | принять ADR-0007 PostgreSQL topology/migrations | W0-DATA-01 | да после фактов inventory |
+| W0-ADR-02 | STO/OPS | принять ADR-0008 S3 provider/bucket/RPO/RTO/C-07 | W0-DATA-01, W0-OPS-01 | да после фактов inventory |
+| W0-ADR-03 | JOB/ARC | принять ADR-0009 durable jobs/outbox | W0-BEH-01, W0-DATA-01 | да после inventory |
+| W0-ADR-06 | API/OPS | принять ADR-0010 AuthN/AuthZ/object scope | W0-SEC-01 | да после threat model |
+| W0-ADR-07 | OPS/ARC | принять ADR-0011 Observability/SLO и числовые budgets | W0-OPS-01 | да после baseline |
+| W0-ADR-08 | ENG/ARC | принять ADR-0012 legacy analysis package protocol | W0-BEH-01, W0-LLM-01 | да после inventory |
+| W0-ADR-09 | WEB/API | принять ADR-0017 typed pilot/FSD/route strangler | W0-WEB-01, W0-BEH-01 | да после route inventory |
+
+### Gate G0
+
+- существуют явные записи `W0-DEC-01` и `W0-DEC-02`; Bible, ADR-0002 и новый
+  workspace mode не считаются принятыми по факту старта кода;
+- приняты ADR-0006–0013 и ADR-0017 до соответствующих W1 implementation tasks;
+- для ADR-0014 либо принята числовая retention matrix, либо каждый незакрытый
+  класс имеет owner/deadline и остаётся жёстким blocker production canary;
+- определены источники истины и владельцы contracts;
+- 20–30 критических journeys имеют deterministic fixtures, а хотя бы один
+  LLM-journey проходит replay на записанных ответах;
+- inventory не содержит неразобранной категории данных;
+- baseline содержит P50/P95/MAX, error rate, RSS, disk и стоимость;
+- `W0-SEC-03` закрыла EXC-0001 либо G0 не пройден;
+- target layout даёт непересекающиеся ownership zones;
+- legacy sustainment register соблюдает предел 1 active capability slot и 20%
+  human integration capacity; contract-hardening помечается отдельно;
+- неизвестные/неоднозначные данные имеют статус, владельца и решение.
+
+Если G0 не пройден, массовая генерация нового кода не начинается.
+
+## 7. Волна 1. Независимые foundations и walking skeleton
+
+**Оценка:** 6–10 недель.<br>
+**Production behavior:** новые компоненты выключены или работают на fixtures;
+до G1 может поставляться только оставшийся governed legacy capability slot.
+
+Frozen inputs волны: domain contract v1, manifest v1/v2, OpenAPI seed, Job/Result
+package v1, AnalysisProfile/replay contract v1, metric names v1.
+
+### Независимые задачи
+
+| Task ID | Lane | Allowed ownership | Результат | Depends on |
+| --- | --- | --- | --- | --- |
+| W1-META-01 | META | metadata domain | value objects, aggregates и state machines без I/O | W0-ARC-02 |
+| W1-META-02 | META | migrations | migration harness + начальная PostgreSQL schema | W0-ADR-01, W1-META-01 contract |
+| W1-META-03 | META | metadata adapters | repository/UoW integration tests с реальной DB | W1-META-02 |
+| W1-STO-01 | STO | storage domain | BlobRef/Manifest ports и validators | W0-ARC-02 |
+| W1-STO-02 | STO | local adapter | streaming local adapter + contract suite | W1-STO-01 |
+| W1-STO-03 | STO/OPS | S3 adapter isolated | multipart/verify/abort на test bucket/emulator | W0-ADR-02, W1-STO-01 |
+| W1-JOB-01 | JOB | job domain | durable state machine, attempt/run semantics | W0-ADR-03 |
+| W1-JOB-02 | JOB | outbox | outbox writer/dispatcher contract tests | W1-META-02, W1-JOB-01 |
+| W1-ENG-01 | ENG | analysis bridge | legacy input/result adapter на golden fixture | W0-ADR-08, W0-BEH-02 |
+| W1-AI-01 | AI | analysis registry | PromptBundle/NormsSnapshot/AnalysisProfile validators | W0-ADR-04 |
+| W1-AI-02 | AI/ENG | replay adapter | cassette transport + ModelCallRecord contract tests | W0-LLM-02, W1-AI-01 |
+| W1-API-01 | API | API seed | health/auth/error envelope + OpenAPI generation | W0-ARC-02, W0-ADR-06 |
+| W1-API-02 | API | pilot contract | golden response master + response models ровно 8 distributed GET | W0-ADR-09, W1-API-01 |
+| W1-WEB-01 | WEB | new web root | Next shell, strict TS, route gates | W0-ARC-01 |
+| W1-WEB-02 | WEB | generated boundary | client/schemas 8 GET, mock adapter, legacy 3-file coverage + новый strict TS check | W1-API-02 contract |
+| W1-WEB-03 | WEB | design system | primitives, tokens, loading/error/permission states | W1-WEB-01 |
+| W1-WEB-04 | WEB | FSD pilot | `_pages/distributed-overview`; `audit-workers.js` и mutations вне scope | W1-WEB-02, W1-WEB-03, W0-ADR-09 |
+| W1-MIG-01 | MIG | migration tools | dry-run/journal/report framework | W0-DATA-01 |
+| W1-OPS-01 | OPS | telemetry | trace/log/metrics skeleton и local dashboards | W0-ADR-07 + metric names v1 |
+| W1-OPS-02 | OPS | CI | dependency boundary, contract, migration и build gates | W0-ARC-01 |
+
+Задачи внутри одного lane последовательны. Разные lanes параллельны только при
+разных фактических владельцах и свободном WIP: в сценарии A `JOB/ENG/AI` имеют
+одного pipeline/analysis engineer и между собой последовательны. W1-META-02
+является единственным владельцем migration head; W1-API-01 — OpenAPI seed;
+W1-WEB-02/W1-WEB-04 не редактируют OpenAPI. Последовательность
+`W1-API-02 → W1-WEB-02 → W1-WEB-04` обязательна: генерация client до
+типизированной response schema запрещена. W1-API-02 является разрешённым P-17
+contract-hardening существующих GET и не расходует legacy capability slot.
+
+### Integration task W1-INT-01
+
+Соединить ровно один walking skeleton:
+
+```text
+Next demo route
+  → generated client
+  → control plane command
+  → PostgreSQL metadata
+  → local blob adapter
+  → queued job/outbox
+  → legacy engine fixture
+  → validated result record
+  → read model в UI
+```
+
+### Integration task W1-INT-02
+
+Опубликовать внутренний read-only route `/next/distributed` через reverse proxy.
+Он использует ровно 8 GET `/api/workers/distributed/*`; `audit-workers.js`,
+worker/provider/job admin endpoints и retry/transfer/intake mutations не
+переносятся. Route выключен по умолчанию, имеет telemetry и route-level rollback.
+Это первый FSD/Next route; ждать массового W4 cutover не нужно.
+
+### Gate G1
+
+- skeleton выполняется в CI и локально одной документированной командой;
+- schema/API/package compatibility tests зелёные;
+- ни один domain module не читает filesystem/env/HTTP напрямую;
+- DB/S3/job failures дают typed error и trace;
+- production defaults не изменены;
+- backend dependency checker не находит cross-module imports;
+- Steiger/ESLint boundaries не находят deep/cross-layer imports, а pilot route
+  проходит runtime schema validation и zero critical accessibility violations;
+- pre-G1 legacy capability slot завершён или снят; с G1 budget новых legacy
+  endpoint/capability = 0, contract-hardening остаётся разрешённым по P-17.
+
+## 8. Волна 2. Первый production vertical slice
+
+**Оценка:** 8–12 недель.<br>
+**Сценарий:** `upload → version → start audit → progress → findings`.
+
+Цель — как можно раньше получить узкий, но настоящий новый маршрут. Это важнее,
+чем предварительно реализовать все таблицы и экраны.
+
+Production-публикация W2-INT-03 разрешена только после storage-facing минимума
+этапа 1Б. До этого те же компоненты работают на fixtures, production-копии или
+в shadow без нового авторитетного writer. Бэкфилл исторических решений, полный
+UI-переход и строгая Фаза E этапа 1 этот canary не блокируют.
+
+### Contract tasks до параллельного старта
+
+| Task ID | Владелец | Результат |
+| --- | --- | --- |
+| W2-C-01 | ARC/STO | IngestBundle/InputManifest contract freeze |
+| W2-C-02 | ARC/JOB | Job/Attempt/Run/Progress/Result contract freeze |
+| W2-C-03 | ARC/API | Project/Version/Audit/Findings OpenAPI freeze |
+| W2-C-04 | ARC/MIG | contour parity: run correspondence, set `finding_uid`, page/sheet bindings, decisions и schema/checksum invariants |
+| W2-C-05 | ARC/AI/ENG | analysis replay + live quality/cost policy без требования text equality |
+
+### Параллельные implementation tasks
+
+| Task ID | Lane | Результат | Не делает |
+| --- | --- | --- | --- |
+| W2-STO-01 | STO | streaming browser ingest, limits, checksum, staging | не публикует version напрямую |
+| W2-STO-02 | STO | Storage Service publish/materialize + local/S3 shadow mode | не меняет metadata current |
+| W2-META-01 | META | project/document/version commands и current transaction | не вызывает engine напрямую |
+| W2-JOB-01 | JOB | submit/cancel/retry/progress durable flow | не парсит legacy result |
+| W2-ENG-01 | ENG | реальный legacy engine adapter за package v1 | не пишет DB/S3 напрямую |
+| W2-ENG-02 | ENG | validated findings result mapper | не меняет identity contract |
+| W2-AI-01 | AI | immutable analysis profile + model call ledger shadow | не меняет prompts/routing без новой версии |
+| W2-AI-02 | AI/MIG | replay parity report + live eval sample/cost report | не требует совпадения live текстов |
+| W2-API-01 | API | upload/projects/audit/findings endpoints | не содержит domain rules |
+| W2-WEB-01 | WEB | projects + upload routes на mock/generated client | не редактирует OpenAPI |
+| W2-WEB-02 | WEB | audit progress + findings route | не читает legacy endpoint |
+| W2-MIG-01 | MIG | legacy project/version read mapper и parity report | dry-run only |
+| W2-OPS-01 | OPS | slice dashboards, alerts, runbook и canary routing | не меняет business state |
+| W2-TEST-01 | ARC/QA | cross-provider contract/E2E tests | не реализует providers |
+
+Разные lanes выполняются параллельно. Внутри lane порядок последовательный:
+`W2-STO-01 → W2-STO-02`, `W2-ENG-01 → W2-ENG-02`,
+`W2-AI-01 → W2-AI-02` и
+`W2-WEB-01 → W2-WEB-02`. API, META, JOB, MIG, OPS и TEST не ждут завершения
+чужой реализации, если их frozen contract уже опубликован.
+
+### Integration tasks
+
+- W2-INT-01: fixture/local end-to-end;
+- W2-INT-02: shadow на production-копии данных;
+- W2-INT-03: opt-in canary для ограниченного списка объектов/пользователей.
+
+### Gate G2
+
+- пользователь может пройти весь slice без ручной правки файлов;
+- metadata и blobs имеют 100% checksum/FK/schema contour parity;
+- progress переживает restart control plane;
+- повтор upload/submit не создаёт дубль;
+- один и тот же package + response cassettes дают replay parity post-LLM логики;
+- live LLM results проходят утверждённую expert quality/cost policy; текстовое
+  совпадение двух live-прогонов не требуется;
+- error/rollback проверены на canary;
+- выполнены числовые budgets и observation из §5.1;
+- ADR-0010 и ADR-0014 приняты; `EXC-0001` закрыт задачей `W0-SEC-03`;
+- legacy остаётся primary для остальных маршрутов.
+
+## 9. Волна 3. Параллельная миграция независимых вертикальных сценариев
+
+**Оценка:** 12–20 недель.<br>
+**Production behavior:** новые маршруты включаются независимо.
+
+После G2 работа максимально параллельна: каждый slice имеет собственный
+contract-task, implementation tasks и route/data cutover.
+
+| Slice | Основные задачи | Shared dependency | Может идти параллельно |
+| --- | --- | --- | --- |
+| W3-A Versions | создание/merge/history/current | Document/Version contract | со всеми ниже после freeze |
+| W3-B Decisions/KB | finding UID, decision history, unresolved flow | Finding/Decision contract | W3-C–F |
+| W3-C Comparison | sessions/pairs/artifacts/viewer | Version/Blob refs | W3-B, D, E, F |
+| W3-D Export | registered export, auth, expiry, ZIP/Excel stream | Blob/Auth contract | W3-B, C, E, F |
+| W3-E Worker admin | workers/jobs/attempts/capabilities | Job/Auth contract | W3-B, C, D, F |
+| W3-F Discussions | threads/events/attachments | Identity/Auth contract | W3-B–E |
+| W3-G Object/admin | objects, disciplines, quotas, roles | Auth/Object contract | W3-B–F |
+
+Для каждого slice обязательны отдельные задачи:
+
+1. `C` — frozen contract;
+2. `META/STO/JOB` — provider changes в своих ownership zones;
+3. `API` — endpoint/BFF;
+4. `WEB` — route на generated client;
+5. `MIG` — dry-run/backfill/parity;
+6. `OPS` — metrics/runbook;
+7. `INT` — canary и removal старого writer/route.
+
+### Gate G3
+
+- все критические journeys из W0 имеют новый маршрут или утверждённый legacy
+  exception;
+- новые expert decisions никогда не зависят от `latest`/`F-NNN`;
+- historical backfill не имеет неучтённых orphans;
+- comparison/export/attachments используют `blob_id`;
+- Next routes покрывают сохранённые ссылки и permissions;
+- каждый analysis run с LLM имеет AnalysisProfile/PromptBundle/NormsSnapshot и
+  ModelCallRecord; live quality/cost не хуже утверждённого budget;
+- каждый legacy fallback имеет счётчик, владельца и дату отключения.
+
+## 10. Волна 4. Primary cutovers и эксплуатационная устойчивость
+
+**Оценка:** 8–12 недель плюс observation.<br>
+**Порядок:** данные и маршруты переключаются независимо, но по строгим гейтам.
+
+### 4.1. Storage primary
+
+- S3 ADR принят;
+- new writes: local → S3 shadow → S3 canary → S3 primary;
+- historical backfill/journal/checksum parity;
+- materialize/Range/cache;
+- backup/restore и controlled local cleanup.
+
+### 4.2. Metadata primary
+
+- JSON → PostgreSQL shadow-write;
+- backfill и semantic parity;
+- canary read/write по объекту;
+- PostgreSQL primary;
+- JSON projection только для rollback/legacy consumers;
+- writer inventory подтверждает отсутствие обходов.
+
+### 4.3. Next primary
+
+- это массовое переключение оставшихся основных routes, а не первый запуск Next:
+  внутренний pilot начинается в W1, independent canary routes — в W2/W3;
+- routing canary по пользователю/объекту;
+- performance/accessibility/error/cost budgets из §5.1;
+- primary routes с быстрым route-level rollback;
+- старый frontend становится read-only fallback на период observation.
+
+### 4.4. Job primary
+
+- durable queue/lease/heartbeat;
+- restart/retry/cancel/drain tests;
+- legacy engine вызывается только через package protocol;
+- WebSocket/SSE является projection durable state.
+
+### Gate G4
+
+- production прошёл ≥14 суток и требуемое число runs из §5.1 без сброса окна;
+- RPO/RTO подтверждены restore drill;
+- SLO/alerts имеют владельцев;
+- скрытых fallback и прямых writers нет;
+- reconciliation backlog равен нулю либо имеет утверждённые exceptions;
+- rollback drill выполнен после появления новых production-данных.
+
+## 11. Волна 5. Pipeline ports и отключение наследия
+
+**Оценка:** инкрементально после G4; 12+ недель, не блокирует пользу control plane.
+
+### 5.1. Сначала единый stage contract
+
+- stage registry вместо нескольких списков порядка;
+- typed StageInput/StageOutput;
+- artifact manifest и schema versions;
+- deterministic resume rules;
+- stage telemetry и error taxonomy.
+
+### 5.2. Параллельный перенос stages
+
+После freeze stage contract разные stage directories можно переносить
+параллельно:
+
+| Группа | Условие независимости |
+| --- | --- |
+| preparation/document graph | пишет только собственный output contract |
+| crop/block context | получает blob/materialized path через port |
+| block analysis | LLM/provider скрыт adapter contract |
+| text analysis | не читает глобальный project path |
+| findings merge/review | использует UID и immutable run inputs |
+| norms | общий registry доступен через versioned read port |
+| optimization | не меняет findings/decision history |
+| export | читает опубликованные artifacts через Storage API |
+
+Одна интеграционная задача обновляет registry/composition после завершения
+группы. Несколько исполнителей не правят общий pipeline manager одновременно.
+
+### 5.3. Retirement backlog
+
+- legacy frontend routes;
+- legacy API endpoints;
+- direct filesystem/JSON writers;
+- JSON canonical readers;
+- `latest` как обязательный read source;
+- compatibility aliases с нулевым usage;
+- feature flags после observation;
+- локальная rollback-replica после финального restore drill.
+
+### Gate G5
+
+- legacy consumer inventory равен нулю;
+- production не зависит от старого application process для control plane;
+- оставшиеся Python stages соответствуют новому engine contract;
+- PostgreSQL/S3 полностью восстанавливаются;
+- документация, runbooks и on-call описывают только целевую систему;
+- старый код архивируется/удаляется отдельными recoverable changes.
+
+## 12. Соответствие плану хранения 1→5
+
+| Существующий этап | Где выполняется в roadmap |
+| --- | --- |
+| Этап 1: identity/integrity | W0 contracts, W1 domain, W2/W3 consumers |
+| Этап 1Б: `projects_v2_primary` | обязательный gate до W2-INT-03; не ждёт всего UI/backfill |
+| Этап 2: ingest/Storage/S3 | W1-STO, W2 first slice, W4 storage primary |
+| Этап 3: PostgreSQL | W1-META, W2/W3 vertical schemas, W4 metadata primary |
+| Этап 4: индексация | W3 query profiles, W4 measured indexes/read models |
+| Этап 5: legacy off | W5 retirement |
+
+Capability work может идти параллельно раньше своего production cutover.
+Например, PostgreSQL schema и Next mock UI разрабатываются одновременно со
+Storage local adapter, но новая production-публикация включается только после
+соответствующего гейта.
+
+## 13. Командная модель и WIP
+
+Подробная развилка зафиксирована в
+[ADR-0015](adr/ADR-0015-program-execution-model.md). Roadmap не предполагает
+несуществующий найм молча.
+
+### Сценарий A: staffed team
+
+- backend/data engineer: META + часть API;
+- storage/platform engineer: STO + OPS;
+- backend/pipeline/analysis engineer: JOB + ENG + AI; AI является явной зоной
+  ответственности, а задачи трёх lanes не считаются параллельными для этого
+  человека;
+- frontend engineer: WEB + generated client;
+- функции architecture/integration/QA распределяются явно, а не считаются
+  «общей ответственностью».
+
+WIP:
+
+- максимум 4 implementation tasks одновременно;
+- максимум одна implementation task на фактического владельца; отдельные
+  логические lanes сами по себе не создают дополнительную capacity;
+- максимум 1 shared contract task;
+- максимум 1 integration task;
+- один migration head и один root lockfile owner на волну;
+- не более одного production cutover одновременно.
+
+Planning range: 10–17 календарных месяцев, 40–68 human engineer-months до
+калибровки W0/W1.
+
+### Сценарий B: один human integrator + agents
+
+- максимум 1 shared contract task;
+- максимум 1–2 implementation tasks одновременно и только в разных ownership
+  zones;
+- максимум 1 integration task; новый contract не открывается, пока integration
+  slot занят;
+- один human integrator утверждает contract, migration head, acceptance evidence
+  и production cutover;
+- агенты готовят provider/consumer/tests/docs, но не увеличивают integration
+  capacity автоматически.
+
+Planning range: 15–34 календарных месяца до калибровки. Если выделенные четыре
+инженера не подтверждены, для capacity и обещаний используется сценарий B.
+Добавление агентов без новой ownership zone увеличивает очередь интеграции, а не
+скорость программы.
+
+Оба сценария проходят одинаковые quality gates. Снижать scope волны разрешено;
+ослаблять data/security/rollback gate из-за меньшей команды запрещено.
+
+## 14. Метрики программы
+
+### Скорость и качество
+
+- lead time task/vertical slice;
+- доля задач, реально завершённых без cross-owner правок;
+- число contract changes внутри волны;
+- merge/file ownership conflicts;
+- escaped defects по slice;
+- flaky tests и время CI;
+- integration wait как доля lead time;
+- rework после human review;
+- human hours и agent/LLM/CI cost на завершённый slice.
+
+### Миграция
+
+- coverage нового read/write path;
+- legacy fallback calls;
+- semantic parity mismatches;
+- reconciliation backlog;
+- данные без UID/manifest/blob/FK;
+- время rollback/restore;
+- до G1: число/загрузка legacy capability slots (`≤1`, `≤20%` human integration
+  capacity); после G1: новые legacy endpoints/capabilities = 0;
+- legacy contract-hardening changes учитываются отдельно и должны иметь golden
+  compatibility evidence;
+- открытые legacy exceptions и просроченные expiry.
+
+### Пользовательский результат
+
+- P50/P95 открытия проекта, findings и PDF;
+- upload success/retry;
+- job queue/run duration и failure rate;
+- потерянные/непривязанные решения;
+- error rate нового и старого маршрута;
+- число ручных операций на один аудит.
+
+### Стоимость
+
+- фактическая и estimated стоимость одного аудита, P50/P95;
+- стоимость одного замечания, принятого экспертом;
+- стоимость в валюте бюджета программы (включая ₽/аудит и ₽/принятое замечание,
+  если бюджет ведётся в ₽) рядом с исходной валютой provider invoice и FX source;
+- tokens/requests/storage/egress/compute по stage/provider;
+- отклонение estimate от billing и доля вызовов без cost attribution;
+- стоимость повторов, failed runs и replay/live eval отдельно.
+
+## 15. Stop conditions
+
+Волна или cutover останавливается, если:
+
+- обнаружена потеря или неоднозначная привязка пользовательских данных;
+- неизвестна версия contract/manifest/package;
+- checksum/FK/semantic parity расходятся без объяснения;
+- rollback или restore не воспроизводится;
+- новая система требует прямого legacy path/DB/S3 обхода;
+- error budget canary превышен;
+- owner или on-call для новой критической зависимости отсутствует;
+- до G1 legacy capability WIP/effort превышает `1 slot`/`20%`, либо после G1
+  появляется новая legacy capability без действующего исключения;
+- contract меняется быстрее, чем независимые tasks успевают интегрироваться.
+
+## 16. Ближайшие следующие решения
+
+До W1 implementation соответствующей области закрываются ADR-0006–0013 и
+ADR-0017 через явно назначенные W0 tasks из [реестра ADR](ADR_INDEX.md).
+ADR-0014 получает owner/deadline в W0 и обязан стать accepted до первого canary
+на production data. ADR-0015/0016 закрывают capacity и workspace process на W0,
+не подменяя product architecture. Первые поставки — walking skeleton W1-INT-01
+и read-only Next pilot W1-INT-02, а не массовая генерация CRUD, экранов или
+migrations.
+
+## 17. Связанные документы
+
+- [ADR Bible](ADR_BIBLE.md)
+- [Реестр ADR](ADR_INDEX.md)
+- [Разбор архитектурного ревью](REVIEW_DISPOSITION_2026-08-27.md)
+- [Разбор архитектурного ревью R2](REVIEW_DISPOSITION_2026-08-27_R2.md)
+- [План развития хранения](../data_storage_modernization/00_global_plan.md)
+- [Кодовый план identity](../data_storage_modernization/01_storage_and_identity_code_plan.md)
+- [Потоковый ingest](../data_storage_modernization/02_01_streaming_ingest.md)
+- [Архитектурный аудит workers](../distributed_audit_workers/01_current_architecture_audit.md)

@@ -1,9 +1,16 @@
 # projects_v2 — write-cutover playbook (controlled)
 
-**Дата:** 2026-06-18
+**Дата:** 2026-06-18. **Последняя сверка:** 2026-08-26.
+
 **Статус:** ПОДГОТОВКА. Ничего из этого НЕ включено в production. Документ
 описывает будущий controlled cutover на v2-primary. Выполнять только по явному
 человеческому решению, не автономно.
+
+Этот файл остаётся операционным checklist. Планирование, владельцы, фазы и
+критерии завершения вынесены в
+[этап 1б](data_storage_modernization/01b_projects_v2_write_cutover.md).
+Сверка 2026-08-26 подтвердила: шесть блокеров ниже ещё не закрыты, владелец и
+дата cutover не назначены.
 
 ## Текущее состояние (на момент написания)
 
@@ -40,6 +47,15 @@
 
 ## 1. Pre-cutover gates (все должны быть TRUE)
 
+- [ ] назначены владелец cutover, владелец maintenance-окна и ответственный за
+  backup/rollback;
+- [ ] утверждены дата cutover и период наблюдения;
+- [ ] merge/copy/candidate создают новый target manifest с
+  `derived_from_version`;
+- [ ] существующие версии без manifest проаудированы: однозначные восстановлены,
+  неоднозначные изолированы и не являются current;
+- [ ] синтетические документы и test leftovers классифицированы, а генераторы
+  fixtures изолированы от production-root;
 - [ ] нет running audit (`ps`, batch_queue.json idle, нет active job-файлов);
 - [ ] нет активного batch (`batch_queue.json` отсутствует/completed);
 - [ ] нет prepare jobs (`prepare_queue.json` без running/queued);
@@ -56,9 +72,11 @@ pytest tests/test_projects_v2_only_harness.py -q          # v2-only harness
 pytest tests/test_projects_v2_only_compat.py -q           # read/export/destructive guards
 pytest tests/test_projects_v2_primary_wiring.py -q        # save_project_info v2-primary
 pytest tests/test_projects_v2_primary_job_paths.py -q     # pipeline paths v2-primary
+pytest tests/test_merge_project_as_version_v2_primary.py -q  # target manifest + lineage
 ```
 Плюс ручная проверка закрытия блокеров 1–6 выше (source-reading, promotion,
-export, destructive contract, prepare/batch, read-path).
+export, destructive contract, prepare/batch, read-path), manifest lineage при
+merge и реестра синтетических/parity-исключений.
 
 ## 3. Required backups (перед любым переключением)
 
@@ -98,6 +116,11 @@ AUDIT_PROJECTS_V2_READ_DEFAULT_ENABLED=true
 
 ## 6. Rollback
 
+Простого переключения флагов недостаточно: сначала блокируются новые записи,
+сравниваются v2 и legacy-зеркало и составляется список данных, созданных после
+cutover. Если зеркало отстаёт, эти данные сохраняются из v2 и синхронизируются
+по утверждённой процедуре. Только после этого разрешается вернуть legacy-read.
+
 ```env
 # вернуть в .env:
 AUDIT_STORAGE_BACKEND=legacy
@@ -108,8 +131,10 @@ AUDIT_PROJECTS_V2_WRITE_MODE=dual_write_shadow
 pkill -f "uvicorn backend.app.main"; <перезапуск backend>
 ```
 Если v2 успел записать что-то некорректное — restore из backup раздела 3.
-Legacy остаётся нетронутым во время dual_write_shadow, поэтому rollback к
-legacy-read безопасен.
+До cutover legacy остаётся авторитетным в `dual_write_shadow`. После включения
+`projects_v2_primary` legacy является только rollback-зеркалом и не может
+считаться полным без сверки. Данные, созданные только в v2, нельзя молча скрыть
+переключением read backend.
 
 ## 7. Stop conditions (немедленный rollback)
 
@@ -124,5 +149,6 @@ legacy-read безопасен.
 ## Принцип
 
 Legacy `projects/` НЕ удаляется на cutover. Cutover лишь переключает primary на
-v2; legacy остаётся как авторитетный архив до отдельного quarantine-периода
+v2; legacy остаётся как временная **неавторитетная rollback-копия** до
+отдельного quarantine-периода
 (см. `projects_v2_legacy_quarantine_plan` и `projects_v2_legacy_deletion_checklist`).

@@ -32,13 +32,17 @@
 | `/api/auth/login` | проверка логина/пароля |
 | `/api/auth/logout` | выход (idempotent) |
 | `/api/auth/me` | статус сессии (фронт опрашивает до входа) |
-| `/api/info` | healthcheck, который дёргает cron-watchdog (`curl -f`) |
+| `/api/info` | публичный дешёвый liveness для health/supervision; не проверяет внешние зависимости |
 | `/favicon.ico` | иконка вкладки на странице входа |
 
-> `/api/info` оставлен открытым намеренно: `~/bin/webapp-watchdog.sh` каждую
-> минуту делает `curl -fsS http://127.0.0.1:8081/api/info`; если закрыть его
-> под auth — watchdog решит, что портал упал, и будет рестартить процесс в
-> цикле.
+> `/api/info` оставлен открытым намеренно как дешёвый liveness endpoint. Старый
+> cron-watchdog действительно опрашивал его и мог перезапускать backend. После
+> [production Phase B от 2026-08-13](distributed_audit_workers/12f1_phaseb/12F1_PHASEB_TEST_REPORT.md)
+> backend принадлежит user-systemd, а обновлённый
+> watchdog только сообщает о неактивном service и следит за tunnel — он больше
+> не запускает и не рестартит backend. Контракт endpoint сохраняется для health-
+> проверок и совместимости: он не должен зависеть от PostgreSQL, S3, auth или
+> другой сетевой системы. Readiness зависимостей публикуется отдельно.
 
 ## Endpoints
 
