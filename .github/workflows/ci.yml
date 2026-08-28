@@ -62,10 +62,16 @@ jobs:
       - name: Регресс-гейт (падает только на НОВЫХ падениях против baseline)
         continue-on-error: true
         env:
-          # Изоляция от машинного состояния: без неё в прогон течёт локальный
-          # backend/app/data/stage_models.json и значения из .env.
+          # Изоляция от машинного состояния: без неё в прогон течут значения
+          # из .env и платные вызовы.
+          #
+          # AUDIT_APP_DATA_DIR здесь НЕ выставляется намеренно. Каталог
+          # backend/app/data/ смешивает машинный runtime-стейт (stage_models.json,
+          # usage_data.json и пр., все в .gitignore) с ассетами репозитория
+          # (чек-листы дисциплин, model_prices.json), на которых стоят тесты.
+          # Пустой каталог обрушил бы вторые. Изоляцией владеет tests/conftest.py:
+          # он кладёт в песочницу копию каталога БЕЗ машинных файлов состояния.
           AUDIT_DISABLE_DOTENV: "1"
-          AUDIT_APP_DATA_DIR: ${{ runner.temp }}/app_data
           PAID_API_ENABLED: "false"
         run: python scripts/ci_regression_gate.py
 

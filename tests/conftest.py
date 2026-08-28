@@ -9,6 +9,8 @@
 `.env`.
 """
 import os
+import shutil
+import sys
 import tempfile
 from pathlib import Path
 
@@ -30,6 +32,70 @@ os.environ["AUDIT_OBJECTS_FILE"] = str(_STORAGE_SANDBOX_ROOT / "objects.json")
 # config.ACTION_LOG_DIR — оно не должно быть прод-директорией logs/actions.
 os.environ["AUDIT_ACTION_LOG_DIR"] = str(_STORAGE_SANDBOX_ROOT / "actions_log")
 
+# `backend/app/data/` — такой же живой машинный стейт, как `projects/` и
+# `logs/actions/`: там лежат stage_models.json, prepare_queue.json,
+# usage_data.json, hidden_projects.json, реестры и журналы платных вызовов.
+# Без изоляции тест читает МАШИННУЮ маршрутизацию моделей вместо кодовых
+# умолчаний — ровно этим падал
+# `test_distributed_workers_network_e2e_11g.py::
+# test_d_backend_passes_the_requirement_into_create_audit_job`: локальный
+# stage_models.json уводил ВСЕ стадии на `openai/gpt-5.4`.
+#
+# Каталог нельзя подменить пустым: рядом с машинным стейтом в той же папке
+# лежат файлы РЕПОЗИТОРИЯ (чек-листы дисциплин и их метаданные,
+# model_prices.json, примеры телеметрии stage01, снимки
+# section_optimization_pipeline), на которых стоят отдельные тесты. Поэтому в
+# песочницу кладётся КОПИЯ каталога БЕЗ машинных файлов состояния. Имя папки
+# — ровно `data`: на это опирается tests/text_analysis/test_checklist_loader.py
+# (`CHECKLIST_DIR.parent.name == "data"`).
+_APP_DATA_SOURCE = Path(__file__).resolve().parents[1] / "backend" / "app" / "data"
+_APP_DATA_SANDBOX = _STORAGE_SANDBOX_ROOT / "data"
+
+#: Живой runtime-стейт в `backend/app/data` — в песочницу НЕ копируется.
+#: Список = пофайловые правила `.gitignore` для этой папки + runtime-константы
+#: `backend/app/core/config.py` (BATCH_QUEUE_FILE, STAGE_MODELS_FILE и др.).
+_APP_DATA_RUNTIME_STATE = frozenset({
+    "batch_queue.json",
+    "external_registers",
+    "hidden_projects.json",
+    "missing_norms_vault.json",
+    "objects.json",
+    "paid_api_blocked_events.jsonl",
+    "paid_cost.json",
+    "paid_cost_events.jsonl",
+    "prepare_queue.json",
+    "project_groups.json",
+    "project_rename.reverse.json",
+    "section_optimization",   # снимки прогонов конкретной машины (**/*.json)
+    "stage_batch_modes.json",
+    "stage_comparison_saved_config.json",
+    "stage_models.json",
+    "usage_data.json",
+    "usage_offsets.json",
+    "users.json",
+})
+
+
+def _seed_app_data_sandbox() -> None:
+    """Положить в песочницу РЕПОЗИТОРНУЮ часть `backend/app/data`."""
+    _APP_DATA_SANDBOX.mkdir(parents=True, exist_ok=True)
+    if not _APP_DATA_SOURCE.is_dir():
+        return
+    for entry in sorted(_APP_DATA_SOURCE.iterdir()):
+        if entry.name in _APP_DATA_RUNTIME_STATE:
+            continue
+        if entry.name.startswith("missing_norms_online_"):
+            continue
+        target = _APP_DATA_SANDBOX / entry.name
+        if entry.is_dir():
+            shutil.copytree(entry, target, dirs_exist_ok=True)
+        else:
+            shutil.copy2(entry, target)
+
+
+_seed_app_data_sandbox()
+os.environ["AUDIT_APP_DATA_DIR"] = str(_APP_DATA_SANDBOX)
+
 # Storage cutover flags are production-controlled and may be v2-primary in the
 # developer shell. Tests must start from a deterministic legacy baseline and
 # opt into projects_v2 explicitly via monkeypatch inside the test.
@@ -40,6 +106,91 @@ _DEFAULT_STORAGE_ENV = {
 }
 for _name, _value in _DEFAULT_STORAGE_ENV.items():
     os.environ[_name] = _value
+
+@pytest.fixture(autouse=True)
+def _restore_process_environ():
+    """Снимок `os.environ` до теста и точное восстановление после него.
+
+    Тест, оставивший переменную в окружении процесса, портит СОСЕДЕЙ — и это
+    не гипотеза: `test_openrouter_worker_provider_11j.py::
+    test_rev6_feature_flags_cannot_inject_provider_env` дёргает боевую
+    `remote_audit_runner.apply_routing_flags`, которая ШТАТНО пишет
+    `STAGE01_THIRD_LEG_ENABLED=true` прямо в `os.environ` и за собой не
+    убирает. После этого `test_stage01_dual_review.py`, зелёный в одиночку, в
+    полном наборе падал. Чинится не один случай, а класс: любой вызов
+    production-кода, правящего окружение, теперь откатывается на границе теста.
+
+    Восстанавливаются все три вида расхождений:
+      * ДОБАВЛЕННЫЕ переменные — удаляются;
+      * ИЗМЕНЁННЫЕ — возвращаются к прежнему значению;
+      * УДАЛЁННЫЕ — возвращаются обратно.
+
+    Фикстура объявлена ПЕРВОЙ в файле намеренно: autouse-фикстуры одного скоупа
+    поднимаются в порядке объявления и сворачиваются в обратном, поэтому её
+    восстановление идёт ПОСЛЕ отката `monkeypatch` и остальных изоляторов —
+    и снимок берётся до того, как они успели что-то выставить. Фикстуры более
+    широких скоупов (module/session) поднимаются РАНЬШЕ функциональных, так что
+    выставленное ими окружение попадает в снимок и не сносится.
+    """
+    snapshot = dict(os.environ)
+    try:
+        yield
+    finally:
+        current = dict(os.environ)
+        if current == snapshot:
+            return
+        for name in current:
+            if name not in snapshot:
+                os.environ.pop(name, None)
+        for name, value in snapshot.items():
+            if current.get(name) != value:
+                os.environ[name] = value
+
+
+#: Модули, чьи ЗАГЛАВНЫЕ bool-глобали правит production-код: тот же
+#: `remote_audit_runner.apply_routing_flags` после записи в `os.environ`
+#: делает `setattr` на уже импортированных модулях (списки `_CONFIG_BOOL_FLAGS`
+#: и `_STAGE01_MODULE_FLAGS`) — «для тех, кто прочитал переменную однажды».
+_FLAG_CARRIER_MODULES = (
+    "backend.app.core.config",
+    "backend.app.pipeline.stages.block_analysis.gemma_findings_only",
+)
+
+
+@pytest.fixture(autouse=True)
+def _restore_routing_flag_attributes():
+    """Вторая половина того же протекания: флаги в ГЛОБАЛЯХ модулей.
+
+    Восстановления `os.environ` мало, и это проверено на живом наборе.
+    `test_rev6_feature_flags_cannot_inject_provider_env` вызывает
+    `apply_routing_flags`, а та не только пишет `STAGE01_THIRD_LEG_ENABLED` в
+    окружение, но и ставит `gemma_findings_only.STAGE01_THIRD_LEG_ENABLED = True`
+    напрямую — если модуль уже импортирован. В паре из двух модулей он ещё не
+    импортирован и всё зелено; в полном наборе импортирован, и
+    `test_stage01_dual_review` получает лишнюю «третью ногу» (`new: 2` вместо 1).
+    Откат окружения такой `setattr` не отменяет — нужен снимок самих глобалей.
+
+    Снимаются только ЗАГЛАВНЫЕ атрибуты типа bool и только у УЖЕ импортированных
+    модулей: не импортированный на момент старта теста прочитает уже
+    восстановленное окружение при своём импорте сам.
+    """
+    snapshot = []
+    for name in _FLAG_CARRIER_MODULES:
+        module = sys.modules.get(name)
+        if module is None:
+            continue
+        snapshot.append((module, {
+            attr: value for attr, value in vars(module).items()
+            if attr.isupper() and isinstance(value, bool)
+        }))
+    try:
+        yield
+    finally:
+        for module, values in snapshot:
+            for attr, value in values.items():
+                if getattr(module, attr, None) is not value:
+                    setattr(module, attr, value)
+
 
 @pytest.fixture(autouse=True)
 def _isolate_batch_queue_file(tmp_path, monkeypatch):
