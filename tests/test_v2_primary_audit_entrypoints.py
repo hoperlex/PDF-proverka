@@ -214,6 +214,16 @@ async def test_agent_tasks_use_absolute_v2_output_path(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_stage_runners_pass_ctx_paths_to_agent_runners(monkeypatch, tmp_path):
+    """Прямая (не-ансамблевая) ветка OPT и свод замечаний получают ctx-пути.
+
+    Модель этапа `optimization` задаётся ТЕСТОМ: она выбирает ветку внутри
+    run_optimization, а берётся из `backend/app/data/stage_models.json` —
+    машинного файла (.gitignore, в чистом клоне отсутствует). Пока модель не
+    задавалась, тест зеленел лишь потому, что локальный файл держал
+    `openai/gpt-5.4`; кодовое умолчание `_STAGE_MODEL_DEFAULTS["optimization"]`
+    — ансамбль, и подменённый здесь claude_runner.run_optimization в той ветке
+    вообще не вызывается. Ансамблевую ветку проверяет тест ниже.
+    """
     import backend.app.pipeline.stages.findings_merge.runner as fm_runner
     import backend.app.pipeline.stages.optimization.runner as opt_runner
 
@@ -244,6 +254,8 @@ async def test_stage_runners_pass_ctx_paths_to_agent_runners(monkeypatch, tmp_pa
     monkeypatch.setattr(bh, "backfill_project", lambda *a, **k: None)
     monkeypatch.setattr(ba_runner, "attach_stage02_coverage_to_findings", lambda *a, **k: {"summary": {}})
     monkeypatch.setattr(opt_runner.claude_runner, "run_optimization", fake_optimization)
+    # Прямая ветка: одиночная Claude-модель (не ансамбль и не codex).
+    monkeypatch.setattr(opt_runner, "get_stage_model", lambda stage: "claude-opus-5")
 
     fm_result = await fm_runner.run_findings_merge(ctx)
     opt_result = await opt_runner.run_optimization(ctx)
@@ -254,3 +266,47 @@ async def test_stage_runners_pass_ctx_paths_to_agent_runners(monkeypatch, tmp_pa
         assert captured[key]["output_dir"] == output_dir
         assert captured[key]["version_dir"] == version_dir
         assert captured[key]["version_id"] == "v001"
+
+
+@pytest.mark.asyncio
+async def test_optimization_ensemble_branch_passes_ctx_paths(monkeypatch, tmp_path):
+    """Ансамблевая ветка OPT получает ТЕ ЖЕ ctx-пути, что и прямой вызов.
+
+    Это кодовое умолчание этапа `optimization`, то есть основной production-путь:
+    v2-раскладку (output_dir прогона, version_dir, version_id) задаёт контекст, а
+    не догадки внутри ансамбля. Раньше ветка не проверялась вовсе — тест выше
+    попадал в неё или мимо в зависимости от машинного stage_models.json.
+    """
+    import backend.app.pipeline.stages.optimization.runner as opt_runner
+    import backend.app.pipeline.stages.optimization.ensemble as opt_ensemble
+    from backend.app.core.config import (
+        OPTIMIZATION_DUAL_MODEL_ID,
+        _STAGE_MODEL_DEFAULTS,
+    )
+
+    assert _STAGE_MODEL_DEFAULTS["optimization"] == OPTIMIZATION_DUAL_MODEL_ID, (
+        "кодовое умолчание optimization больше не ансамблевое — проверьте, какая "
+        f"ветка теперь основная: {_STAGE_MODEL_DEFAULTS['optimization']}"
+    )
+
+    version_dir = _make_v2_version(tmp_path, "DOC-W2")
+    output_dir = version_dir / "03_analysis" / "runs" / "job-w2"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    ctx = _FakeCtx(version_dir, output_dir, project_id="DOC-W2")
+    captured = {}
+
+    async def fake_ensemble(**kwargs):
+        captured["optimization_ensemble"] = kwargs
+        _write(output_dir / "optimization.json", json.dumps({"items": [], "meta": {}}))
+        return opt_ensemble.EnsembleRunResult(success=True, run_id="run-1", status="ok")
+
+    monkeypatch.setattr(opt_runner, "get_stage_model", lambda stage: OPTIMIZATION_DUAL_MODEL_ID)
+    monkeypatch.setattr(opt_ensemble, "run_optimization_ensemble", fake_ensemble)
+
+    result = await opt_runner.run_optimization(ctx)
+
+    assert result.success is True
+    kwargs = captured["optimization_ensemble"]
+    assert kwargs["output_dir"] == output_dir
+    assert kwargs["version_dir"] == version_dir
+    assert kwargs["version_id"] == "v001"

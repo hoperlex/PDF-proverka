@@ -217,29 +217,143 @@ def _patch_run_findings_only(monkeypatch, capture_dict, *, summary_overrides=Non
     monkeypatch.setattr(gfo, "check_prerequisites", _fake_prereq)
 
 
+# ─── Маршрутизация моделей: условия задаёт тест, а не машина ────────────────
+#
+# Потолок параллельности Stage 02 выбирает МОДЕЛЬ этапа: ансамбль/codex идут по
+# STAGE01_CODEX_PARALLELISM (один блок ансамбля = несколько одновременных
+# запусков CLI), остальные модели — по общему DEFAULT_PARALLELISM. Модель runner
+# берёт из `get_stage_model("block_batch")`, то есть из
+# `backend/app/data/stage_models.json` — МАШИННОГО файла: он в .gitignore, в
+# чистом клоне его нет, а на конкретной машине там может стоять что угодно. Сам
+# потолок ансамбля тоже приходит из окружения (`AUDIT_STAGE02_CODEX_PARALLELISM`
+# разбирается один раз на импорте config), а мост провайдеров вообще способен
+# перебить модель целиком по env-переменной привязки.
+#
+# Пока тесты ниже ничего из этого не задавали, они проверяли не код, а состояние
+# машины: локальный stage_models.json уводил block_batch на `openai/gpt-5.4`, и
+# «умолчания» означали чужую локальную маршрутизацию вместо кодовых
+# `_STAGE_MODEL_DEFAULTS`. Поэтому маршрутизация фиксируется здесь явно.
+
+#: Потолок ансамблевой ветки в этих тестах. Значение НАРОЧНО не совпадает ни с
+#: production-дефолтом ансамбля (1), ни с DEFAULT_PARALLELISM (3): так видно, что
+#: runner читает именно STAGE01_CODEX_PARALLELISM, а не совпал с соседней
+#: константой.
+_ENSEMBLE_PARALLELISM = 2
+
+
+def _pin_stage02_routing(
+    monkeypatch, model: str, *, ensemble_parallelism: int = _ENSEMBLE_PARALLELISM,
+):
+    """Зафиксировать модель этапа и потолок ансамбля; вернуть модуль runner."""
+    import backend.app.pipeline.stages.block_analysis.runner as runner_mod
+    from backend.app.pipeline.stages.block_analysis import gemma_findings_only as gfo
+
+    def _fake_get_stage_model(key):
+        assert key == "block_batch", f"Stage 02 спросил чужую стадию: {key}"
+        return model
+
+    # Мост провайдеров активируется env-переменной привязки; при активном мосте
+    # модель задаёт локальная политика воркера, и заданная тестом строка не
+    # применяется вовсе. Для этих тестов мост выключен явно.
+    monkeypatch.setattr(gfo, "provider_bridge_active", lambda: False)
+    monkeypatch.setattr(runner_mod, "get_stage_model", _fake_get_stage_model)
+    monkeypatch.setattr(runner_mod, "STAGE01_CODEX_PARALLELISM", ensemble_parallelism)
+    return runner_mod
+
+
+def _branch_routing(branch: str) -> tuple[str, int]:
+    """(модель, ожидаемая параллельность без smoke-env) для обеих веток выбора."""
+    from backend.app.core.config import STAGE02_DUAL_MODEL_ID
+    from backend.app.pipeline.stages.block_analysis.gemma_findings_only import (
+        DEFAULT_MODEL,
+        DEFAULT_PARALLELISM,
+    )
+
+    if branch == "ensemble":
+        return STAGE02_DUAL_MODEL_ID, _ENSEMBLE_PARALLELISM
+    return DEFAULT_MODEL, DEFAULT_PARALLELISM
+
+
+def _smoke_limit_logs(captured, marker: str = "") -> list:
+    """SMOKE-LIMIT записи audit log (опционально — только про конкретный лимит)."""
+    return [
+        (lvl, msg) for lvl, msg in captured["logs"]
+        if "SMOKE-LIMIT" in msg and marker in msg
+    ]
+
+
 @pytest.mark.asyncio
 async def test_stage02_no_env_uses_defaults(tmp_path, monkeypatch):
-    """Без env: parallelism=DEFAULT_PARALLELISM, blocks_filter=None.
-    Production full audit поведение НЕ изменилось."""
+    """Без smoke-env Stage 02 работает на КОДОВЫХ умолчаниях.
+
+    Правильное поведение: `_STAGE_MODEL_DEFAULTS["block_batch"]` — ансамбль,
+    а у ансамблевой ветки СВОЙ потолок (STAGE01_CODEX_PARALLELISM), потому что
+    один блок ансамбля разворачивается в несколько одновременных запусков CLI;
+    брать здесь общий DEFAULT_PARALLELISM=3 было бы девять параллельных CLI.
+    blocks_filter при этом None и SMOKE-LIMIT предупреждений нет — лимиты не
+    заданы, обрабатывается весь документ.
+
+    Прежняя версия теста ждала DEFAULT_PARALLELISM и зеленела только потому,
+    что машинный stage_models.json уводил block_batch на `openai/gpt-5.4`.
+    """
+    from backend.app.core.config import _STAGE_MODEL_DEFAULTS, STAGE02_DUAL_MODEL_ID
+
+    default_model = _STAGE_MODEL_DEFAULTS["block_batch"]
+    assert default_model == STAGE02_DUAL_MODEL_ID, (
+        f"кодовое умолчание block_batch больше не ансамблевое ({default_model}) — "
+        "ожидаемую параллельность нужно пересмотреть по смыслу, а не подогнать"
+    )
+
     monkeypatch.delenv("AUDIT_STAGE02_MAX_BLOCKS", raising=False)
     monkeypatch.delenv("AUDIT_STAGE02_MAX_PARALLEL_BATCHES", raising=False)
 
     project_dir = _make_stage02_project(tmp_path)
     capture = {}
     _patch_run_findings_only(monkeypatch, capture)
-
-    from backend.app.pipeline.stages.block_analysis.runner import (
-        run_block_analysis_findings_only,
-    )
-    from backend.app.pipeline.stages.block_analysis.gemma_findings_only import DEFAULT_PARALLELISM
+    runner_mod = _pin_stage02_routing(monkeypatch, default_model)
 
     ctx, captured = _make_ctx(project_dir)
-    result = await run_block_analysis_findings_only(ctx)
+    result = await runner_mod.run_block_analysis_findings_only(ctx)
     assert result.success
 
     kw = capture["call_kwargs"]
-    assert kw.get("parallelism") == DEFAULT_PARALLELISM
+    assert kw.get("parallelism") == _ENSEMBLE_PARALLELISM
     assert kw.get("blocks_filter") is None
+    assert not _smoke_limit_logs(captured), "без env не должно быть SMOKE-LIMIT записей"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("branch", ["ensemble", "single"])
+async def test_stage02_no_env_parallelism_matches_model_branch(
+    tmp_path, monkeypatch, branch,
+):
+    """Без env потолок определяет ВЕТКА модели, и обе ветки проверяются явно.
+
+    ансамбль → STAGE01_CODEX_PARALLELISM, одиночная модель → DEFAULT_PARALLELISM.
+    Ветку `single` раньше покрывал машинный stage_models.json (block_batch там
+    стоял на `openai/gpt-5.4`); теперь модель задаёт сам тест.
+    """
+    model, expected_parallelism = _branch_routing(branch)
+
+    monkeypatch.delenv("AUDIT_STAGE02_MAX_BLOCKS", raising=False)
+    monkeypatch.delenv("AUDIT_STAGE02_MAX_PARALLEL_BATCHES", raising=False)
+
+    project_dir = _make_stage02_project(tmp_path)
+    capture = {}
+    _patch_run_findings_only(monkeypatch, capture)
+    runner_mod = _pin_stage02_routing(monkeypatch, model)
+
+    ctx, captured = _make_ctx(project_dir)
+    result = await runner_mod.run_block_analysis_findings_only(ctx)
+    assert result.success
+
+    kw = capture["call_kwargs"]
+    assert kw.get("parallelism") == expected_parallelism, (
+        f"model={model}: ожидалась параллельность {expected_parallelism}, "
+        f"получено {kw.get('parallelism')}"
+    )
+    assert kw.get("blocks_filter") is None
+    assert not _smoke_limit_logs(captured)
 
 
 @pytest.mark.asyncio
@@ -289,47 +403,67 @@ async def test_stage02_max_blocks_3_limits_to_first_3(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_stage02_max_parallel_overrides_default(tmp_path, monkeypatch):
+@pytest.mark.parametrize("branch", ["ensemble", "single"])
+async def test_stage02_max_parallel_overrides_default(tmp_path, monkeypatch, branch):
+    """AUDIT_STAGE02_MAX_PARALLEL_BATCHES бьёт дефолт ЛЮБОЙ ветки модели.
+
+    Предмет теста — сам override, поэтому модель задаётся явно и прогоняются обе
+    ветки. Значение 1 меньше обоих дефолтов (ансамбль и одиночная модель), значит
+    SMOKE-LIMIT warn обязан появиться в обоих случаях и назвать дефолт ИМЕННО
+    этой ветки — иначе оператор smoke-прогона не поймёт, от чего он отступил.
+    """
+    model, default_parallelism = _branch_routing(branch)
+    assert default_parallelism != 1, (
+        "override совпал с дефолтом ветки — тест перестал что-либо проверять"
+    )
+
     monkeypatch.delenv("AUDIT_STAGE02_MAX_BLOCKS", raising=False)
     monkeypatch.setenv("AUDIT_STAGE02_MAX_PARALLEL_BATCHES", "1")
 
     project_dir = _make_stage02_project(tmp_path)
     capture = {}
     _patch_run_findings_only(monkeypatch, capture)
+    runner_mod = _pin_stage02_routing(monkeypatch, model)
 
-    from backend.app.pipeline.stages.block_analysis.runner import (
-        run_block_analysis_findings_only,
-    )
     ctx, captured = _make_ctx(project_dir)
-    await run_block_analysis_findings_only(ctx)
+    await runner_mod.run_block_analysis_findings_only(ctx)
 
     assert capture["call_kwargs"].get("parallelism") == 1
-    smoke_logs = [
-        (lvl, msg) for lvl, msg in captured["logs"]
-        if "SMOKE-LIMIT" in msg and "MAX_PARALLEL_BATCHES" in msg
-    ]
+    smoke_logs = _smoke_limit_logs(captured, "MAX_PARALLEL_BATCHES")
     assert smoke_logs
+    assert smoke_logs[0][0] == "warn"
+    assert f"default={default_parallelism}" in smoke_logs[0][1], (
+        f"SMOKE-LIMIT не назвал дефолт ветки {model}: {smoke_logs[0][1]}"
+    )
 
 
 @pytest.mark.asyncio
-async def test_stage02_invalid_env_uses_defaults(tmp_path, monkeypatch):
-    """Невалидный env не ломает production."""
+@pytest.mark.parametrize("branch", ["ensemble", "single"])
+async def test_stage02_invalid_env_uses_defaults(tmp_path, monkeypatch, branch):
+    """Невалидный env не ломает production: остаётся дефолт ВЕТКИ модели.
+
+    Правильное поведение — полное отсутствие эффекта: та же параллельность, что
+    и без env, blocks_filter=None и ни одной SMOKE-LIMIT записи (иначе оператор
+    решит, что лимит применился). Модель задаётся явно, обе ветки прогоняются.
+    """
+    model, expected_parallelism = _branch_routing(branch)
+
     monkeypatch.setenv("AUDIT_STAGE02_MAX_BLOCKS", "garbage")
     monkeypatch.setenv("AUDIT_STAGE02_MAX_PARALLEL_BATCHES", "0")
 
     project_dir = _make_stage02_project(tmp_path)
     capture = {}
     _patch_run_findings_only(monkeypatch, capture)
+    runner_mod = _pin_stage02_routing(monkeypatch, model)
 
-    from backend.app.pipeline.stages.block_analysis.runner import (
-        run_block_analysis_findings_only,
-    )
-    from backend.app.pipeline.stages.block_analysis.gemma_findings_only import DEFAULT_PARALLELISM
-    ctx, _captured = _make_ctx(project_dir)
-    await run_block_analysis_findings_only(ctx)
+    ctx, captured = _make_ctx(project_dir)
+    await runner_mod.run_block_analysis_findings_only(ctx)
 
-    assert capture["call_kwargs"].get("parallelism") == DEFAULT_PARALLELISM
+    assert capture["call_kwargs"].get("parallelism") == expected_parallelism
     assert capture["call_kwargs"].get("blocks_filter") is None
+    assert not _smoke_limit_logs(captured), (
+        "невалидный env не должен выглядеть как применённый лимит"
+    )
 
 
 # ─── 3. Cost-on-cancel: Stage 02 cancelled → record_block_analysis_usage ──
