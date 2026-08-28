@@ -1,16 +1,21 @@
-# Стартовый CI (reserc.md #104). СТАТУС: observe-first — пока НЕ блокирует merge.
+# CI: регресс-гейт по контракту окружения.
 #
-# Почему observe, а не enforce сразу:
-#   - корневой requirements.txt перенесён из webapp/ (2026-07-04) — список
-#     deps ниже best-effort;
-#   - baseline известных падений (scripts/ci_known_failures.txt) снят в локальном
-#     окружении и от него зависит — в CI часть тестов падает иначе.
+# СТАТУС: observe-first — гейт пока НЕ блокирует merge (`continue-on-error`).
+# Условия перевода в enforce перечислены в конце файла: они конкретны и
+# проверяемы, а не «когда будет время».
 #
-# Чтобы сделать гейт блокирующим:
-#   1) добавить корневой requirements.txt и поставить его в шаге install;
-#   2) один раз запустить в CI `python scripts/ci_regression_gate.py --record`
-#      и закоммитить полученный baseline;
-#   3) убрать `continue-on-error: true` у шага «Регресс-гейт».
+# Контракт окружения (docs/architecture/ci_environment_matrix.md) требует от
+# раннера ровно того, без чего прогон невоспроизводим:
+#   - фиксированные зависимости, установка БЕЗ `|| true`;
+#   - непривилегированный пользователь (решение C-4);
+#   - изоляция от машинных данных и от .env;
+#   - подвоз норм-корпуса (решение C-2);
+#   - chaos-тесты отдельным job (решение C-5).
+#
+# Признак «мы в CI» — переменная CI, которую GitHub Actions выставляет сам.
+# Тесты, объявленные «обязательно в CI, необязательно локально», при её
+# наличии ЛОМАЮТ прогон вместо тихого skip: провалившийся provision обязан
+# быть виден, иначе он однажды отвалится молча.
 name: tests
 
 on:
@@ -27,12 +32,78 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies (best-effort)
+      # Установка без `|| true`: молча пропущенная зависимость даёт падения,
+      # неотличимые от регрессий. Пусть лучше падёт шаг установки.
+      - name: Установить зависимости
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
-          pip install pytest fastapi httpx starlette pydantic "uvicorn[standard]" jinja2 python-multipart pillow passlib
+          pip install -r requirements.txt
+          pip install -r requirements-proto.txt   # grpcio-tools для контрактных тестов
+          pip install pytest
+
+      # Решение C-2: нормативный контур проверяется в CI, а не пропускается.
+      # Корпус лежит вне git; отсутствие артефакта здесь — сломанный provision,
+      # и тесты норм обязаны упасть, а не скипнуться.
+      # TODO(владелец): подключить фактический источник артефакта norms/vault
+      # (release asset / приватный бакет / отдельный репозиторий) и сборку
+      # norms/tools/status_index.json по norms/tools/README.md.
+      - name: Подвезти норм-корпус
+        run: |
+          echo "::warning::источник артефакта norms/vault не настроен —"
+          echo "::warning::тесты норм упадут по решению C-2, это ожидаемо до настройки"
+
+      # Решение C-4: набор обязан выполняться непривилегированным пользователем.
+      # Под root режимы 0o555 не действуют, и проверка неудаляемости
+      # запечатанного дерева проходит вхолостую, ничего не доказывая.
+      - name: Проверить, что прогон не под root
+        run: |
+          test "$(id -u)" -ne 0 || { echo "::error::раннер под root — нарушение контракта C-4"; exit 1; }
 
       - name: Регресс-гейт (падает только на НОВЫХ падениях против baseline)
         continue-on-error: true
+        env:
+          # Изоляция от машинного состояния: без неё в прогон течёт локальный
+          # backend/app/data/stage_models.json и значения из .env.
+          AUDIT_DISABLE_DOTENV: "1"
+          AUDIT_APP_DATA_DIR: ${{ runner.temp }}/app_data
+          PAID_API_ENABLED: "false"
         run: python scripts/ci_regression_gate.py
+
+  # Решение C-5: chaos-тесты поднимают реальные процессы и недетерминированы
+  # (четыре прогона дали 1/2/0/1 падений). В общем наборе они ломали бы любой
+  # baseline, поэтому исключены маркером и живут отдельным job.
+  chaos:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Установить зависимости
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+      - name: Chaos-тесты
+        env:
+          AUDIT_DISABLE_DOTENV: "1"
+          AUDIT_APP_DATA_DIR: ${{ runner.temp }}/app_data
+        run: python -m pytest tests/test_process_chaos_12e.py -m chaos -q
+
+# ─── Условия перевода гейта в enforce ────────────────────────────────────────
+#
+# 1. Источник артефакта norms/vault настроен, шаг «Подвезти норм-корпус»
+#    действительно его подвозит, тесты норм зелёные.
+# 2. Baseline пересобран ОДИН раз в этом окружении
+#    (`python scripts/ci_regression_gate.py --record`) и закоммичен с
+#    обоснованием. До этого baseline описывает чужую машину: он снят там, где
+#    были норм-корпус, данные проектов и провайдерские CLI.
+#    ВНИМАНИЕ: пересборка допустима только здесь и только один раз — baseline
+#    принадлежит профилю CI, а не машине разработчика. Расхождение из-за
+#    отсутствующего optional-датасета чинится тестом, а не перезаписью списка
+#    (см. докстринг scripts/ci_regression_gate.py).
+# 3. `continue-on-error: true` убран у шага «Регресс-гейт».
+#
+# Job `chaos` остаётся неблокирующим до починки гонки: его назначение —
+# видеть недетерминизм, а не блокировать merge.
