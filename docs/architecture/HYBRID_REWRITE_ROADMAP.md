@@ -348,7 +348,8 @@ Timeout относится **только** к нормативной силе �
 
 - существуют явные записи `W0-DEC-01` и `W0-DEC-02`; Bible, ADR-0002 и новый
   workspace mode не считаются принятыми по факту старта кода;
-- приняты ADR-0006–0013 и ADR-0017 до соответствующих W1 implementation tasks;
+- приняты ADR-0006–0013, ADR-0017 и ADR-0018 до соответствующих W1
+  implementation tasks;
 - для ADR-0014 либо принята числовая retention matrix, либо каждый незакрытый
   класс имеет owner/deadline и остаётся жёстким blocker production canary;
 - определены источники истины и владельцы contracts;
@@ -379,6 +380,15 @@ Timeout относится **только** к нормативной силе �
 Frozen inputs волны: domain contract v1, manifest v1/v2, OpenAPI seed, Job/Result
 package v1, AnalysisProfile/replay contract v1, metric names v1.
 
+### Integration task W1-INT-00
+
+Открывает новый контур: `pyproject.toml`, каталоги модулей по ADR-0006 §4.1,
+composition root `src/auditmanager/bootstrap/**` и правку `pytest.ini`.
+Владелец — интегратор волны, lane ARC/OPS; зависимость — `W0-ARC-01`.
+Выполняется до задач лейнов волны: без неё модули не имеют корня, в
+который пишут. `W1-INT-01` соединяет уже готовые модули и остаётся
+замыкающей.
+
 ### Независимые задачи
 
 | Task ID | Lane | Allowed ownership | Результат | Depends on |
@@ -402,7 +412,7 @@ package v1, AnalysisProfile/replay contract v1, metric names v1.
 | W1-WEB-04 | WEB | FSD pilot | `_pages/distributed-overview`; `audit-workers.js` и mutations вне scope | W1-WEB-02, W1-WEB-03, W0-ADR-09 |
 | W1-MIG-01 | MIG | migration tools | dry-run/journal/report framework | W0-DATA-01 |
 | W1-OPS-01 | OPS | telemetry | trace/log/metrics skeleton и local dashboards | W0-ADR-07 + metric names v1 |
-| W1-OPS-02 | OPS | CI | dependency boundary, contract, migration и build gates | W0-ARC-01 |
+| W1-OPS-02 | OPS | CI | dependency boundary, contract, migration и build gates | W0-ARC-01, W1-INT-00 |
 
 Задачи внутри одного lane последовательны. Разные lanes параллельны только при
 разных фактических владельцах и свободном WIP: в сценарии A `JOB/ENG/AI` имеют
@@ -796,8 +806,9 @@ Planning range: 15–34 календарных месяца до калибро�
 
 ## 16. Ближайшие следующие решения
 
-До W1 implementation соответствующей области закрываются ADR-0006–0013 и
-ADR-0017 через явно назначенные W0 tasks из [реестра ADR](ADR_INDEX.md).
+До W1 implementation соответствующей области закрываются ADR-0006–0013,
+ADR-0017 и ADR-0018 через явно назначенные W0 tasks из
+[реестра ADR](ADR_INDEX.md).
 ADR-0014 получает owner/deadline в W0 и обязан стать accepted до первого canary
 на production data. ADR-0015/0016 закрывают capacity и workspace process на W0,
 не подменяя product architecture. Первые поставки — walking skeleton W1-INT-01
