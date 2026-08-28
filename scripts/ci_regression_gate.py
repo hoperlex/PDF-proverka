@@ -78,17 +78,33 @@ def run_pytest() -> None:
         )
 
 
-def collect_failures() -> set[str]:
+def collect_outcomes() -> tuple[set[str], set[str], set[str]]:
+    """Вернуть (упавшие, пропущенные, все встреченные в прогоне).
+
+    Одного множества падений недостаточно. Раньше «стало зелёных» считалось как
+    `baseline - падения`, и туда попадало всё, что просто ПЕРЕСТАЛО ПАДАТЬ:
+    удалённые и переименованные тесты, отфильтрованные маркером (`-m "not chaos"`)
+    и — что опаснее — ставшие `skip`. Гейт советовал убрать их из baseline со
+    словами «теперь ПРОХОДЯТ», хотя проверка могла вообще исчезнуть.
+
+    Разница существенна: пропущенный тест ничего не доказывает, и вычёркивать
+    его из известного долга как починенный — значит терять сам долг.
+    """
     if not JUNIT.exists():
         raise SystemExit("[gate] FATAL: junit-отчёт не создан — pytest упал на сборе тестов")
     tree = ET.parse(JUNIT)
     failed: set[str] = set()
+    skipped: set[str] = set()
+    seen: set[str] = set()
     for tc in tree.iter("testcase"):
-        if any(child.tag in ("failure", "error") for child in tc):
-            cls = tc.get("classname", "")
-            name = tc.get("name", "")
-            failed.add(f"{cls}::{name}")
-    return failed
+        tid = f"{tc.get('classname', '')}::{tc.get('name', '')}"
+        seen.add(tid)
+        tags = {child.tag for child in tc}
+        if tags & {"failure", "error"}:
+            failed.add(tid)
+        elif "skipped" in tags:
+            skipped.add(tid)
+    return failed, skipped, seen
 
 
 def load_baseline() -> set[str]:
@@ -160,7 +176,7 @@ def main() -> int:
     # В режиме --record файл всё равно перезаписывается, читать его не нужно.
     baseline = set() if record else load_baseline()
     run_pytest()
-    current = collect_failures()
+    current, skipped, seen = collect_outcomes()
 
     if record:
         write_baseline(current)
@@ -168,15 +184,36 @@ def main() -> int:
         return 0
 
     new = sorted(current - baseline)
-    fixed = sorted(baseline - current)
+    # Три разных исхода для записи baseline, переставшей падать. Смешивать их
+    # нельзя: убрать из долга можно только по-настоящему зелёный тест.
+    passed_now = seen - current - skipped
+    fixed = sorted(baseline & passed_now)
+    now_skipped = sorted(baseline & skipped)
+    vanished = sorted(baseline - seen)
     print(
         f"[gate] падений сейчас: {len(current)} | baseline: {len(baseline)} | "
-        f"новых: {len(new)} | стало зелёных: {len(fixed)}"
+        f"новых: {len(new)} | стало зелёных: {len(fixed)} | "
+        f"ушло в skip: {len(now_skipped)} | исчезло из прогона: {len(vanished)}"
     )
     if fixed:
         print("[gate] эти baseline-тесты теперь ПРОХОДЯТ (можно убрать из baseline):")
         for t in fixed:
             print(f"    - {t}")
+    if now_skipped:
+        print(
+            "[gate] эти baseline-тесты теперь ПРОПУСКАЮТСЯ — они ничего не "
+            "доказывают. Убирать из baseline нельзя: долг не починен, а скрыт:"
+        )
+        for t in now_skipped:
+            print(f"    ~ {t}")
+    if vanished:
+        print(
+            "[gate] этих baseline-тестов НЕТ в прогоне (удалены, переименованы "
+            "или отфильтрованы маркером). Убрать из baseline, если удаление "
+            "осознанное:"
+        )
+        for t in vanished:
+            print(f"    ? {t}")
     if new:
         print("[gate] НОВЫЕ падения (регрессия — починить или обосновать):")
         for t in new:
