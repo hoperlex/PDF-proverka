@@ -21,6 +21,12 @@
 | [ADR-0015](adr/ADR-0015-program-execution-model.md) | proposed | staffed team или human integrator + agents; WIP/forecast | `W0-DEC-01` |
 | [ADR-0016](adr/ADR-0016-workspace-isolation.md) | proposed | shared checkout или hybrid worktrees | `W0-DEC-02` после `W0-WS-01` |
 | [ADR-0017](adr/ADR-0017-frontend-route-strangler-and-fsd.md) | proposed | typed slice → generated client → FSD route strangler | `W0-ADR-09`, до W1-WEB-04 |
+| [ADR-0018](adr/ADR-0018-domain-contract-v1.md) | proposed | domain contract v1: идентификаторы, состояния и ошибки | `W0-ARC-02`; до W1-META-01, W1-STO-01 и W1-API-01 |
+
+Нормативные приложения ADR-0018 — [глоссарий](GLOSSARY.md) и
+[domain contract v1](DOMAIN_CONTRACT_V1.md) вместе с машиночитаемой формой
+`contracts/domain/v1/**`. Собственного ADR-статуса они не имеют: их
+нормативная сила следует статусу ADR-0018.
 
 ## Ранее принятые решения программы
 
@@ -96,6 +102,8 @@ outbox, immutable result package), действует Bible.
 
 - [ADR Bible](ADR_BIBLE.md)
 - [Roadmap](HYBRID_REWRITE_ROADMAP.md)
+- [Глоссарий](GLOSSARY.md)
+- [Domain contract v1](DOMAIN_CONTRACT_V1.md)
 - [Реестр исключений](EXCEPTIONS.md)
 - [Разбор ревью 2026-08-27](REVIEW_DISPOSITION_2026-08-27.md)
 - [Разбор ревью R2](REVIEW_DISPOSITION_2026-08-27_R2.md)

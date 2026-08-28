@@ -1,0 +1,278 @@
+{
+  "contract": "domain",
+  "version": "v1",
+  "source": "docs/architecture/DOMAIN_CONTRACT_V1.md",
+  "sections": [
+    "5.1",
+    "5.2",
+    "5.3",
+    "5.4"
+  ],
+  "envelope": {
+    "schema": "contracts/domain/v1/error_envelope.schema.json",
+    "fields": [
+      {
+        "field": "error_code",
+        "requirement": "required",
+        "rule_cell": "`error_code` — стабильный машинный код из §5.3; клиент принимает решения только по нему;"
+      },
+      {
+        "field": "message",
+        "requirement": "required",
+        "rule_cell": "`message` — безопасное сообщение для человека: без путей, query, presigned URL, cookies, токенов, ПДн и текста исключения (P-13, контракт redaction `W0-LOG-01`);"
+      },
+      {
+        "field": "retryable",
+        "requirement": "required",
+        "rule_cell": "`retryable` — признак осмысленности повтора; повтор безопасен только вместе с idempotency key;"
+      },
+      {
+        "field": "correlation_id",
+        "requirement": "required",
+        "rule_cell": "`correlation_id` присутствует всегда и совпадает с идентификатором в журналах и трассах;"
+      },
+      {
+        "field": "stage",
+        "requirement": "required",
+        "rule_cell": "`stage` присутствует всегда и называет операцию или стадию, где ошибка возникла: ошибка без диагностируемой стадии и идентификатора сущности не считается нормально обработанной (P-13);"
+      },
+      {
+        "field": "details",
+        "requirement": "conditional",
+        "rule_cell": "`details` обязателен для кодов, адресующих сущность, и содержит её идентификатор; состав полей задаёт allowlist конкретного кода, произвольная структура запрещена;"
+      }
+    ],
+    "rules": [
+      "HTTP-ответ с ошибкой никогда не имеет статуса 2xx: ответ 200 с полем `error` в теле запрещён."
+    ]
+  },
+  "grpc_alignment": {
+    "proto": "contracts/agent_stream/v1/common.proto",
+    "message": "ErrorStatus",
+    "fields": [
+      "code",
+      "safe_message",
+      "retryable",
+      "correlation_id"
+    ]
+  },
+  "http_status_allowlist": [
+    400,
+    401,
+    403,
+    404,
+    409,
+    413,
+    422,
+    429,
+    500,
+    503,
+    504
+  ],
+  "errors": [
+    {
+      "error_code": "invalid_request",
+      "http_status": 400,
+      "retryable": false,
+      "description": "нарушен формат или обязательное поле"
+    },
+    {
+      "error_code": "invalid_identifier_format",
+      "http_status": 400,
+      "retryable": false,
+      "description": "идентификатор не соответствует форме §3.1"
+    },
+    {
+      "error_code": "schema_validation_failed",
+      "http_status": 422,
+      "retryable": false,
+      "description": "тело не проходит схему известной версии"
+    },
+    {
+      "error_code": "unsupported_contract_version",
+      "http_status": 409,
+      "retryable": false,
+      "description": "неизвестная major-версия контракта"
+    },
+    {
+      "error_code": "unsupported_manifest_version",
+      "http_status": 409,
+      "retryable": false,
+      "description": "неизвестный `schema_version` манифеста"
+    },
+    {
+      "error_code": "unknown_state_value",
+      "http_status": 409,
+      "retryable": false,
+      "description": "прочитано значение состояния вне списка §4"
+    },
+    {
+      "error_code": "unauthenticated",
+      "http_status": 401,
+      "retryable": false,
+      "description": "субъект не установлен"
+    },
+    {
+      "error_code": "forbidden",
+      "http_status": 403,
+      "retryable": false,
+      "description": "нет прав на конкретный объект"
+    },
+    {
+      "error_code": "entity_not_found",
+      "http_status": 404,
+      "retryable": false,
+      "description": "сущность без собственного кода не найдена; `details.entity` называет её"
+    },
+    {
+      "error_code": "object_not_found",
+      "http_status": 404,
+      "retryable": false,
+      "description": "объект строительства не найден"
+    },
+    {
+      "error_code": "document_not_found",
+      "http_status": 404,
+      "retryable": false,
+      "description": "документ не найден"
+    },
+    {
+      "error_code": "version_not_found",
+      "http_status": 404,
+      "retryable": false,
+      "description": "версия не найдена"
+    },
+    {
+      "error_code": "run_not_found",
+      "http_status": 404,
+      "retryable": false,
+      "description": "запуск не найден"
+    },
+    {
+      "error_code": "finding_not_found",
+      "http_status": 404,
+      "retryable": false,
+      "description": "замечание не найдено"
+    },
+    {
+      "error_code": "blob_not_found",
+      "http_status": 404,
+      "retryable": false,
+      "description": "объект хранения не найден"
+    },
+    {
+      "error_code": "job_not_found",
+      "http_status": 404,
+      "retryable": false,
+      "description": "задание не найдено"
+    },
+    {
+      "error_code": "version_conflict",
+      "http_status": 409,
+      "retryable": false,
+      "description": "параллельное изменение указателя версии"
+    },
+    {
+      "error_code": "duplicate_input_bundle",
+      "http_status": 409,
+      "retryable": false,
+      "description": "комплект уже импортирован"
+    },
+    {
+      "error_code": "input_bundle_incomplete",
+      "http_status": 422,
+      "retryable": false,
+      "description": "во входном комплекте нет обязательного файла"
+    },
+    {
+      "error_code": "checksum_mismatch",
+      "http_status": 422,
+      "retryable": false,
+      "description": "контрольная сумма не совпала с заявленной"
+    },
+    {
+      "error_code": "upload_expired",
+      "http_status": 409,
+      "retryable": false,
+      "description": "загрузка прервана и объект помечен `abandoned`"
+    },
+    {
+      "error_code": "idempotency_key_reuse",
+      "http_status": 409,
+      "retryable": false,
+      "description": "ключ повторён с другим телом"
+    },
+    {
+      "error_code": "idempotency_key_stale",
+      "http_status": 409,
+      "retryable": false,
+      "description": "ключ старше окна хранения"
+    },
+    {
+      "error_code": "state_transition_not_allowed",
+      "http_status": 409,
+      "retryable": false,
+      "description": "переход отсутствует в таблице"
+    },
+    {
+      "error_code": "attempt_superseded",
+      "http_status": 409,
+      "retryable": false,
+      "description": "попытка вытеснена новой"
+    },
+    {
+      "error_code": "resource_busy",
+      "http_status": 409,
+      "retryable": true,
+      "description": "объект занят другой операцией"
+    },
+    {
+      "error_code": "payload_too_large",
+      "http_status": 413,
+      "retryable": false,
+      "description": "превышен предел размера"
+    },
+    {
+      "error_code": "rate_limited",
+      "http_status": 429,
+      "retryable": true,
+      "description": "превышен предел частоты"
+    },
+    {
+      "error_code": "quota_exceeded",
+      "http_status": 429,
+      "retryable": false,
+      "description": "исчерпана квота владельца"
+    },
+    {
+      "error_code": "metadata_unavailable",
+      "http_status": 503,
+      "retryable": true,
+      "description": "PostgreSQL недоступен"
+    },
+    {
+      "error_code": "storage_unavailable",
+      "http_status": 503,
+      "retryable": true,
+      "description": "хранилище байтов недоступно"
+    },
+    {
+      "error_code": "analysis_engine_unavailable",
+      "http_status": 503,
+      "retryable": true,
+      "description": "движок анализа недоступен"
+    },
+    {
+      "error_code": "upstream_timeout",
+      "http_status": 504,
+      "retryable": true,
+      "description": "превышен таймаут зависимости"
+    },
+    {
+      "error_code": "internal_error",
+      "http_status": 500,
+      "retryable": false,
+      "description": "необработанное состояние"
+    }
+  ]
+}

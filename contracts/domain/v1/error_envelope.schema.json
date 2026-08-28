@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contracts/domain/v1/error_envelope.schema.json",
+  "title": "Domain contract v1: error envelope",
+  "description": "Конверт ответа об ошибке нового контура (§5.1 docs/architecture/DOMAIN_CONTRACT_V1.md)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "error_code",
+    "message",
+    "retryable",
+    "correlation_id",
+    "stage"
+  ],
+  "properties": {
+    "error_code": {
+      "type": "string",
+      "enum": [
+        "invalid_request",
+        "invalid_identifier_format",
+        "schema_validation_failed",
+        "unsupported_contract_version",
+        "unsupported_manifest_version",
+        "unknown_state_value",
+        "unauthenticated",
+        "forbidden",
+        "entity_not_found",
+        "object_not_found",
+        "document_not_found",
+        "version_not_found",
+        "run_not_found",
+        "finding_not_found",
+        "blob_not_found",
+        "job_not_found",
+        "version_conflict",
+        "duplicate_input_bundle",
+        "input_bundle_incomplete",
+        "checksum_mismatch",
+        "upload_expired",
+        "idempotency_key_reuse",
+        "idempotency_key_stale",
+        "state_transition_not_allowed",
+        "attempt_superseded",
+        "resource_busy",
+        "payload_too_large",
+        "rate_limited",
+        "quota_exceeded",
+        "metadata_unavailable",
+        "storage_unavailable",
+        "analysis_engine_unavailable",
+        "upstream_timeout",
+        "internal_error"
+      ]
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "correlation_id": {
+      "type": "string",
+      "pattern": "^corr_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "stage": {
+      "type": "string",
+      "minLength": 1
+    },
+    "details": {
+      "type": "object"
+    }
+  }
+}

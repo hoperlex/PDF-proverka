@@ -1,0 +1,735 @@
+{
+  "contract": "domain",
+  "version": "v1",
+  "source": "docs/architecture/DOMAIN_CONTRACT_V1.md",
+  "sections": [
+    "2",
+    "3.1",
+    "3.2",
+    "3.3",
+    "3.4"
+  ],
+  "ulid": {
+    "length": 26,
+    "char_class": "[0-9A-HJKMNP-TV-Z]",
+    "prefix_ulid_regex_template": "^{prefix}_[0-9A-HJKMNP-TV-Z]{26}$"
+  },
+  "forms": [
+    {
+      "subject_cell": "`version_id`",
+      "subjects": [
+        "version_id"
+      ],
+      "rule_cell": "`^v[0-9]{3,}$`",
+      "regex": "^v[0-9]{3,}$"
+    },
+    {
+      "subject_cell": "`pdf_page`",
+      "subjects": [
+        "pdf_page"
+      ],
+      "rule_cell": "целое не меньше 1",
+      "regex": null,
+      "minimum": 1
+    },
+    {
+      "subject_cell": "`discipline_code`",
+      "subjects": [
+        "discipline_code"
+      ],
+      "rule_cell": "`^[A-Za-z][A-Za-z0-9_]*$`",
+      "regex": "^[A-Za-z][A-Za-z0-9_]*$"
+    },
+    {
+      "subject_cell": "роль файла и роль артефакта",
+      "subjects": [],
+      "rule_cell": "`^[a-z][a-z0-9_]*$`",
+      "regex": "^[a-z][a-z0-9_]*$"
+    },
+    {
+      "subject_cell": "`worker_id`",
+      "subjects": [
+        "worker_id"
+      ],
+      "rule_cell": "`^wrk_[0-9a-f]{8,32}$`",
+      "regex": "^wrk_[0-9a-f]{8,32}$"
+    },
+    {
+      "subject_cell": "`instance_id`",
+      "subjects": [
+        "instance_id"
+      ],
+      "rule_cell": "`^inst_[A-Za-z0-9][A-Za-z0-9._-]{2,122}$`",
+      "regex": "^inst_[A-Za-z0-9][A-Za-z0-9._-]{2,122}$"
+    }
+  ],
+  "identifier_error_rules": {
+    "rule_cell": "неизвестный идентификатор даёт ошибку из §5.3, а не тихий поиск по соседним признакам (P-10): для сущности с собственным кодом это `*_not_found`, для остальных — `entity_not_found` с полем `details.entity`; нарушение формы идентификатора — `invalid_identifier_format`;",
+    "codes": [
+      "entity_not_found",
+      "invalid_identifier_format"
+    ],
+    "pattern_codes": [
+      "*_not_found"
+    ],
+    "details_field": "details.entity"
+  },
+  "identifiers": [
+    {
+      "entity": "Объект строительства",
+      "field": "object_id",
+      "prefix": "obj",
+      "form": "prefix_ulid",
+      "regex": "^obj_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "documents",
+      "identifier_cell": "`object_id`",
+      "format_cell": "`obj_<ULID>`"
+    },
+    {
+      "entity": "Дисциплина",
+      "field": "discipline_code",
+      "prefix": null,
+      "form": "explicit_form",
+      "regex": "^[A-Za-z][A-Za-z0-9_]*$",
+      "uniqueness_scope": "внутри объекта",
+      "owner_module": "documents",
+      "identifier_cell": "`discipline_code`",
+      "format_cell": "код реестра, латиница"
+    },
+    {
+      "entity": "Документ",
+      "field": "document_uid",
+      "prefix": "doc",
+      "form": "prefix_ulid",
+      "regex": "^doc_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "documents",
+      "identifier_cell": "`document_uid`",
+      "format_cell": "`doc_<ULID>`"
+    },
+    {
+      "entity": "Версия документа",
+      "field": "version_id",
+      "prefix": null,
+      "form": "explicit_form",
+      "regex": "^v[0-9]{3,}$",
+      "uniqueness_scope": "внутри `document_uid`",
+      "owner_module": "documents",
+      "identifier_cell": "`version_id`",
+      "format_cell": "`vNNN`, монотонный порядковый"
+    },
+    {
+      "entity": "Импорт",
+      "field": "import_id",
+      "prefix": "imp",
+      "form": "prefix_ulid",
+      "regex": "^imp_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "ingest",
+      "identifier_cell": "`import_id`",
+      "format_cell": "`imp_<ULID>`"
+    },
+    {
+      "entity": "Входной файл",
+      "field": null,
+      "prefix": null,
+      "form": "composite_key",
+      "regex": null,
+      "uniqueness_scope": "внутри версии",
+      "owner_module": "ingest",
+      "identifier_cell": "роль файла + `blob_id`",
+      "format_cell": "роль из реестра",
+      "composite_key": "Входной файл"
+    },
+    {
+      "entity": "Объект хранения",
+      "field": "blob_id",
+      "prefix": "blb",
+      "form": "prefix_ulid",
+      "regex": "^blb_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "storage",
+      "identifier_cell": "`blob_id`",
+      "format_cell": "`blb_<ULID>`"
+    },
+    {
+      "entity": "Страница PDF",
+      "field": "pdf_page",
+      "prefix": null,
+      "form": "integer",
+      "regex": null,
+      "uniqueness_scope": "внутри версии",
+      "owner_module": "documents",
+      "identifier_cell": "`(version_id, pdf_page)`",
+      "format_cell": "целое, 1-based",
+      "minimum": 1
+    },
+    {
+      "entity": "Блок",
+      "field": "block_id",
+      "prefix": "blk",
+      "form": "prefix_ulid",
+      "regex": "^blk_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "внутри версии и поколения источника",
+      "owner_module": "documents",
+      "identifier_cell": "`block_id`",
+      "format_cell": "`blk_<ULID>`"
+    },
+    {
+      "entity": "Логическое задание",
+      "field": "job_id",
+      "prefix": "job",
+      "form": "prefix_ulid",
+      "regex": "^job_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "jobs",
+      "identifier_cell": "`job_id`",
+      "format_cell": "`job_<ULID>`"
+    },
+    {
+      "entity": "Попытка исполнения",
+      "field": "attempt_id",
+      "prefix": "att",
+      "form": "prefix_ulid",
+      "regex": "^att_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "jobs",
+      "identifier_cell": "`attempt_id`",
+      "format_cell": "`att_<ULID>`"
+    },
+    {
+      "entity": "Запуск анализа",
+      "field": "run_id",
+      "prefix": "run",
+      "form": "prefix_ulid",
+      "regex": "^run_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "jobs",
+      "identifier_cell": "`run_id`",
+      "format_cell": "`run_<ULID>`"
+    },
+    {
+      "entity": "Артефакт запуска",
+      "field": "artifact_role",
+      "prefix": null,
+      "form": "role",
+      "regex": "^[a-z][a-z0-9_]*$",
+      "uniqueness_scope": "внутри запуска",
+      "owner_module": "storage",
+      "identifier_cell": "`(run_id, artifact_role)`",
+      "format_cell": "роль из реестра"
+    },
+    {
+      "entity": "Замечание",
+      "field": "finding_uid",
+      "prefix": "fnd",
+      "form": "prefix_ulid",
+      "regex": "^fnd_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "findings",
+      "identifier_cell": "`finding_uid`",
+      "format_cell": "`fnd_<ULID>`"
+    },
+    {
+      "entity": "Экспертное решение",
+      "field": "decision_id",
+      "prefix": "dec",
+      "form": "prefix_ulid",
+      "regex": "^dec_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "decisions",
+      "identifier_cell": "`decision_id`",
+      "format_cell": "`dec_<ULID>`"
+    },
+    {
+      "entity": "Сессия сравнения",
+      "field": "session_id",
+      "prefix": "ses",
+      "form": "prefix_ulid",
+      "regex": "^ses_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "comparison",
+      "identifier_cell": "`session_id`",
+      "format_cell": "`ses_<ULID>`"
+    },
+    {
+      "entity": "Пара сравнения",
+      "field": "pair_id",
+      "prefix": "par",
+      "form": "prefix_ulid",
+      "regex": "^par_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "внутри сессии",
+      "owner_module": "comparison",
+      "identifier_cell": "`pair_id`",
+      "format_cell": "`par_<ULID>`"
+    },
+    {
+      "entity": "Профиль анализа",
+      "field": "analysis_profile_id",
+      "prefix": "prf",
+      "form": "prefix_ulid",
+      "regex": "^prf_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "analysis",
+      "identifier_cell": "`analysis_profile_id`",
+      "format_cell": "`prf_<ULID>`"
+    },
+    {
+      "entity": "Комплект промптов",
+      "field": "prompt_bundle_id",
+      "prefix": "pmt",
+      "form": "prefix_ulid",
+      "regex": "^pmt_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "analysis",
+      "identifier_cell": "`prompt_bundle_id`",
+      "format_cell": "`pmt_<ULID>`"
+    },
+    {
+      "entity": "Снимок норм",
+      "field": "norms_snapshot_id",
+      "prefix": "nrm",
+      "form": "prefix_ulid",
+      "regex": "^nrm_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "analysis",
+      "identifier_cell": "`norms_snapshot_id`",
+      "format_cell": "`nrm_<ULID>`"
+    },
+    {
+      "entity": "Запись вызова модели",
+      "field": "model_call_id",
+      "prefix": "mcl",
+      "form": "prefix_ulid",
+      "regex": "^mcl_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "analysis",
+      "identifier_cell": "`model_call_id`",
+      "format_cell": "`mcl_<ULID>`"
+    },
+    {
+      "entity": "Запрос на удаление",
+      "field": "erasure_request_id",
+      "prefix": "ers",
+      "form": "prefix_ulid",
+      "regex": "^ers_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "operations",
+      "identifier_cell": "`erasure_request_id`",
+      "format_cell": "`ers_<ULID>`"
+    },
+    {
+      "entity": "Корреляция операции",
+      "field": "correlation_id",
+      "prefix": "corr",
+      "form": "prefix_ulid",
+      "regex": "^corr_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "operations",
+      "identifier_cell": "`correlation_id`",
+      "format_cell": "`corr_<ULID>`"
+    },
+    {
+      "entity": "Воркер",
+      "field": "worker_id",
+      "prefix": "wrk",
+      "form": "explicit_form",
+      "regex": "^wrk_[0-9a-f]{8,32}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "workers",
+      "identifier_cell": "`worker_id`",
+      "format_cell": "`wrk_<8–32 hex>`"
+    },
+    {
+      "entity": "Экземпляр воркера",
+      "field": "instance_id",
+      "prefix": "inst",
+      "form": "explicit_form",
+      "regex": "^inst_[A-Za-z0-9][A-Za-z0-9._-]{2,122}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "workers",
+      "identifier_cell": "`instance_id`",
+      "format_cell": "`inst_<строка реестра>`"
+    },
+    {
+      "entity": "Пользователь",
+      "field": "user_id",
+      "prefix": "usr",
+      "form": "prefix_ulid",
+      "regex": "^usr_[0-9A-HJKMNP-TV-Z]{26}$",
+      "uniqueness_scope": "глобальная",
+      "owner_module": "access",
+      "identifier_cell": "`user_id`",
+      "format_cell": "`usr_<ULID>`"
+    }
+  ],
+  "composite_keys": [
+    {
+      "key": "Дисциплина",
+      "parts": [
+        "object_id",
+        "discipline_code"
+      ],
+      "prose_parts": [],
+      "parts_cell": "`object_id` + `discipline_code`",
+      "rationale": "код раздела уникален внутри объекта"
+    },
+    {
+      "key": "Версия",
+      "parts": [
+        "document_uid",
+        "version_id"
+      ],
+      "prose_parts": [],
+      "parts_cell": "`document_uid` + `version_id`",
+      "rationale": "`version_id` уникален только внутри документа"
+    },
+    {
+      "key": "Страница",
+      "parts": [
+        "document_uid",
+        "version_id",
+        "pdf_page"
+      ],
+      "prose_parts": [],
+      "parts_cell": "`document_uid` + `version_id` + `pdf_page`",
+      "rationale": "страница не является сущностью с собственной жизнью"
+    },
+    {
+      "key": "Входной файл",
+      "parts": [
+        "document_uid",
+        "version_id"
+      ],
+      "prose_parts": [
+        "роль файла"
+      ],
+      "parts_cell": "`document_uid` + `version_id` + роль файла",
+      "rationale": "роль берётся из закрытого реестра; `blob_id` адресует байты, но ключом версии не является"
+    },
+    {
+      "key": "Артефакт",
+      "parts": [
+        "run_id"
+      ],
+      "prose_parts": [
+        "роль"
+      ],
+      "parts_cell": "`run_id` + роль",
+      "rationale": "роль берётся из закрытого реестра ролей"
+    },
+    {
+      "key": "Блок",
+      "parts": [
+        "document_uid",
+        "version_id",
+        "block_id"
+      ],
+      "prose_parts": [
+        "поколение источника"
+      ],
+      "parts_cell": "`document_uid` + `version_id` + поколение источника + `block_id`",
+      "rationale": "`block_id` без этого контекста ссылкой не является"
+    },
+    {
+      "key": "Пара сравнения",
+      "parts": [
+        "session_id",
+        "pair_id"
+      ],
+      "prose_parts": [],
+      "parts_cell": "`session_id` + `pair_id`",
+      "rationale": "пара уникальна внутри сессии"
+    },
+    {
+      "key": "Решение по замечанию",
+      "parts": [
+        "finding_uid",
+        "decision_id"
+      ],
+      "prose_parts": [],
+      "parts_cell": "`finding_uid` + `decision_id`",
+      "rationale": "замечание неизменяемо, решений может быть несколько"
+    }
+  ],
+  "legacy_aliases": [
+    {
+      "alias_tokens": [
+        "project_id",
+        "<дисциплина>/<папка>"
+      ],
+      "canonical_tokens": [
+        "object_id",
+        "discipline_code",
+        "document_uid"
+      ],
+      "mode": "mapping",
+      "alias_cell": "`project_id` как путь `<дисциплина>/<папка>`",
+      "canonical_cell": "`object_id` + `discipline_code` + `document_uid`",
+      "mode_cell": "чтение через adapter, отображение в mapping-таблице `W0-DATA-02`"
+    },
+    {
+      "alias_tokens": [
+        "analysis_run_id",
+        "version.json"
+      ],
+      "canonical_tokens": [
+        "run_id"
+      ],
+      "mode": "read_only",
+      "alias_cell": "`analysis_run_id` в `version.json`",
+      "canonical_cell": "`run_id`",
+      "mode_cell": "только чтение"
+    },
+    {
+      "alias_tokens": [
+        "run_id",
+        "job_id"
+      ],
+      "canonical_tokens": [
+        "run_id",
+        "job_id"
+      ],
+      "mode": "not_migrated",
+      "alias_cell": "`run_id`, равный `job_id` живого аудита",
+      "canonical_cell": "раздельные `run_id` и `job_id`",
+      "mode_cell": "не переносится: разбирается миграцией"
+    },
+    {
+      "alias_tokens": [
+        "F-NNN",
+        "T-NNN",
+        "G-NNN",
+        "OPT-NNN"
+      ],
+      "canonical_tokens": [
+        "finding_uid",
+        "display_ref"
+      ],
+      "mode": "mapping",
+      "alias_cell": "`F-NNN`, `T-NNN`, `G-NNN`, `OPT-NNN`",
+      "canonical_cell": "`finding_uid` + `display_ref`",
+      "mode_cell": "номер сохраняется как display-поле"
+    },
+    {
+      "alias_tokens": [
+        "DEC-NNNN"
+      ],
+      "canonical_tokens": [
+        "decision_id"
+      ],
+      "mode": "read_only",
+      "alias_cell": "`DEC-NNNN`",
+      "canonical_cell": "`decision_id`",
+      "mode_cell": "только чтение"
+    },
+    {
+      "alias_tokens": [
+        "blk_<32hex>",
+        "A64J-JJPV-A7Y"
+      ],
+      "canonical_tokens": [
+        "block_id"
+      ],
+      "mode": "mapping",
+      "alias_cell": "`blk_<32hex>` и `A64J-JJPV-A7Y`",
+      "canonical_cell": "`block_id`",
+      "mode_cell": "оба поколения сохраняются в mapping, новые блоки — `blk_<ULID>`"
+    },
+    {
+      "alias_tokens": [
+        "logical_version_id",
+        "physical_version_id"
+      ],
+      "canonical_tokens": [
+        "version_id"
+      ],
+      "mode": "read_only",
+      "alias_cell": "`logical_version_id`, `physical_version_id`",
+      "canonical_cell": "`version_id`",
+      "mode_cell": "только чтение"
+    },
+    {
+      "alias_tokens": [
+        "object_id",
+        "job_id",
+        "attempt_id"
+      ],
+      "canonical_tokens": [
+        "obj_<ULID>",
+        "job_<ULID>",
+        "att_<ULID>"
+      ],
+      "mode": "mapping",
+      "alias_cell": "существующие `object_id`, `job_id`, `attempt_id`",
+      "canonical_cell": "`obj_<ULID>`, `job_<ULID>`, `att_<ULID>`",
+      "mode_cell": "mapping, обе формы принимаются до конца переноса"
+    },
+    {
+      "alias_tokens": [
+        "session_id",
+        "pair_id"
+      ],
+      "canonical_tokens": [
+        "ses_<ULID>",
+        "par_<ULID>"
+      ],
+      "mode": "mapping",
+      "alias_cell": "существующие `session_id`, `pair_id` (усечённый hex)",
+      "canonical_cell": "`ses_<ULID>`, `par_<ULID>`",
+      "mode_cell": "mapping, обе формы принимаются до конца переноса"
+    },
+    {
+      "alias_tokens": [
+        "ordinal"
+      ],
+      "canonical_tokens": [
+        "ordinal"
+      ],
+      "mode": "read_only",
+      "alias_cell": "`ordinal` действующего отчёта",
+      "canonical_cell": "`ordinal` сохраняется, ключом не является",
+      "mode_cell": "только чтение"
+    },
+    {
+      "alias_tokens": [
+        "current_version.txt",
+        "document.json.current_version"
+      ],
+      "canonical_tokens": [
+        "current_version_id"
+      ],
+      "mode": "read_only",
+      "alias_cell": "`current_version.txt`, `document.json.current_version`",
+      "canonical_cell": "`current_version_id`",
+      "mode_cell": "только чтение"
+    }
+  ],
+  "forbidden_synonyms": [
+    {
+      "canonical_cell": "`finding`",
+      "canonical": "finding",
+      "forbidden_cell": "`discrepancy`, `issue`, `remark`, `item`",
+      "forbidden": [
+        {
+          "name_cell": "`discrepancy`",
+          "name": "discrepancy",
+          "unconditional": true
+        },
+        {
+          "name_cell": "`issue`",
+          "name": "issue",
+          "unconditional": true
+        },
+        {
+          "name_cell": "`remark`",
+          "name": "remark",
+          "unconditional": true
+        },
+        {
+          "name_cell": "`item`",
+          "name": "item",
+          "unconditional": true
+        }
+      ]
+    },
+    {
+      "canonical_cell": "`finding_uid`",
+      "canonical": "finding_uid",
+      "forbidden_cell": "`finding_id`, `F-NNN` как ключ",
+      "forbidden": [
+        {
+          "name_cell": "`finding_id`",
+          "name": "finding_id",
+          "unconditional": true
+        },
+        {
+          "name_cell": "`F-NNN` как ключ",
+          "name": "F-NNN",
+          "unconditional": false
+        }
+      ]
+    },
+    {
+      "canonical_cell": "`run_id`",
+      "canonical": "run_id",
+      "forbidden_cell": "`analysis_run_id`, `job_id` в значении запуска",
+      "forbidden": [
+        {
+          "name_cell": "`analysis_run_id`",
+          "name": "analysis_run_id",
+          "unconditional": true
+        },
+        {
+          "name_cell": "`job_id` в значении запуска",
+          "name": "job_id",
+          "unconditional": false
+        }
+      ]
+    },
+    {
+      "canonical_cell": "`document_uid`",
+      "canonical": "document_uid",
+      "forbidden_cell": "`project_id` как путь, `document_code` как ключ",
+      "forbidden": [
+        {
+          "name_cell": "`project_id` как путь",
+          "name": "project_id",
+          "unconditional": false
+        },
+        {
+          "name_cell": "`document_code` как ключ",
+          "name": "document_code",
+          "unconditional": false
+        }
+      ]
+    },
+    {
+      "canonical_cell": "`version_id`",
+      "canonical": "version_id",
+      "forbidden_cell": "`logical_version_id`, `physical_version_id`",
+      "forbidden": [
+        {
+          "name_cell": "`logical_version_id`",
+          "name": "logical_version_id",
+          "unconditional": true
+        },
+        {
+          "name_cell": "`physical_version_id`",
+          "name": "physical_version_id",
+          "unconditional": true
+        }
+      ]
+    },
+    {
+      "canonical_cell": "`severity`",
+      "canonical": "severity",
+      "forbidden_cell": "`criticality`, `priority`",
+      "forbidden": [
+        {
+          "name_cell": "`criticality`",
+          "name": "criticality",
+          "unconditional": true
+        },
+        {
+          "name_cell": "`priority`",
+          "name": "priority",
+          "unconditional": true
+        }
+      ]
+    },
+    {
+      "canonical_cell": "`analysis_status`",
+      "canonical": "analysis_status",
+      "forbidden_cell": "`status` без квалификатора",
+      "forbidden": [
+        {
+          "name_cell": "`status` без квалификатора",
+          "name": "status",
+          "unconditional": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,432 @@
+{
+  "contract": "domain",
+  "version": "v1",
+  "source": "docs/architecture/DOMAIN_CONTRACT_V1.md",
+  "sections": [
+    "4.2",
+    "4.3",
+    "4.4",
+    "4.5",
+    "4.6",
+    "4.7"
+  ],
+  "state_machines": [
+    {
+      "name": "analysis_status",
+      "section": "4.2",
+      "entity": "Версия документа",
+      "field": "analysis_status",
+      "owner_module": "documents",
+      "owner_cell": "Владелец записи — `documents`.",
+      "values": [
+        {
+          "value": "none",
+          "meaning": "версия принята, анализ не выполнялся",
+          "initial": true,
+          "terminal": false
+        },
+        {
+          "value": "partial",
+          "meaning": "есть завершённый запуск с неполным набором артефактов",
+          "initial": false,
+          "terminal": false
+        },
+        {
+          "value": "complete",
+          "meaning": "есть завершённый запуск с полным набором артефактов",
+          "initial": false,
+          "terminal": false
+        },
+        {
+          "value": "legacy_partial",
+          "meaning": "состояние импортировано из действующего контура",
+          "initial": false,
+          "terminal": false
+        },
+        {
+          "value": "source_only",
+          "meaning": "загружен только источник, анализ не переносился",
+          "initial": false,
+          "terminal": false
+        }
+      ],
+      "transitions": [
+        {
+          "from": "none",
+          "to": "partial",
+          "initiator": "jobs",
+          "condition": "запуск завершён с неполным набором артефактов"
+        },
+        {
+          "from": "none",
+          "to": "complete",
+          "initiator": "jobs",
+          "condition": "запуск завершён с полным набором артефактов"
+        },
+        {
+          "from": "partial",
+          "to": "complete",
+          "initiator": "jobs",
+          "condition": "новый запуск дал полный набор артефактов"
+        },
+        {
+          "from": "complete",
+          "to": "partial",
+          "initiator": "jobs",
+          "condition": "новый актуальный запуск неполон"
+        },
+        {
+          "from": null,
+          "to": "legacy_partial",
+          "initiator": "migration",
+          "condition": "импорт версии с неполным анализом",
+          "from_cell": "—"
+        },
+        {
+          "from": null,
+          "to": "source_only",
+          "initiator": "migration",
+          "condition": "импорт версии без анализа",
+          "from_cell": "—"
+        },
+        {
+          "from": "legacy_partial",
+          "to": "partial",
+          "initiator": "jobs",
+          "condition": "новый запуск завершён с неполным набором артефактов"
+        },
+        {
+          "from": "legacy_partial",
+          "to": "complete",
+          "initiator": "jobs",
+          "condition": "новый запуск завершён с полным набором артефактов"
+        },
+        {
+          "from": "source_only",
+          "to": "partial",
+          "initiator": "jobs",
+          "condition": "новый запуск завершён с неполным набором артефактов"
+        },
+        {
+          "from": "source_only",
+          "to": "complete",
+          "initiator": "jobs",
+          "condition": "новый запуск завершён с полным набором артефактов"
+        }
+      ]
+    },
+    {
+      "name": "run_state",
+      "section": "4.3",
+      "entity": "Запуск анализа",
+      "field": "run_state",
+      "owner_module": "jobs",
+      "owner_cell": "Владелец записи — `jobs`.",
+      "values": [
+        {
+          "value": "running",
+          "meaning": "запуск создан и выполняется",
+          "initial": true,
+          "terminal": false
+        },
+        {
+          "value": "complete",
+          "meaning": "результат опубликован и проверен",
+          "initial": false,
+          "terminal": true
+        },
+        {
+          "value": "failed",
+          "meaning": "запуск завершён без публикуемого результата",
+          "initial": false,
+          "terminal": true
+        },
+        {
+          "value": "cancelled",
+          "meaning": "запуск остановлен по команде",
+          "initial": false,
+          "terminal": true
+        }
+      ],
+      "transitions": [
+        {
+          "from": "running",
+          "to": "complete",
+          "initiator": "jobs",
+          "condition": "манифест запуска записан с известным `schema_version`, checksum сверены"
+        },
+        {
+          "from": "running",
+          "to": "failed",
+          "initiator": "jobs",
+          "condition": "терминальная ошибка исполнения"
+        },
+        {
+          "from": "running",
+          "to": "cancelled",
+          "initiator": "operator",
+          "condition": "принята команда отмены"
+        }
+      ]
+    },
+    {
+      "name": "import_state",
+      "section": "4.4",
+      "entity": "Импорт входного комплекта",
+      "field": "import_state",
+      "owner_module": "ingest",
+      "owner_cell": "Владелец записи — `ingest`.",
+      "values": [
+        {
+          "value": "received",
+          "meaning": "комплект принят, проверки не выполнены",
+          "initial": true,
+          "terminal": false
+        },
+        {
+          "value": "validated",
+          "meaning": "состав, checksum и дубликаты проверены",
+          "initial": false,
+          "terminal": false
+        },
+        {
+          "value": "published",
+          "meaning": "версия создана, входные файлы неизменяемы",
+          "initial": false,
+          "terminal": true
+        },
+        {
+          "value": "rejected",
+          "meaning": "комплект отклонён с машинной причиной",
+          "initial": false,
+          "terminal": true
+        }
+      ],
+      "transitions": [
+        {
+          "from": "received",
+          "to": "validated",
+          "initiator": "ingest",
+          "condition": "пройдены проверки состава и checksum"
+        },
+        {
+          "from": "received",
+          "to": "rejected",
+          "initiator": "ingest",
+          "condition": "`checksum_mismatch`, `input_bundle_incomplete` или `duplicate_input_bundle`"
+        },
+        {
+          "from": "validated",
+          "to": "published",
+          "initiator": "ingest",
+          "condition": "создана версия, зафиксирован `input_manifest` с известным `schema_version`"
+        },
+        {
+          "from": "validated",
+          "to": "rejected",
+          "initiator": "operator",
+          "condition": "отклонение оператором до публикации"
+        }
+      ]
+    },
+    {
+      "name": "blob_state",
+      "section": "4.5",
+      "entity": "Объект хранения",
+      "field": "blob_state",
+      "owner_module": "storage",
+      "owner_cell": "Владелец записи — `storage`; машина применяется к любому `blob_id`, включая входные файлы и артефакты запуска.",
+      "values": [
+        {
+          "value": "temporary",
+          "meaning": "загрузка начата, объект не подтверждён",
+          "initial": true,
+          "terminal": false
+        },
+        {
+          "value": "verified",
+          "meaning": "размер и SHA-256 совпали с заявленными",
+          "initial": false,
+          "terminal": false
+        },
+        {
+          "value": "published",
+          "meaning": "объект доступен читателям и неизменяем",
+          "initial": false,
+          "terminal": true
+        },
+        {
+          "value": "abandoned",
+          "meaning": "загрузка прервана, объект подлежит уборке",
+          "initial": false,
+          "terminal": true
+        }
+      ],
+      "transitions": [
+        {
+          "from": "temporary",
+          "to": "verified",
+          "initiator": "storage",
+          "condition": "контрольная сумма совпала"
+        },
+        {
+          "from": "temporary",
+          "to": "abandoned",
+          "initiator": "storage",
+          "condition": "таймаут загрузки или явная отмена; обращение к такому объекту даёт `upload_expired`"
+        },
+        {
+          "from": "verified",
+          "to": "published",
+          "initiator": "storage",
+          "condition": "объект связан с версией или запуском"
+        },
+        {
+          "from": "verified",
+          "to": "abandoned",
+          "initiator": "storage",
+          "condition": "связывание не произошло в срок"
+        }
+      ]
+    }
+  ],
+  "enumerations": [
+    {
+      "name": "decision_verdict",
+      "section": "4.6",
+      "values": [
+        {
+          "value": "accepted",
+          "meaning": "замечание принято экспертом"
+        },
+        {
+          "value": "rejected",
+          "meaning": "замечание отклонено с обязательной причиной"
+        },
+        {
+          "value": "revoked",
+          "meaning": "предыдущее решение отозвано автором или владельцем"
+        }
+      ]
+    },
+    {
+      "name": "finding_review_state",
+      "section": "4.6",
+      "values": [
+        {
+          "value": "undecided"
+        },
+        {
+          "value": "accepted"
+        },
+        {
+          "value": "rejected"
+        }
+      ]
+    },
+    {
+      "name": "severity",
+      "section": "4.7",
+      "values": [
+        {
+          "value": "critical",
+          "display": "Критическое",
+          "legacy_source_cell": "`КРИТИЧЕСКОЕ`",
+          "legacy_values": [
+            "КРИТИЧЕСКОЕ"
+          ]
+        },
+        {
+          "value": "economic",
+          "display": "Экономическое",
+          "legacy_source_cell": "`ЭКОНОМИЧЕСКОЕ`",
+          "legacy_values": [
+            "ЭКОНОМИЧЕСКОЕ"
+          ]
+        },
+        {
+          "value": "operational",
+          "display": "Эксплуатационное",
+          "legacy_source_cell": "`ЭКСПЛУАТАЦИОННОЕ`",
+          "legacy_values": [
+            "ЭКСПЛУАТАЦИОННОЕ"
+          ]
+        },
+        {
+          "value": "advisory",
+          "display": "Рекомендательное",
+          "legacy_source_cell": "`РЕКОМЕНДАТЕЛЬНОЕ`",
+          "legacy_values": [
+            "РЕКОМЕНДАТЕЛЬНОЕ"
+          ]
+        },
+        {
+          "value": "cross_check",
+          "display": "Проверить по смежным",
+          "legacy_source_cell": "`ПРОВЕРИТЬ ПО СМЕЖНЫМ`",
+          "legacy_values": [
+            "ПРОВЕРИТЬ ПО СМЕЖНЫМ"
+          ]
+        },
+        {
+          "value": "unknown",
+          "display": "Не определено",
+          "legacy_source_cell": "`НЕИЗВЕСТНО` и пустое значение",
+          "legacy_values": [
+            "НЕИЗВЕСТНО"
+          ]
+        }
+      ]
+    }
+  ],
+  "decision_required_fields": [
+    {
+      "item_cell": "`decision_id`, `finding_uid` и `ordinal` замечания на момент решения;",
+      "tokens": [
+        "decision_id",
+        "finding_uid",
+        "ordinal"
+      ]
+    },
+    {
+      "item_cell": "`document_uid`, `version_id` и `run_id`, из которого взято замечание;",
+      "tokens": [
+        "document_uid",
+        "version_id",
+        "run_id"
+      ]
+    },
+    {
+      "item_cell": "краткая суть замечания, его категория и `severity`;",
+      "tokens": [
+        "severity"
+      ]
+    },
+    {
+      "item_cell": "страница, лист и связанные `block_id`;",
+      "tokens": [
+        "block_id"
+      ]
+    },
+    {
+      "item_cell": "нормативные ссылки;",
+      "tokens": []
+    },
+    {
+      "item_cell": "`decision_verdict`, `actor` и `decided_at`;",
+      "tokens": [
+        "decision_verdict",
+        "actor",
+        "decided_at"
+      ]
+    },
+    {
+      "item_cell": "`reason` — обязателен для `rejected` и `revoked`.",
+      "tokens": [
+        "reason",
+        "rejected",
+        "revoked"
+      ]
+    }
+  ]
+}
