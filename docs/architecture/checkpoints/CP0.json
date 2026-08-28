@@ -1,0 +1,123 @@
+{
+  "checkpoint_id": "CP0",
+  "name": "Baseline: зафиксированная исходная точка программы",
+  "captured_at": "2026-08-28",
+  "checkpoint_status": "captured",
+  "quality_gate": "failed",
+  "verdict": "Новых поведенческих регрессий не выявлено; тестовое окружение невоспроизводимо, baseline не соответствует профилю CI.",
+  "authorizes_next_cutover": false,
+
+  "source_commit": "723310f6",
+  "source_commit_subject": "test: сделать корпусные проверки переносимыми",
+  "repository_parent": "71bac5f2",
+  "branch": "main",
+  "worktree_at_capture": "чисто по отношению к 723310f6",
+
+  "environment_profile": {
+    "python": "3.12.3",
+    "pytest": "9.1.1",
+    "checkout": "/root/projects/PDF-proverka/PDF-proverka",
+    "audit_data_dir": null,
+    "external_corpus_present": false,
+    "provider_cli_present": false,
+    "note": "Профиль зафиксирован впервые. Эталонное окружение, в котором записывался baseline, нигде не описано — это и есть главный дефект CP0."
+  },
+
+  "test_receipt": {
+    "command": "python scripts/ci_regression_gate.py",
+    "gate_exit_code": 1,
+    "pytest_exit_code": 1,
+    "collection_complete": true,
+    "tests": 6891,
+    "failures": 83,
+    "errors": 33,
+    "skipped": 123,
+    "duration_sec": 256,
+    "report_path": ".ci_last_report.xml",
+    "report_sha256": "34be58b886ccdb5e",
+    "baseline_path": "scripts/ci_known_failures.txt",
+    "baseline_sha256": "74d8a9c8b28388c2",
+    "baseline_entries": 44,
+    "baseline_header_declares": 80,
+    "baseline_header_mismatch": true,
+    "current_failures": 116,
+    "new_failures": 79,
+    "new_failures_previous_run": 78,
+    "new_failures_nondeterministic": [
+      "tests.test_process_chaos_12e::test_12e_gateway_graceful_stop_recovery_is_persistence_only"
+    ],
+    "fixed_since_baseline": 7,
+    "change_attributed_failures": 0,
+    "measurement_taken_with": "regression gate после починки двух его дефектов (см. known_defects)"
+  },
+
+  "new_failures_by_group": {
+    "A_external_corpus": {
+      "count": 33,
+      "modules": ["test_water_geometry", "test_general_plan_geometry", "test_electrical_geometry",
+                  "test_hvac_geometry", "test_architecture_geometry", "test_alia_remaining_geometry"],
+      "remedy": "та же конвенция optional-датасета, что применена в 723310f6"
+    },
+    "B_critic_v2_cli": {
+      "count": 30,
+      "modules": ["test_batch_critic_v2", "test_benchmark_critic_v2_against_human",
+                  "test_pipeline_critic_v2_post_review_hook", "test_critic_v2_project_scoped_view"],
+      "remedy": "разбор: данные проектов и/или провайдерский CLI — возможно требование контракта CI, а не optional"
+    },
+    "C_infrastructure": {
+      "count": 16,
+      "modules": ["test_distributed_workers_flag_off", "test_norms_index_unification",
+                  "test_classic_codex_exec_runner", "test_release_staging_cleanup_12i2",
+                  "test_process_chaos_12e", "test_projects_v2_shadow_http_smoke",
+                  "test_agent_stream_protocol_v1", "test_action_log",
+                  "test_stage01_dual_review", "test_distributed_workers_network_e2e_11g"],
+      "remedy": "разбор по одному; массовый skip запрещён — заглушит реальные регрессии"
+    }
+  },
+
+  "contract_versions": {
+    "http_openapi_snapshot": {
+      "path": "contracts/http/v1/openapi.snapshot.json",
+      "sha256": "6a4ef16be0f0fcce",
+      "paths": 243,
+      "schemas": 53,
+      "typed_response_models": 0
+    },
+    "agent_stream": "v1",
+    "worker_certificate": "v1"
+  },
+
+  "known_defects": [
+    "baseline записан в неописанном окружении: 79 падений вне списка вызваны отсутствием внешнего корпуса, данных проектов и провайдерских CLI",
+    "заголовок baseline заявляет 80 записей, фактически 44 — файл правился вручную",
+    "regression gate игнорировал код возврата pytest: прерванный сбор (код 2) выглядел как полноценный прогон — ИСПРАВЛЕНО после 723310f6",
+    "regression gate не удалял устаревший .ci_last_report.xml перед запуском — ИСПРАВЛЕНО после 723310f6",
+    "0 из 265 HTTP-операций имеют типизированную схему ответа",
+    "action log пишет query, текст исключения и traceback без redaction (W0-LOG-01)",
+    "инфраструктура (nginx, TLS, cron-watchdog) не версионируется"
+  ],
+
+  "open_exceptions": [
+    {
+      "id": "EXC-0001",
+      "principle": "P-14",
+      "owner": "legacy production operator",
+      "expiry": "2026-10-15",
+      "closing_task": "W0-SEC-03"
+    }
+  ],
+
+  "cleanup_receipt": "не выполнялся — по правилу CP0 данные и production не трогаются",
+
+  "pending_from_production_host": {
+    "production_release": "не получен; нужен до первого production rollout, разработку не блокирует",
+    "ops_baseline": "latency/error/cost снимаются задачей W0-OPS-01, место — CP2/G0, не CP0"
+  },
+
+  "next_actions": [
+    "W0-TEST-01 часть 2: коммит починки regression gate",
+    "W0-TEST-01 часть 3: группа A по отработанной конвенции",
+    "W0-TEST-01 часть 4: матрица разбора групп B и C",
+    "W0-LOG-01: P0-redaction, не ждёт закрытия тестового долга"
+  ]
+}
