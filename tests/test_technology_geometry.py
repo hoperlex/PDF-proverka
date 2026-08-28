@@ -9,7 +9,13 @@ from backend.app.pipeline.stages.block_grounding.legend_geometry import (PROFILE
 def _gate(g):return evaluate_legend_gate(g) if g["profile_id"]==PROFILE_LEGEND else evaluate_tx_gate(g)
 def _render(g):return render_legend_markdown(g) if g["profile_id"]==PROFILE_LEGEND else render_tx_markdown(g)
 ROOT=Path(__file__).resolve().parents[1];TX=ROOT/"experiments"/"блоки разных дисциплин"/"ТХ";OUT=TX/"tx_out"
-def cases():return json.loads((TX/"TX_DIVERSE_CORPUS.json").read_text())
+# Внешний исследовательский корпус (~2 ГБ) в контракт CI не входит и на диске
+# может отсутствовать. Читать манифест на импорте без гарда нельзя: отсутствие
+# файла рушит СБОРКУ всего прогона, а не помечает пропущенными свои тесты.
+# Самодостаточность production-каталога проверяет test_block_reference_catalog.py.
+TX_MANIFEST=TX/"TX_DIVERSE_CORPUS.json"
+def cases():return json.loads(TX_MANIFEST.read_text()) if TX_MANIFEST.exists() else []
+@pytest.mark.skipif(not TX_MANIFEST.exists(),reason="внешний корпус ТХ не извлечён")
 @pytest.mark.parametrize("case",cases(),ids=lambda c:c["block_id"])
 def test_tx_corpus(case):
  with fitz.open(TX/case["output"]) as d:assert d.page_count==1
@@ -18,6 +24,7 @@ def test_tx_corpus(case):
  if g["profile_id"]==PROFILE_LEGEND:assert "Расшифровка обозначений" in text
  else:assert "Эталонная текстовая разметка ТХ" in text and g["validation"]["subtype"] not in text
  assert not re.search(r"\b(?:node|view)-\d+\b",text)
+@pytest.mark.skipif(not TX_MANIFEST.exists(),reason="внешний корпус ТХ не извлечён")
 def test_tx_coverage_and_semantics():
  gs=[json.loads((OUT/f"{c['block_id']}.structure.json").read_text()) for c in cases()]
  assert len(gs)==35 and {g["profile_id"] for g in gs}-{PROFILE_LEGEND}==set(ALL_TX_PROFILES)-{"tx_waste_plan"} and len({c["subtype"] for c in cases()})==10
