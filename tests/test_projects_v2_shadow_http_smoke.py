@@ -85,9 +85,30 @@ def _build_tree(tmp_path) -> Path:
 # ---------------------------------------------------------------------------
 
 
+def _registered_paths(node, seen: set[str] | None = None) -> set[str]:
+    """Все зарегистрированные пути, включая подключённые через include_router.
+
+    С FastAPI 0.120+ `include_router` кладёт в `app.routes` объект-обёртку, а не
+    сами маршруты, поэтому плоский обход их не видит. Для проверок «ручка есть»
+    это даёт ложный минус, а для проверок «ручки нет» — ложный плюс: они
+    проходят вакуумно, то есть зелены и при открытом периметре. Обход спускается
+    в `original_router` и находит в том числе маршруты с include_in_schema=False,
+    которых нет в OpenAPI-схеме.
+    """
+    seen = seen if seen is not None else set()
+    for route in getattr(node, "routes", ()) or ():
+        path = getattr(route, "path", None)
+        if isinstance(path, str) and path:
+            seen.add(path)
+        inner = getattr(route, "original_router", None)
+        if inner is not None:
+            _registered_paths(inner, seen)
+    return seen
+
+
 def test_build_smoke_app_has_routes():
     app = HS.build_smoke_app()
-    paths = {r.path for r in app.routes}
+    paths = _registered_paths(app)
     assert any(p.startswith("/api/projects-v2-shadow") for p in paths)
     assert any(p.startswith("/api/objects") for p in paths)
 

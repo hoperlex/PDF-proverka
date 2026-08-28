@@ -364,7 +364,24 @@ _ROUTE_PROBE = r'''
 import json, os, sys
 sys.path.insert(0, %(root)r)
 from backend.app.main import app
-paths = sorted({getattr(r, "path", "") for r in app.routes})
+
+def _registered(node, seen=None):
+    # С FastAPI 0.120+ include_router кладёт в app.routes объект-обёртку, а не
+    # сами маршруты. Плоский обход их не видит, поэтому проверка «ручки нет»
+    # проходит ВАКУУМНО — зелена и при открытом периметре. Спускаемся в
+    # original_router; так видны и маршруты с include_in_schema=False, которых
+    # нет в OpenAPI-схеме.
+    seen = seen if seen is not None else set()
+    for r in getattr(node, "routes", ()) or ():
+        p = getattr(r, "path", None)
+        if isinstance(p, str) and p:
+            seen.add(p)
+        inner = getattr(r, "original_router", None)
+        if inner is not None:
+            _registered(inner, seen)
+    return seen
+
+paths = sorted(_registered(app))
 print(json.dumps({
     "worker_api": [p for p in paths if p.startswith("/api/v1/worker")],
     "admin_api": [p for p in paths if p.startswith("/api/workers")],
