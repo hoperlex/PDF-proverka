@@ -9,6 +9,13 @@
   python scripts/analyze_action_log.py --errors --days 3 --limit 50
   python scripts/analyze_action_log.py --user andrey      # действия инженера
   python scripts/analyze_action_log.py --kind pipeline --q "block_analysis"
+
+Журнал разделён на каналы (docs/action_log.md, принцип P-13): durable audit
+(actions-*.jsonl, фиксированная схема-allowlist) и diagnostic (diag-*.jsonl,
+непроверенный ввод после redaction). По умолчанию читается durable audit; сырой
+path, query, текст ошибки и traceback живут в диагностике:
+
+  python scripts/analyze_action_log.py --errors --channel diag
 """
 import argparse
 import re
@@ -34,11 +41,20 @@ def _fmt_event(e: dict) -> str:
     ts = _safe(e.get("ts", ""))[:19].replace("T", " ")
     kind = _safe(e.get("kind", "?"))
     if kind == "api":
+        # В durable audit лежит ШАБЛОН маршрута, сырой path — в diagnostic и в
+        # файлах, записанных до разделения каналов; dur_ms — только diagnostic.
+        # path первичен там, где он есть (diagnostic и файлы до разделения
+        # каналов) — ради него в --channel diag и ходят; в durable audit его
+        # нет, там остаётся шаблон маршрута.
+        where = e.get("path") or e.get("route") or "<unmatched>"
+        dur = f"  {e['dur_ms']}мс" if e.get("dur_ms") is not None else ""
         base = (
             f"{ts}  [api]  {_safe(e.get('actor') or '-'):<12} "
-            f"{_safe(e.get('method', '')):<7} {_safe(e.get('path', ''))}  "
-            f"→ {e.get('status')}  {e.get('dur_ms', 0)}мс"
+            f"{_safe(e.get('method', '')):<7} {_safe(where)}  "
+            f"→ {e.get('status')}{dur}"
         )
+        if e.get("eid"):
+            base += f"  #{_safe(e['eid'])}"
     elif kind == "pipeline":
         base = (
             f"{ts}  [pipeline]  {_safe(e.get('project_id', ''))}  "
@@ -46,8 +62,10 @@ def _fmt_event(e: dict) -> str:
             + (f"  ({e.get('duration_sec')}с)" if e.get("duration_sec") else "")
         )
     elif kind == "app_log":
+        text = e.get("message")
         base = (f"{ts}  [{_safe(e.get('level', ''))}]  "
-                f"{_safe(e.get('logger', ''))}: {_safe(e.get('message', ''))[:160]}")
+                f"{_safe(e.get('logger', ''))}: "
+                f"{_safe(text)[:160] if text else '(текст в --channel diag)'}")
     else:
         rest = {k: v for k, v in e.items() if k not in ("ts", "kind")}
         base = f"{ts}  [{kind}]  {_safe(rest)}"
@@ -65,6 +83,11 @@ def main() -> int:
     parser.add_argument("--kind", help="api | pipeline | app_log | system")
     parser.add_argument("--q", help="подстрока по событию")
     parser.add_argument("--limit", type=int, default=30, help="сколько событий показать")
+    parser.add_argument(
+        "--channel", choices=("audit", "diag"), default="audit",
+        help="audit — вечный журнал (default); diag — диагностика "
+             "(path, query, error, traceback, message) после redaction",
+    )
     args = parser.parse_args()
 
     date_from = (date.today() - timedelta(days=args.days - 1)).isoformat()
@@ -77,11 +100,16 @@ def main() -> int:
             q=args.q,
             errors_only=args.errors,
             limit=args.limit,
+            channel=args.channel,
         )
         items = result["items"]
         title = "ОШИБКИ" if args.errors else "СОБЫТИЯ"
-        print(f"═══ {title} за {args.days} дн. "
+        channel = "durable audit" if args.channel == "audit" else "diagnostic"
+        print(f"═══ {title} за {args.days} дн. [{channel}] "
               f"(показано {len(items)}{', есть ещё' if result['truncated'] else ''}) ═══\n")
+        if args.channel == "audit" and not args.kind:
+            print("Подробности (path, query, текст ошибки, traceback): "
+                  "добавьте --channel diag\n")
         if not items:
             print("Ничего не найдено.")
         for e in items:
@@ -89,9 +117,10 @@ def main() -> int:
         return 0
 
     # Режим сводки
-    summary = action_log.stats(days=args.days)
+    summary = action_log.stats(days=args.days, channel=args.channel)
     totals = summary["totals"]
-    print(f"═══ СВОДКА ЖУРНАЛА ДЕЙСТВИЙ за {args.days} дн. ═══")
+    channel = "durable audit" if args.channel == "audit" else "diagnostic"
+    print(f"═══ СВОДКА ЖУРНАЛА ДЕЙСТВИЙ за {args.days} дн. [{channel}] ═══")
     print(f"Всего событий: {totals['events']}, из них ошибок: {totals['errors']}")
     print(f"По типам: {totals['by_kind']}\n")
     for row in summary["days"]:

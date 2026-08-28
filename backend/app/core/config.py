@@ -1178,9 +1178,13 @@ ACTION_LOG_RETENTION_DAYS   = _env_int("ACTION_LOG_RETENTION_DAYS", 180)
 ACTION_LOG_HTTP_ENABLED     = _env_bool("ACTION_LOG_HTTP_ENABLED", True)
 ACTION_LOG_PIPELINE_ENABLED = _env_bool("ACTION_LOG_PIPELINE_ENABLED", True)
 ACTION_LOG_APPLOG_ENABLED   = _env_bool("ACTION_LOG_APPLOG_ENABLED", True)
-# Потолок объёма суточного файла (байт): при превышении события дропаются до
-# следующего дня (пишется одно маркер-событие day_cap_reached). Защита диска
-# от штормов (например, поллинг с протухшей сессией = 401 каждую секунду).
+# Потолок суточного объёма журнала (байт): при превышении события дропаются до
+# следующего дня (в каждый затронутый файл пишется маркер day_cap_reached).
+# Защита диска от штормов (например, поллинг с протухшей сессией = 401 каждую
+# секунду). Бюджет ОБЩИЙ НА ОБА КАНАЛА (actions-* + diag-*), а не по файлу:
+# 256 МБ здесь означают не более 256 МБ в сутки суммарно — ровно столько же,
+# сколько флаг означал до разделения каналов. На границе бюджета выигрывает
+# durable audit: он пишется первым, потеря его записи — инцидент.
 ACTION_LOG_MAX_DAY_BYTES    = _env_int("ACTION_LOG_MAX_DAY_BYTES", 256 * 1024 * 1024)
 # Потолок событий app_log (мост logging) в минуту: сверх — дроп, по закрытии
 # окна пишется одно агрегированное событие о числе подавленных. Защита от
@@ -1189,6 +1193,36 @@ ACTION_LOG_APPLOG_MAX_PER_MIN = _env_int("ACTION_LOG_APPLOG_MAX_PER_MIN", 600)
 # Дополнительные шумовые пути (CSV из regex) — исключаются из HTTP-журнала
 # в дополнение к встроенному списку поллинговых GET (см. action_log.py).
 ACTION_LOG_NOISE_EXTRA      = _env_csv("ACTION_LOG_NOISE_EXTRA", [])
+
+# ─── Redaction журнала действий (ADR_BIBLE, P-13) ────────────────────────────
+# Журнал разделён на три канала с разными гарантиями (детали контракта —
+# в docstring и у _AUDIT_FIELDS в backend/app/core/action_log.py):
+#   durable audit  — actions-YYYY-MM-DD.jsonl, фиксированная схема (allowlist),
+#                    идентификаторов в свободном виде и непроверенного ввода
+#                    не содержит, ретеншн ACTION_LOG_RETENTION_DAYS;
+#   diagnostic     — diag-YYYY-MM-DD.jsonl, весь непроверенный ввод (path,
+#                    query, message, error, traceback, exc, ip) ПОСЛЕ redaction,
+#                    ретеншн ACTION_LOG_DIAG_RETENTION_DAYS;
+#   метрики        — in-process, action_log.metrics_snapshot().
+#
+# Default ON: безопасное поведение по умолчанию. ACTION_LOG_REDACTION=0 —
+# АВАРИЙНЫЙ ОТКАТ к прежнему поведению (один файл, все поля дословно, включая
+# секреты и ПДн в вечном журнале), а не режим эксплуатации.
+ACTION_LOG_REDACTION        = _env_bool("ACTION_LOG_REDACTION", True)
+# Писать ли диагностический канал вообще. OFF = максимум приватности: на диск
+# не ложится ничего, кроме durable audit (диагностика теряется целиком).
+ACTION_LOG_DIAG_ENABLED     = _env_bool("ACTION_LOG_DIAG_ENABLED", True)
+# Ретеншн диагностического канала (дней). Заметно короче durable audit: именно
+# в diag оседает непроверенный ввод, и 180 дней для него — та самая проблема,
+# ради которой каналы разделены.
+ACTION_LOG_DIAG_RETENTION_DAYS = _env_int("ACTION_LOG_DIAG_RETENTION_DAYS", 14)
+# Явное расширение allowlist durable audit (CSV имён полей). Единственный
+# способ пустить новое поле в вечный журнал — «попадание регулируется явным
+# allowlist поля, а не отсутствием запрета» (P-13).
+ACTION_LOG_AUDIT_EXTRA_FIELDS = _env_csv("ACTION_LOG_AUDIT_EXTRA_FIELDS", [])
+# Явное расширение allowlist query-параметров, значение которых разрешено
+# писать в diagnostic (CSV имён). Все прочие пишутся как имя=[redacted].
+ACTION_LOG_QUERY_ALLOW_EXTRA  = _env_csv("ACTION_LOG_QUERY_ALLOW_EXTRA", [])
 
 # ─── Эфемерные кропы блоков (block crop store) ─────────────────────────────
 # Кропы блоков — крупнейшая устранимая статья на диске (замер 2026-08-03:
