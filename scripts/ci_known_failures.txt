@@ -3,7 +3,7 @@
 # В основном устаревшие тесты / frontend-drift / ожидания старых флагов —
 # это НЕ регрессии прода. CI зелёный, если НЕТ новых падений сверх этого списка.
 # Пересоздать в свежем окружении: python scripts/ci_regression_gate.py --record
-# Кол-во: 80
+# Кол-во: 44
 
 backend.tests.test_critic_v2_project_scoped_view::test_frontend_has_critic_v2_button_after_discussions
 backend.tests.test_critic_v2_project_scoped_view::test_frontend_has_per_project_critic_v2_button

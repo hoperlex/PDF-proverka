@@ -4,12 +4,26 @@ from __future__ import annotations
 import json
 import threading
 
+import pytest
+
 from tests.chaos_harness_12e import GatewayProcess
 from tests.test_agent_grpc_client_12c import (
     _registered_grpc_agent,
     _wait_until,
     grpc_e2e_env,
 )
+
+# Решение владельца по C-5 (docs/architecture/ci_environment_matrix.md): набор
+# выносится в ОТДЕЛЬНЫЙ job. Тесты поднимают отдельный процесс шлюза, шлют ему
+# SIGTERM/SIGKILL и ждут сходимости по таймаутам — четыре прогона подряд дали
+# 1/2/0/1 падений. В общем прогоне такая недетерминированность ломает любой
+# baseline регресс-гейта при каждой перезаписи, поэтому модуль помечен маркером
+# `chaos`: `pytest.ini` исключает его из набора по умолчанию
+# (`addopts = -m "not chaos"`), а отдельный job зовёт явно
+# `python -m pytest tests/test_process_chaos_12e.py -m chaos`.
+# Это НЕ отмена проверки: контракт долговечности задания при падении шлюза
+# по-прежнему проверяется, но в собственном бюджете времени и с ретраями.
+pytestmark = pytest.mark.chaos
 
 
 def _gateway_restart_during_running_job(grpc_e2e_env, *, hard_kill: bool) -> None:

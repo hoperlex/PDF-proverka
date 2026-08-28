@@ -8,10 +8,82 @@ status_index.json → пустой индекс; _native_verify (цитаты п
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
+
+import pytest
 
 from backend.app.pipeline.stages.norms import _native_verify as nv
 from backend.app.pipeline.stages.norms import external_provider as ep
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_NORMS_VAULT = _REPO_ROOT / "norms" / "vault"
+
+# --- Признак «прогон идёт в CI» -------------------------------------------
+#
+# Решение владельца по C-2 (docs/architecture/ci_environment_matrix.md):
+# нормативный корпус ПОДВОЗИТСЯ артефактом в CI, а не объявляется optional.
+# Отсюда несимметричная семантика: локально отсутствие корпуса — skip с
+# причиной, в CI — падение. Иначе provision однажды сломается, тесты тихо
+# пропустятся, и «зелёный» CI будет означать «нормативный контур не
+# проверялся».
+#
+# Выбор признака. Собственного флага «мы в CI» в репозитории нет (grep по
+# AUDIT_CI*/CI_* пуст), а `.github/workflows/ci.yml` вне ведения этой задачи —
+# дописать туда свою переменную нельзя. Поэтому:
+#   1) `AUDIT_CI_STRICT` — явный override в существующем соглашении репозитория
+#      (префикс AUDIT_*, булев разбор один в один как `_env_bool` в
+#      backend/app/core/config.py: {1,true,yes,on}). Им же CI-профиль
+#      включается локально для проверки, и им же (значение "0"/"false")
+#      сознательно ослабляется job, которому корпус не подвозят;
+#   2) при отсутствии override — стандартный `CI` (и `GITHUB_ACTIONS`), который
+#      GitHub Actions, GitLab CI, CircleCI и Travis выставляют сами. Это даёт
+#      требуемое «ломать прогон в CI» без правки workflow.
+_TRUTHY_ENV = {"1", "true", "yes", "on"}
+
+
+def _ci_marker() -> str | None:
+    """Имя переменной, по которой прогон опознан как CI (иначе None)."""
+    override = (os.environ.get("AUDIT_CI_STRICT") or "").strip()
+    if override:
+        return "AUDIT_CI_STRICT" if override.lower() in _TRUTHY_ENV else None
+    for name in ("CI", "GITHUB_ACTIONS"):
+        if (os.environ.get(name) or "").strip().lower() in _TRUTHY_ENV:
+            return name
+    return None
+
+
+def _require_norms_corpus() -> None:
+    """Корпус норм обязателен в CI и необязателен локально.
+
+    Не хватает `norms/vault/` (в .gitignore) и производного от него
+    `norms/tools/status_index.json` — их подвозит артефакт CI.
+    """
+    missing = [
+        str(path.relative_to(_REPO_ROOT))
+        for path in (_NORMS_VAULT, ep._DEFAULT_STATUS_INDEX)
+        if not path.exists()
+    ]
+    if not missing:
+        return
+    detail = (
+        f"нормативный корпус не предоставлен: нет {', '.join(missing)} "
+        f"(vault лежит вне git, status_index.json собирается из него "
+        f"norms/tools/build_status_index.py)"
+    )
+    marker = _ci_marker()
+    if marker is not None:
+        pytest.fail(
+            f"{detail}. Признак CI: {marker}={os.environ.get(marker)!r}. "
+            f"По решению владельца (C-2) корпус подвозится в CI артефактом, "
+            f"поэтому его отсутствие — сломанный provision, а не повод "
+            f"пропустить нормативный контур"
+        )
+    pytest.skip(
+        f"{detail}. Локально это допустимо; в CI "
+        f"(AUDIT_CI_STRICT=1 либо CI=true) тот же случай ЛОМАЕТ прогон — "
+        f"корпус обязан подвозиться артефактом"
+    )
 
 
 def test_status_and_paragraph_indexes_share_norms_tools_root():
@@ -24,6 +96,7 @@ def test_status_and_paragraph_indexes_share_norms_tools_root():
 def test_inrepo_index_exists_and_has_consistent_total():
     # Размер индекса растёт вместе с vault и status_overrides; проверяем схему,
     # а не историческое число записей.
+    _require_norms_corpus()
     assert ep._DEFAULT_STATUS_INDEX.exists(), "in-repo status_index.json отсутствует"
     import json
     payload = json.loads(ep._DEFAULT_STATUS_INDEX.read_text(encoding="utf-8"))
@@ -74,6 +147,7 @@ def test_sanpin_family_filename_and_core_extraction():
 
 
 def test_sanpin_official_copy_has_unambiguous_paragraphs():
+    _require_norms_corpus()
     import sys
 
     tools = Path(__file__).resolve().parent.parent / "norms" / "tools"

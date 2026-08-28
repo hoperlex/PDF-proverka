@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import os
 import stat
 import sys
 from pathlib import Path
@@ -25,6 +26,60 @@ from scripts.release_staging import (  # noqa: E402
     seal_tree,
     staging_workspace,
 )
+
+# --- Признак «прогон идёт в CI» -------------------------------------------
+#
+# Решение владельца по C-4 (docs/architecture/ci_environment_matrix.md): набор
+# гоняется НЕПРИВИЛЕГИРОВАННЫМ пользователем на раннере. Под root режимы 0o555
+# не действуют, `rm -rf` сносит запечатанное дерево, и доказательство теста
+# исчезает вместе с окружением. Тест, не способный доказать своё утверждение,
+# обязан сказать об этом, а не быть зелёным или красным по случайности:
+# локально под root — skip с причиной, в CI под root — ошибка, потому что
+# контракт раннера нарушен.
+#
+# Признак тот же, что в tests/test_norms_index_unification.py (там же полное
+# обоснование выбора): `AUDIT_CI_STRICT` — явный override в соглашении
+# репозитория (префикс AUDIT_*, булев разбор как у `_env_bool` в
+# backend/app/core/config.py), при его отсутствии — стандартный `CI` /
+# `GITHUB_ACTIONS`, который CI-системы выставляют сами (workflow править не
+# требуется).
+_TRUTHY_ENV = {"1", "true", "yes", "on"}
+
+
+def _ci_marker() -> str | None:
+    """Имя переменной, по которой прогон опознан как CI (иначе None)."""
+    override = (os.environ.get("AUDIT_CI_STRICT") or "").strip()
+    if override:
+        return "AUDIT_CI_STRICT" if override.lower() in _TRUTHY_ENV else None
+    for name in ("CI", "GITHUB_ACTIONS"):
+        if (os.environ.get(name) or "").strip().lower() in _TRUTHY_ENV:
+            return name
+    return None
+
+
+def _require_unprivileged_user() -> None:
+    """Доказательство держится на правах доступа — под root его нет."""
+    euid = getattr(os, "geteuid", lambda: -1)()
+    if euid != 0:
+        return
+    detail = (
+        "прогон идёт под root (euid=0): режимы 0o555 на суперпользователя не "
+        "действуют, наивный `rm -rf` сносит запечатанное дерево, и тест "
+        "ничего не доказывает"
+    )
+    marker = _ci_marker()
+    if marker is not None:
+        pytest.fail(
+            f"{detail}. Признак CI: {marker}={os.environ.get(marker)!r}. "
+            f"По решению владельца (C-4) набор обязан выполняться "
+            f"непривилегированным пользователем — запуск раннера под root "
+            f"нарушает контракт окружения, а не проверяемое поведение"
+        )
+    pytest.skip(
+        f"{detail}. Локально это допустимо; в CI (AUDIT_CI_STRICT=1 либо "
+        f"CI=true) тот же случай ЛОМАЕТ прогон — раннер обязан быть "
+        f"непривилегированным"
+    )
 
 
 def _build_tree(root: Path) -> Path:
@@ -80,6 +135,7 @@ def test_failure_after_sealing_relaxes_modes_and_removes_staging(tmp_path):
 
 def test_sealed_tree_is_not_removable_without_relaxing_modes(tmp_path):
     """Доказательство причины: без снятия режимов снос действительно не идёт."""
+    _require_unprivileged_user()
     import shutil
 
     staging = tmp_path / f"{STAGING_PREFIX}manual"

@@ -28,9 +28,16 @@
 `--record` применяется только осознанно — когда меняется сам контракт набора
 тестов, и полученный baseline коммитится с обоснованием. Расхождение из-за
 отсутствующего optional-датасета чинится тестом, а не перезаписью baseline.
+
+Baseline обязан описывать сам себя: заголовок объявляет `# Кол-во: N`, и это
+число сверяется с фактическим списком ДО прогона (см. `load_baseline`).
+Расхождение — отказ, а не предупреждение: сравнивать прогон с эталоном,
+который врёт о собственном содержимом, бессмысленно. Приём тот же, что у
+`fileset_sha256` в release-manifest (`scripts/deploy_center_release.py`).
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -40,6 +47,9 @@ ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "scripts" / "ci_known_failures.txt"
 JUNIT = ROOT / ".ci_last_report.xml"
 TEST_PATHS = ["tests", "backend/tests"]
+# Заголовок baseline обязан описывать сам себя: строка `# Кол-во: N` сверяется
+# с числом фактических записей при каждой загрузке (см. load_baseline).
+_DECLARED_COUNT_RE = re.compile(r"^#\s*Кол-во:\s*(\d+)\s*$")
 
 
 def run_pytest() -> None:
@@ -82,13 +92,51 @@ def collect_failures() -> set[str]:
 
 
 def load_baseline() -> set[str]:
+    """Прочитать baseline и СВЕРИТЬ его с собственным заголовком.
+
+    Заголовок объявляет `# Кол-во: N`, а список ниже правят руками (тест
+    починили — строку убрали, добавился долг — дописали), и заявленный
+    счётчик разъезжается с содержимым. Baseline — эталон сравнения: если он
+    врёт о себе, гейт молча меряет прогон по неизвестно какому списку.
+
+    Приём тот же, что у `fileset_sha256` в release-manifest
+    (`scripts/deploy_center_release.py`): отпечаток не берётся на веру, а
+    пересчитывается по фактическому дереву; расхождение — отказ, отсутствие
+    отпечатка — предупреждение (у старых файлов его просто нет, отказывать
+    из-за этого нельзя, но и молчать не следует).
+    """
     if not BASELINE.exists():
         return set()
-    return {
-        line.strip()
-        for line in BASELINE.read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.startswith("#")
-    }
+    declared: int | None = None
+    entries: set[str] = set()
+    for line in BASELINE.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            match = _DECLARED_COUNT_RE.match(stripped)
+            if match:
+                declared = int(match.group(1))
+            continue
+        entries.add(stripped)
+    if declared is None:
+        print(
+            f"[gate] ВНИМАНИЕ: в заголовке {BASELINE} нет строки "
+            f"'# Кол-во: N' — целостность baseline не проверяется",
+            file=sys.stderr,
+        )
+    elif declared != len(entries):
+        raise SystemExit(
+            f"[gate] FATAL: baseline противоречит сам себе — заголовок "
+            f"{BASELINE} заявляет '# Кол-во: {declared}', а фактических "
+            f"записей {len(entries)}. Baseline — эталон сравнения, сверка с "
+            f"ним при таком расхождении недостоверна. Починить: привести "
+            f"счётчик в заголовке к фактическому списку (правка вручную) "
+            f"либо осознанно пересобрать baseline "
+            f"(`python scripts/ci_regression_gate.py --record`) на окружении, "
+            f"удовлетворяющем контракту CI"
+        )
+    return entries
 
 
 def write_baseline(failed: set[str]) -> None:
@@ -107,6 +155,10 @@ def write_baseline(failed: set[str]) -> None:
 
 def main() -> int:
     record = "--record" in sys.argv
+    # Целостность baseline проверяется ДО прогона: незачем тратить полный
+    # прогон набора, чтобы потом отказаться сравнивать с испорченным эталоном.
+    # В режиме --record файл всё равно перезаписывается, читать его не нужно.
+    baseline = set() if record else load_baseline()
     run_pytest()
     current = collect_failures()
 
@@ -115,7 +167,6 @@ def main() -> int:
         print(f"[gate] baseline записан: {len(current)} известных падений -> {BASELINE}")
         return 0
 
-    baseline = load_baseline()
     new = sorted(current - baseline)
     fixed = sorted(baseline - current)
     print(
