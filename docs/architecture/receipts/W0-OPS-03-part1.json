@@ -1,0 +1,112 @@
+{
+  "type": "task_receipt",
+  "task_id": "W0-OPS-03",
+  "part": "1 из 2",
+  "captured_at": "2026-08-28",
+  "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6 по docs/architecture/checkpoints/README.md. Это квитанция задачи, а не точка возврата программы, поэтому лежит отдельно и своего CP-номера не получает.",
+
+  "consumes_contract": {
+    "document": "docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md",
+    "profile": "qr-v1",
+    "sha256_16": "eea54ab8e4cb21bc",
+    "sections_implemented": ["§5 lanes (частично)", "§6 capability preflight"],
+    "sections_deferred": ["§7 timeout harness", "§8 JUnit/run receipt", "§5 полная materialization маркеров"]
+  },
+
+  "head_commit": "96771d90",
+  "branch": "snapshot/w0-ops-03-part1",
+  "environment": {
+    "python": "3.12.3",
+    "pytest": "9.1.1",
+    "uid": 0,
+    "note": "Прогон под root и с активным .env — по §6 это невалидное окружение для lane network/chaos. Приёмка контракта требует non-root clean-room runner и остаётся за W0-INT-01."
+  },
+
+  "delivered": [
+    {
+      "artifact": "scripts/ci_runtime_probe.py",
+      "sha256_16": "9fdb45f624d9ca95",
+      "commit": "9affab1b",
+      "checks": 15,
+      "interface": "python scripts/ci_runtime_probe.py --profile {unit,contract,integration,network,chaos}",
+      "verified": {
+        "unit_without_isolation": "exit 1, SECRET_DOTENV_ACTIVE",
+        "unit_with_AUDIT_DISABLE_DOTENV": "exit 0",
+        "network": "exit 1, USER_IS_ROOT + SECRET_DOTENV_ACTIVE",
+        "chaos": "exit 1, те же две причины",
+        "own_tests": "41 passed",
+        "duration_network_sec": 0.43,
+        "anti_hang": "подмена сценариев на sleep(600) даёт коды причин за 4 с, дочерние процессы сняты по группе, сирот нет",
+        "secret_values_printed": 0,
+        "not_run_semantics": "§6.2 соблюдён: невыбранные lanes и неприменимые capabilities помечены NOT_RUN, не passed и не skipped"
+      }
+    },
+    {
+      "artifact": "primary lane marker `network`",
+      "commit": "96771d90",
+      "tests_marked": 11,
+      "modules": ["tests/test_distributed_workers_prepipeline_gate.py", "tests/test_distributed_workers_executor.py"],
+      "derivation": "Маркер `slow` в pytest.ini уже определён как «поднимает НАСТОЯЩИЕ процессы» — это дословно lane `network` из таблицы §5. Соответствие выведено из документации репозитория, а не назначено.",
+      "verified": {
+        "select_network": "11 / 7082",
+        "strict_markers": "принят",
+        "default_collection_before": "7080 / 7082",
+        "default_collection_after": "7080 / 7082",
+        "slow_and_network": "11 — slow остался ортогональным атрибутом, не lane"
+      }
+    },
+    {
+      "artifact": "классификация ACTION_LOG_REDACTION",
+      "commit": "08594942",
+      "outcome": "постоянный kill-switch, владелец OPS, даты удаления нет по обоснованию; §8 DoD п.10 закрыт"
+    }
+  ],
+
+  "gate": {
+    "command": "python scripts/ci_regression_gate.py",
+    "failures_now": 36,
+    "baseline": 35,
+    "new": 1,
+    "new_entries": ["tests.test_agent_grpc_client_12c::test_agent_restart_adopts_live_executor_higher_epoch_no_duplicate"],
+    "new_attributed_to_this_task": 0,
+    "evidence": "Тест дважды зелёный в одиночку (3.96 с и 3.97 с). Мои изменения выборку по умолчанию не меняли: сбор 7080/7082 до и после.",
+    "verdict": "флаки того же процессного класса, не регрессия"
+  },
+
+  "findings": [
+    {
+      "id": "OPS03-F1",
+      "severity": "высокая",
+      "summary": "Боевой ключ провайдера присутствует в каждом прогоне тестов",
+      "detail": "Импорт backend.app.core.config подхватывает репозиторный .env, и OPENROUTER_API_KEY оказывается в os.environ процесса pytest. tests/conftest.py не выставляет AUDIT_DISABLE_DOTENV=1. Проверено независимо: 3 секретоподобные переменные в процессе. Риск двойной — утечка через любой дамп окружения и возможность реального платного вызова.",
+      "owner": "W0-INT-01 (§3.2 isolation принадлежит интегратору)",
+      "probe_reason_code": "SECRET_DOTENV_ACTIVE"
+    },
+    {
+      "id": "OPS03-F2",
+      "severity": "средняя",
+      "summary": "Правило «slow ⇒ network» верно, но неполно",
+      "detail": "tests/test_agent_grpc_client_12c.py содержит 54 обращения к процессам и сокетам и ноль маркеров slow; таких модулей ещё не менее двенадцати. Полная materialization lanes обязана классифицировать по фактическому поведению, а не по существующим маркерам. §5 объявляет непомеченный node inventory failure — значит объём части 2 определяется поведением, а не текущей разметкой.",
+      "owner": "W0-OPS-03 часть 2"
+    },
+    {
+      "id": "OPS03-F3",
+      "severity": "средняя",
+      "summary": "Evidence §6 контракта не воспроизвелось",
+      "detail": "§6 фиксирует, что в sandbox 2026-08-28 запрещено создание socket и зависает AnyIO worker-thread roundtrip. В текущем окружении обе операции проходят: socket создаётся, roundtrip возвращается за миллисекунды. Probe отрепортил это честно, отказ network/chaos идёт по другим причинам (uid=0, secrets). Контракт использует то evidence как обоснование, почему sandbox-результат нельзя заносить в baseline, поэтому расхождение требует перепроверки владельцем.",
+      "owner": "W0-ARC-03 (владелец контракта)"
+    }
+  ],
+
+  "not_delivered": [
+    "§7 timeout harness — требует thread dump, child-process inventory, JUnit failure типа timeout; вероятен новый pin pytest-timeout, а root dependencies принадлежат W0-INT-01",
+    "§8 JUnit/run receipt — JSON-вывод probe даёт входные поля, сам receipt не строится",
+    "§5 полная materialization lanes — по F2 объём определяется поведением тестов; 11 размеченных из 7082",
+    "provisioning norm corpus — нет доступа к источнику артефакта",
+    "детерминизм гейта — маркер есть, но исключение network из выборки по умолчанию меняет addopts, что запрещено объёмом W0-OPS-03"
+  ],
+
+  "authorizes_next_cutover": false,
+  "rollback_target": "snapshot/w0-ops-03-part1",
+  "cleanup_receipt": "не выполнялся"
+}
