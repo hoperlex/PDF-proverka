@@ -16,6 +16,10 @@ from backend.app.pipeline.stages.block_grounding.water_geometry import (
 
 ROOT=Path(__file__).resolve().parents[1]
 VK=ROOT/"experiments"/"блоки разных дисциплин"/"ВК"
+# Внешний исследовательский корпус (~2 ГБ) в контракт CI не входит и на диске
+# может отсутствовать. Читать манифест на импорте без гарда нельзя: отсутствие
+# файла рушит СБОРКУ всего прогона, а не помечает пропущенными свои тесты.
+# Самодостаточность production-каталога проверяет test_block_reference_catalog.py.
 MANIFEST=VK/"VK_DIVERSE_CORPUS.json";OUT=VK/"vk_out"
 
 
@@ -36,6 +40,7 @@ def _render(graph):return render_legend_markdown(graph) if _is_legend(graph) els
 def graphs():return {case["block_id"]:json.loads((OUT/f"{case['block_id']}.structure.json").read_text()) for case in cases()}
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 @pytest.mark.parametrize("case",cases(),ids=lambda case:case["block_id"])
 def test_vk_corpus_has_pdf_and_structured_description(case,graphs):
     with fitz.open(VK/case["output"]) as document:assert document.page_count==1
@@ -48,11 +53,13 @@ def test_vk_corpus_has_pdf_and_structured_description(case,graphs):
     assert graph["profile_id"] not in description
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_all_eleven_vk_families_are_present(graphs):
     assert len(graphs)==168
     assert {graph["profile_id"] for graph in graphs.values()}-{PROFILE_LEGEND}==set(ALL_WATER_PROFILES)
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_vk_references_are_integral(graphs):
     for graph in graphs.values():
         nodes=graph.get("nodes",[]);networks=graph.get("networks",[]);containers=graph.get("containers",[])
@@ -66,6 +73,7 @@ def test_vk_references_are_integral(graphs):
             if edge.get("network_id"):assert edge["network_id"] in network_ids
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_vk_human_output_hides_internal_codes_and_states(graphs):
     for graph in graphs.values():
         description=_render(graph)
@@ -79,6 +87,7 @@ def test_vk_human_output_hides_internal_codes_and_states(graphs):
         assert not re.search(r"\b(?:route|network|node|circuit|system)-\d+\b",description)
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_vk_descriptions_state_evidence_depth(graphs):
     allowed={"engineering_graph","semantic_hierarchy","physical_hierarchy","geometry_inventory",
              "spatial_inventory","analytical_geometry","raster_inventory"}
@@ -91,6 +100,7 @@ def test_vk_descriptions_state_evidence_depth(graphs):
         text=render_water_markdown(graph);assert "Уровень описания" in text and "Инженерное дерево" in text
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_vk_semantic_coverage_has_no_known_fact_losses():
     report=json.loads((VK/"VK_SEMANTIC_COVERAGE.json").read_text())
     assert report["blocks_total"]==168
@@ -99,6 +109,7 @@ def test_vk_semantic_coverage_has_no_known_fact_losses():
     assert report["blocks_without_pdf_text_layer"]==27
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_vk_secondary_facts_are_preserved_without_fake_coordinates(graphs):
     graph=graphs["7JJW-ATHW-AYM"];facts=graph["secondary_facts"]["facts"]
     assert graph["validation"]["source_layer_state"]=="no_pdf_text_layer"
@@ -108,6 +119,7 @@ def test_vk_secondary_facts_are_preserved_without_fake_coordinates(graphs):
     assert evaluate_water_gate(graph)["complete"] is False
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_vk_document_codes_and_slopes_do_not_become_system_elevations(graphs):
     graph=graphs["6VW4-PCVA-TCN"]
     assert {node["label"] for node in graph["nodes"] if node["node_type"]=="system"}=={"К1","К1н"}
@@ -132,6 +144,7 @@ def _polygon(page,block):
     return value
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_vk_graph_builds_from_original_pdf_polygon():
     case,page,block=_source_case("ACNM-K9RG-GAW")
     graph=build_water_graph_from_source(ROOT/case["source_pdf"],page_index=page["page_number"]-1,
@@ -140,6 +153,7 @@ def test_vk_graph_builds_from_original_pdf_polygon():
     assert evaluate_water_gate(graph)["use"] is True
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_router_returns_structured_vk(tmp_path):
     case,page,block=_source_case("ACNM-K9RG-GAW");output=tmp_path/"_output";output.mkdir()
     (tmp_path/"document.pdf").symlink_to(ROOT/case["source_pdf"])

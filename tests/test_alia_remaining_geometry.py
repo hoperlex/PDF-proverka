@@ -5,19 +5,26 @@ from backend.app.pipeline.stages.block_grounding.alia_remaining_geometry import 
  ALL_REMAINING_PROFILES,build_remaining_graph,evaluate_remaining_gate,render_remaining_markdown)
 from backend.app.pipeline.stages.block_grounding.profiled_graph_localization import ru_profile
 ROOT=Path(__file__).resolve().parents[1];SS=ROOT/"experiments"/"блоки разных дисциплин"/"СС";M=SS/"ALIA_REMAINING_CORPUS.json"
+# Внешний исследовательский корпус (~2 ГБ) в контракт CI не входит и на диске
+# может отсутствовать. Читать манифест на импорте без гарда нельзя: отсутствие
+# файла рушит СБОРКУ всего прогона, а не помечает пропущенными свои тесты.
+# Самодостаточность production-каталога проверяет test_block_reference_catalog.py.
 def cases():return json.loads(M.read_text()) if M.exists() else []
 @pytest.fixture(scope="module")
 def graphs():return {c["block_id"]:build_remaining_graph(SS/c["output"],block_id=c["block_id"]) for c in cases()}
+@pytest.mark.skipif(not M.exists(),reason="внешний корпус ALIA (остаточные профили) не извлечён")
 @pytest.mark.parametrize("case",cases(),ids=lambda c:c["block_id"])
 def test_remaining_corpus(case,graphs):
  g=graphs[case["block_id"]];assert g and g["profile_id"] in ALL_REMAINING_PROFILES
  assert g["validation"]["nodes_total"]>0 and evaluate_remaining_gate(g)["use"]
  description=render_remaining_markdown(g)
  assert ru_profile(g["profile_id"]) in description and g["profile_id"] not in description
+@pytest.mark.skipif(not M.exists(),reason="внешний корпус ALIA (остаточные профили) не извлечён")
 def test_all_six_families_present(graphs):
  assert {g["profile_id"] for g in graphs.values()}==set(ALL_REMAINING_PROFILES)
  assert len(graphs)==19
 
+@pytest.mark.skipif(not M.exists(),reason="внешний корпус ALIA (остаточные профили) не извлечён")
 def test_plan_graph_has_distinct_axes_routes_and_equipment_ids(graphs):
  for bid in ("4EVJ-MYPD-7P7","9KLR-W3LY-EAA","TQVW-YHVA-NDM"):
   g=graphs[bid];v=g["validation"]
@@ -27,6 +34,7 @@ def test_plan_graph_has_distinct_axes_routes_and_equipment_ids(graphs):
   assert len(node_ids)==len(set(node_ids)) and not set(node_ids)&set(axis_ids)
   assert evaluate_remaining_gate(g)["readiness"]=="complete"
 
+@pytest.mark.skipif(not M.exists(),reason="внешний корпус ALIA (остаточные профили) не извлечён")
 def test_wiring_reports_only_path_pairs_and_strict_completeness(graphs):
  aps=graphs["6FTW-WUQ7-MUY"]
  assert aps["validation"]["confirmed_connections"]>=10
@@ -34,6 +42,7 @@ def test_wiring_reports_only_path_pairs_and_strict_completeness(graphs):
  gate=evaluate_remaining_gate(aps)
  assert gate["use"] is True and gate["complete"] is True
 
+@pytest.mark.skipif(not M.exists(),reason="внешний корпус ALIA (остаточные профили) не извлечён")
 def test_principle_graph_uses_ports_paths_and_hypernets_without_fake_pairs(graphs):
  for bid in ("9WRW-TQYG-JG6","6LCH-PCEN-6HU"):
   g=graphs[bid];v=g["validation"]
@@ -44,5 +53,6 @@ def test_principle_graph_uses_ports_paths_and_hypernets_without_fake_pairs(graph
   assert {edge["network_id"] for edge in g["edges"]}<=pair_networks
   assert evaluate_remaining_gate(g)["complete"] is True
 
+@pytest.mark.skipif(not M.exists(),reason="внешний корпус ALIA (остаточные профили) не извлечён")
 def test_all_remaining_profiles_pass_strict_completeness(graphs):
  assert all(evaluate_remaining_gate(graph)["complete"] for graph in graphs.values())

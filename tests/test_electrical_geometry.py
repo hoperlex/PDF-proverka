@@ -18,6 +18,10 @@ from backend.app.pipeline.stages.block_grounding.singleline_graph_geometry impor
 
 ROOT=Path(__file__).resolve().parents[1]
 EOM=ROOT/"experiments"/"блоки разных дисциплин"/"ЭОМ"
+# Внешний исследовательский корпус (~2 ГБ) в контракт CI не входит и на диске
+# может отсутствовать. Читать манифест на импорте без гарда нельзя: отсутствие
+# файла рушит СБОРКУ всего прогона, а не помечает пропущенными свои тесты.
+# Самодостаточность production-каталога проверяет test_block_reference_catalog.py.
 MANIFEST=EOM/"EOM_DIVERSE_CORPUS.json";OUT=EOM/"eom_out"
 
 
@@ -28,6 +32,7 @@ def cases():return json.loads(MANIFEST.read_text()) if MANIFEST.exists() else []
 def graphs():return {case["block_id"]:json.loads((OUT/f"{case['block_id']}.structure.json").read_text()) for case in cases()}
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 @pytest.mark.parametrize("case",cases(),ids=lambda case:case["block_id"])
 def test_eom_corpus_has_vector_pdf_and_accepted_graph(case,graphs):
     with fitz.open(EOM/case["output"]) as document:assert document.page_count==1
@@ -37,12 +42,14 @@ def test_eom_corpus_has_vector_pdf_and_accepted_graph(case,graphs):
     assert gate["use"] is True
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_all_eom_families_and_subtypes_are_present(graphs):
     assert len(graphs)==157
     assert {graph["profile_id"] for graph in graphs.values()}==set(ALL_ELECTRICAL_PROFILES)
     assert len({case["subtype"] for case in cases()})==50
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_generic_eom_references_are_integral(graphs):
     for graph in graphs.values():
         if graph["profile_id"]==PROFILE_SINGLELINE:continue
@@ -57,6 +64,7 @@ def test_generic_eom_references_are_integral(graphs):
             if edge.get("network_id"):assert edge["network_id"] in network_ids
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_generic_human_descriptions_are_russian_and_hide_internal_codes(graphs):
     for graph in graphs.values():
         if graph["profile_id"]==PROFILE_SINGLELINE:continue
@@ -70,6 +78,7 @@ def test_generic_human_descriptions_are_russian_and_hide_internal_codes(graphs):
         assert not re.search(r"\b(?:route|network|node|edge)-\d+\b",description)
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_distinct_boundary_dialects_are_not_forced_into_vectograph(graphs):
     lighting=graphs["4UJ9-3D93-W7A"]
     assert lighting["profile_id"]=="panel_circuit_scheme"
@@ -82,6 +91,7 @@ def test_distinct_boundary_dialects_are_not_forced_into_vectograph(graphs):
     assert switchroom["validation"]["route_branches_total"]>=20
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_only_source_limited_blocks_remain_partial(graphs):
     summary=json.loads((OUT/"summary.json").read_text())
     assert summary["gate_passed"]==157 and summary["complete_total"]==153
@@ -94,12 +104,14 @@ def test_only_source_limited_blocks_remain_partial(graphs):
         if secondary:assert "x" not in secondary and "y" not in secondary
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_eom_semantic_coverage_has_no_known_fact_losses():
     report=json.loads((EOM/"EOM_SEMANTIC_COVERAGE.json").read_text())
     assert report["blocks_total"]==157 and report["blocks_without_pdf_text_layer"]==4
     assert sum(record["pdf_misses_total"] for record in report["records"])==0
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_common_words_do_not_become_protective_devices(graphs):
     false_prefix=re.compile(r"^(?:авар|автостоян|автор|автоматическ)",re.I)
     for graph in graphs.values():
@@ -125,6 +137,7 @@ def _polygon(page,block):
     return value
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_eom_graph_builds_from_original_pdf_polygon():
     case,page,block=_source_case("GFEP-NT67-DEV")
     graph=build_electrical_graph_from_source(ROOT/case["source_pdf"],page_index=page["page_number"]-1,
@@ -134,6 +147,7 @@ def test_eom_graph_builds_from_original_pdf_polygon():
     assert evaluate_electrical_gate(graph)["use"] is True
 
 
+@pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_router_returns_structured_eom(tmp_path):
     case,page,block=_source_case("GFEP-NT67-DEV");output=tmp_path/"_output";output.mkdir()
     (tmp_path/"document.pdf").symlink_to(ROOT/case["source_pdf"])
