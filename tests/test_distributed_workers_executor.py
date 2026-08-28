@@ -140,6 +140,7 @@ def _alive(pid: int) -> bool:
 
 
 # ─── §8.4 Два исполнителя — один процесс ─────────────────────────────────────
+@pytest.mark.network
 @pytest.mark.slow
 def test_two_executors_never_start_two_processes(tmp_path):
     """Два НАСТОЯЩИХ исполнителя на одной worker.db дают ровно один процесс."""
@@ -174,6 +175,7 @@ def test_two_executors_never_start_two_processes(tmp_path):
 
 
 # ─── §8.6 Рестарт исполнителя ────────────────────────────────────────────────
+@pytest.mark.network
 @pytest.mark.slow
 def test_executor_restart_does_not_duplicate_running_process(tmp_path):
     """Живой процесс переживает рестарт исполнителя, второй не появляется."""
@@ -206,6 +208,7 @@ def test_executor_restart_does_not_duplicate_running_process(tmp_path):
         _stop(first, sig=signal.SIGKILL)
 
 
+@pytest.mark.network
 @pytest.mark.slow
 def test_executor_marks_interrupted_without_marker_and_never_retries(tmp_path):
     """Процесс исчез без маркера → executor_interrupted, автоповтора нет."""
@@ -238,6 +241,7 @@ def test_executor_marks_interrupted_without_marker_and_never_retries(tmp_path):
         _stop(second)
 
 
+@pytest.mark.network
 @pytest.mark.slow
 def test_executor_packages_result_finished_before_restart(tmp_path):
     """Процесс отработал до рестарта — архив собирается, работа не теряется."""
@@ -277,6 +281,7 @@ def test_executor_packages_result_finished_before_restart(tmp_path):
 
 
 # ─── §10 Безопасная отмена ───────────────────────────────────────────────────
+@pytest.mark.network
 @pytest.mark.slow
 def test_cancel_terminates_only_verified_process(tmp_path):
     """Отмена бьёт по проверенной группе и только по ней."""
@@ -505,6 +510,7 @@ def _ping(url: str) -> bool:
         return False
 
 
+@pytest.mark.network
 @pytest.mark.slow
 def test_killing_agent_does_not_stop_the_audit(tmp_path, live_center):
     """I-02/I-03 на настоящих процессах: центр + агент + исполнитель."""

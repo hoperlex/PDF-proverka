@@ -981,6 +981,7 @@ def _seqs_in(events_dir: Path) -> list[int]:
     return out
 
 
+@pytest.mark.network
 @pytest.mark.slow
 def test_event_sequence_is_unique_across_processes(tmp_path):
     """Четыре ПРОЦЕССА, две попытки, сотни событий: ни дублей, ни дыр."""
@@ -1182,6 +1183,7 @@ def _live_client(url: str, username: str | None):
     return client
 
 
+@pytest.mark.network
 @pytest.mark.slow
 def test_real_main_enforces_roles_end_to_end(live_main_app):
     """§37 задания на НАСТОЯЩЕМ приложении: viewer / operator / admin."""
@@ -1294,6 +1296,7 @@ def test_real_main_enforces_roles_end_to_end(live_main_app):
     ).status_code == 200
 
 
+@pytest.mark.network
 @pytest.mark.slow
 def test_real_main_closes_operator_api_without_portal_auth(tmp_path):
     """R-05 на настоящем приложении: без портальной защиты опасного API нет."""
@@ -1467,6 +1470,7 @@ def _live_processes(db) -> list[dict]:
     ]
 
 
+@pytest.mark.network
 @pytest.mark.slow
 def test_two_real_processes_overlap_and_third_waits(two_slot_worker):
     """S-01…S-04: два процесса живут одновременно, третий ждёт, отмена адресна."""
@@ -1555,6 +1559,7 @@ def test_two_real_processes_overlap_and_third_waits(two_slot_worker):
     assert len(_live_processes(db)) <= 2, "одновременно больше двух — нарушение S-01"
 
 
+@pytest.mark.network
 @pytest.mark.slow
 def test_agent_restart_keeps_two_processes_and_creates_no_duplicates(two_slot_worker):
     """S-07…S-09: убийство агента не трогает работу и не порождает дублей."""
