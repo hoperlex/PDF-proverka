@@ -288,7 +288,20 @@ class NormsMcpUnavailableError(RuntimeError):
     """
 
 
-def assert_norms_mcp_available() -> None:
+def _norms_mcp_python() -> Path:
+    """Путь к интерпретатору сервера норм — единственная точка подмены.
+
+    Отдельная функция, а не прямое чтение константы, нужна тестам проводки:
+    они проверяют, что runner прописывает MCP-сервер в конфиг codex и гасит
+    веб, — а не что ``norms/tools/venv/`` установлен в чекауте (он в gitignore,
+    и в свежем клоне его нет). Production-путь подмену не использует и читает
+    ту же константу, что и раньше, поэтому поведение по умолчанию прежнее:
+    нет интерпретатора — нормативная стадия падает закрыто.
+    """
+    return _NORMS_MCP_PYTHON
+
+
+def assert_norms_mcp_available(python_path: Path | None = None) -> None:
     """Проверить, что интерпретатор сервера норм на месте.
 
     Нормативные стадии падают закрыто: процитировать норму по памяти модели
@@ -296,11 +309,16 @@ def assert_norms_mcp_available() -> None:
     (``norms/tools/venv/``), поэтому в свежем клоне, worktree или контейнере его
     может не быть — без этой проверки codex обрывает сессию с невнятной
     ошибкой, а Claude молча теряет ``mcp__norms__*`` и отвечает по памяти.
+
+    ``python_path`` задаётся вызывающим, чтобы проверять ровно тот путь, который
+    будет прописан в конфиг codex (см. ``_tool_config_args``): иначе проверка и
+    проводка могли бы разъехаться. По умолчанию — ``_norms_mcp_python()``.
     """
-    if _NORMS_MCP_PYTHON.is_file():
+    interpreter = _norms_mcp_python() if python_path is None else Path(python_path)
+    if interpreter.is_file():
         return
     raise NormsMcpUnavailableError(
-        f"Сервер норм недоступен: не найден интерпретатор {_NORMS_MCP_PYTHON}. "
+        f"Сервер норм недоступен: не найден интерпретатор {interpreter}. "
         "Нормативные стадии не выполняются без базы норм (цитирование по памяти "
         "модели запрещено). Установка описана в norms/tools/README.md, раздел "
         "«Setup после clone»."
@@ -366,9 +384,10 @@ def _tool_config_args(allowed_tools: str | None) -> list[str]:
         if name.startswith(_NORMS_MCP_PREFIX)
     )
     if norms_tools:
-        assert_norms_mcp_available()
+        norms_python = _norms_mcp_python()
+        assert_norms_mcp_available(norms_python)
         args.extend([
-            "-c", f"mcp_servers.norms.command={json.dumps(str(_NORMS_MCP_PYTHON))}",
+            "-c", f"mcp_servers.norms.command={json.dumps(str(norms_python))}",
             "-c", f"mcp_servers.norms.args={json.dumps([str(_NORMS_MCP_SERVER)])}",
             "-c", "mcp_servers.norms.required=true",
             "-c", f"mcp_servers.norms.enabled_tools={json.dumps(norms_tools)}",

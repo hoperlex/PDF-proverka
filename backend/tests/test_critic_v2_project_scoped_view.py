@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -262,6 +263,60 @@ def test_endpoint_does_not_import_pipeline_modules():
 INDEX_HTML = _PROJECT_ROOT / "frontend" / "index.html"
 APP_JS = _PROJECT_ROOT / "frontend" / "static" / "js" / "app.js"
 
+# Маркеры проектного Critic v2 в вёрстке. Оба принадлежат самой фиче, поэтому
+# переживают удаление соседних вкладок — в отличие от прежних якорей.
+CV2_VIEW_MARKER = '<div v-if="currentView === \'critic-v2-project\'"'
+CV2_TAB_MARKER = "project-tab project-tab--experimental"
+CV2_SUB_TABS_MARKER = 'class="cv2-sub-tabs"'
+
+_DIV_TOKEN_RE = re.compile(r"<div\b|</div\s*>")
+
+
+def _view_block(html: str, marker: str = CV2_VIEW_MARKER) -> str:
+    """Вырезать блок вида по балансу тегов `<div>`, а не по соседней вёрстке.
+
+    Раньше конец блока искали по «якорям-соседям» (текст вкладки «Проработка
+    замечаний», затем `</div><!-- /main-area -->`). Вкладку удалили намеренно в
+    aeb0b2f2 (2026-07-06), и «блок» молча растянулся с ~39 КБ до ~113 КБ чужой
+    разметки — вплоть до stage-comparison с его загрузкой папки, из-за чего
+    тест падал на файловом инпуте чужого вида. Баланс тегов не зависит от того,
+    что лежит рядом в index.html.
+    """
+    start = html.find(marker)
+    assert start >= 0, f"project-scoped view block not found: {marker}"
+    depth = 0
+    for match in _DIV_TOKEN_RE.finditer(html, start):
+        depth += 1 if match.group(0).startswith("<div") else -1
+        if depth == 0:
+            block = html[start:match.end()]
+            # Страховка от вырожденного среза: если разметку вида перепишут,
+            # тест обязан упасть на этом assert, а не «пройти» на пустой строке.
+            assert CV2_SUB_TABS_MARKER in block, (
+                "cv2 view block extracted without its sub-tab strip"
+            )
+            return block
+    raise AssertionError(f"unbalanced <div> after marker: {marker}")
+
+
+def _open_tag(html: str, marker: str, tag: str = "button") -> str:
+    """Вернуть открывающий тег `<tag ...>`, внутри которого лежит `marker`."""
+    pos = html.find(marker)
+    assert pos > 0, f"marker not found in index.html: {marker}"
+    start = html.rfind(f"<{tag}", 0, pos)
+    assert start >= 0, f"{marker!r} is not inside <{tag}>"
+    quote = ""
+    for index in range(start, len(html)):
+        char = html[index]
+        if quote:
+            if char == quote:
+                quote = ""
+        elif char in "\"'":
+            quote = char
+        elif char == ">":
+            assert index > pos, f"{marker!r} is outside the <{tag}> open tag"
+            return html[start:index + 1]
+    raise AssertionError(f"unterminated <{tag}> tag before {marker!r}")
+
 
 def test_frontend_has_per_project_critic_v2_button():
     """После merge верхняя кнопка ведёт на /critic-v2-disagreements
@@ -269,18 +324,27 @@ def test_frontend_has_per_project_critic_v2_button():
 
     После introduction inline Critic v2 в обычной таблице "Замечания" сама
     кнопка спрятана за dev-флагом cv2DebugVisible, но её код ОСТАЁТСЯ в HTML
-    (для разработчика, открывающего route напрямую)."""
+    (для разработчика, открывающего route напрямую).
+
+    Якорь — собственный класс вкладки `project-tab--experimental`, а не текст
+    соседней вкладки: соседей удаляют (aeb0b2f2 убрал «Проработка замечаний»),
+    и тест не должен от этого краснеть."""
     html = INDEX_HTML.read_text(encoding="utf-8")
     # Top-tab уходит на disagreements route (default sub-mode).
     assert "/critic-v2-disagreements'" in html
     assert "currentView === 'critic-v2-project'" in html
-    # Появляется после «Проработка замечаний».
-    discuss_pos = html.find("Проработка замечаний")
-    btn_pos = html.find("currentView === 'critic-v2-project'")
-    assert 0 < discuss_pos < btn_pos
+    # Старый top-tab текст больше не присутствует: sub-mode выбирается внутри
+    # вида, а не отдельной вкладкой проекта.
+    assert "Critic v2: Расхождения" not in html
+    # Sub-tab strip внутри вида (4 вкладки) — на месте.
+    assert CV2_SUB_TABS_MARKER in html
+
+    # Единственная экспериментальная вкладка проекта — она же кнопка входа.
+    tag = _open_tag(html, CV2_TAB_MARKER, "button")
+    assert "currentView === 'critic-v2-project'" in tag
+    assert "/critic-v2-disagreements'" in tag
     # Кнопка скрыта за dev-флагом — не показывается обычному инженеру.
-    btn_block = html[btn_pos - 200:btn_pos + 50]
-    assert 'v-if="cv2DebugVisible"' in btn_block, (
+    assert 'v-if="cv2DebugVisible"' in tag, (
         "project-scoped Critic v2 button must be hidden behind cv2DebugVisible flag"
     )
     # Legacy hash /critic-v2 router всё ещё существует в JS.
@@ -292,16 +356,11 @@ def test_frontend_view_block_has_no_file_input():
     """
     The project-scoped view block must not contain a file <input>:
     data comes from the backend endpoint, not user upload.
+
+    Границу блока задаёт баланс `<div>` от маркера вида (см. `_view_block`),
+    а не соседняя разметка: маркер принадлежит самой фиче.
     """
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    # Locate the explicit view-block marker (the <div v-if=...>),
-    # not the navigation button which uses the same currentView token.
-    marker = '<div v-if="currentView === \'critic-v2-project\'"'
-    start = html.find(marker)
-    assert start >= 0, "project-scoped view block not found"
-    end = html.find("</div><!-- /main-area -->", start)
-    assert end > start
-    block = html[start:end]
+    block = _view_block(INDEX_HTML.read_text(encoding="utf-8"))
     assert '<input type="file"' not in block
 
 
@@ -328,36 +387,26 @@ def test_frontend_feedback_export_includes_scope():
 # ──────────────────────────────────────────────────────────────────────────────
 # "Critic v2: Расхождения" entry-point (per-project disagreements view).
 #
-# The reviewer must be able to open the project page, click a button right after
-# "Проработка замечаний", and land on a project-scoped Critic v2 view that is
-# already filtered to disagreements with the expert. Same endpoint, same view —
-# only the default filter and the feedback-export scope change.
+# The reviewer must be able to open the project page, click the experimental
+# Critic v2 tab, and land on a project-scoped view that is already filtered to
+# disagreements with the expert. Same endpoint, same view — only the default
+# filter and the feedback-export scope change.
 # ──────────────────────────────────────────────────────────────────────────────
 
-
-def test_frontend_has_critic_v2_button_after_discussions():
-    """Spec §3 (post-merge): единый top-tab «Critic v2» сразу после
-    «Проработка замечаний». По умолчанию открывает sub-mode 'disagreements'
-    (через legacy hash /critic-v2-disagreements).
-
-    После inline-Critic-v2 рефакторинга entry скрыта за dev-флагом, но порядок
-    в исходнике сохраняется — для разработчика, который явно включит флаг."""
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    # Старый top-tab текст больше не присутствует.
-    assert "Critic v2: Расхождения" not in html
-    # Единственная экспериментальная вкладка проекта.
-    btn_pos = html.find("project-tab project-tab--experimental")
-    discuss_pos = html.find("Проработка замечаний")
-    assert btn_pos > 0 and discuss_pos > 0
-    assert btn_pos > discuss_pos, \
-        "Critic v2 top-tab must come AFTER 'Проработка замечаний'"
-    # Entry скрыта за dev-флагом
-    snippet = html[btn_pos - 150:btn_pos + 100]
-    assert 'v-if="cv2DebugVisible"' in snippet, (
-        "experimental top-tab must be guarded by cv2DebugVisible"
-    )
-    # Sub-tab strip с 4 вкладками внутри view.
-    assert 'class="cv2-sub-tabs"' in html
+# УДАЛЁН тест `test_frontend_has_critic_v2_button_after_discussions`.
+#
+# Он проверял порядок вкладки «Critic v2» ОТНОСИТЕЛЬНО вкладки «Проработка
+# замечаний». Эта вкладка удалена намеренно коммитом aeb0b2f2 (2026-07-06,
+# «feat(ui): удалена вкладка «Проработка замечаний»»): убраны таб, view-блок
+# (~456 строк) и роут-хендлеры. Утверждение «Critic v2 идёт после Проработки
+# замечаний» стало неопределённым — сравнивать не с чем, и никакой правкой
+# теста его не восстановить.
+#
+# Проверки, которые в нём были осмысленны и без удалённого соседа, перенесены в
+# `test_frontend_has_per_project_critic_v2_button`: единственная
+# экспериментальная вкладка проекта существует, скрыта за `cv2DebugVisible`,
+# ведёт на /critic-v2-disagreements; старого текста «Critic v2: Расхождения»
+# в вёрстке нет; sub-tab strip (`cv2-sub-tabs`) на месте.
 
 
 def test_frontend_top_tab_uses_disagreements_route_by_default():
@@ -432,13 +481,15 @@ def test_frontend_disagreements_banner_text():
 
 
 def test_frontend_project_view_has_no_file_input_even_in_disagreements_mode():
-    """The project-scoped view is loaded from backend; no file input anywhere."""
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    marker = '<div v-if="currentView === \'critic-v2-project\'"'
-    start = html.find(marker)
-    assert start >= 0
-    end = html.find("</div><!-- /main-area -->", start)
-    block = html[start:end]
+    """The project-scoped view is loaded from backend; no file input anywhere.
+
+    Отличие от `test_frontend_view_block_has_no_file_input`: здесь сначала
+    доказывается, что вырезанный блок действительно содержит разметку режима
+    расхождений (переключатели режимов), — иначе «нет инпута» ничего не значит.
+    """
+    block = _view_block(INDEX_HTML.read_text(encoding="utf-8"))
+    assert "cv2-project-mode-toggle" in block
+    assert "Только расхождения" in block
     assert '<input type="file"' not in block
 
 

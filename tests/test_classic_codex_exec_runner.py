@@ -207,11 +207,24 @@ async def test_codex_runner_attaches_images_to_exec_command(monkeypatch, tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_codex_runner_configures_required_norms_mcp_and_disables_web(monkeypatch):
+async def test_codex_runner_configures_required_norms_mcp_and_disables_web(
+    monkeypatch, tmp_path
+):
+    """Тест ПРОВОДКИ: runner прописывает сервер норм в конфиг и гасит веб.
+
+    Работоспособность самого сервера норм здесь не проверяется — её место в
+    проверках старта приложения. Интерпретатор лежит в gitignore
+    (`norms/tools/venv/`), поэтому путь подменяется через `_norms_mcp_python`:
+    иначе тест проводки падал бы в любом чистом чекауте.
+    """
     import backend.app.services.llm.codex_runner as codex_runner
 
     captured = {}
     monkeypatch.setattr(codex_runner, "find_codex_cli", lambda: "/usr/bin/codex")
+
+    fake_norms_python = tmp_path / "norms-venv-python"
+    fake_norms_python.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(codex_runner, "_norms_mcp_python", lambda: fake_norms_python)
 
     async def fake_run_command(cmd, **kwargs):
         captured["cmd"] = cmd
@@ -243,7 +256,7 @@ async def test_codex_runner_configures_required_norms_mcp_and_disables_web(monke
     assert 'web_search="disabled"' in config_values
     assert "mcp_servers.norms.required=true" in config_values
     assert 'mcp_servers.norms.default_tools_approval_mode="approve"' in config_values
-    assert any(value.startswith("mcp_servers.norms.command=") for value in config_values)
+    assert f"mcp_servers.norms.command={json.dumps(str(fake_norms_python))}" in config_values
     assert any(value.startswith("mcp_servers.norms.args=") for value in config_values)
     enabled = next(
         value for value in config_values
@@ -1109,18 +1122,26 @@ async def test_codex_json_stage_valid_json_runs_once(tmp_path, monkeypatch):
     assert exit_code == 0
 
 
-def test_codex_json_mode_wires_norms_mcp_when_stage_declares_tools():
+def test_codex_json_mode_wires_norms_mcp_when_stage_declares_tools(monkeypatch, tmp_path):
     """JSON-вход codex обязан подключать сервер норм так же, как exec-вход.
 
     Регресс: `_tool_config_args` вклеивался только в run_codex_exec, а
     norm_verify на codex уходит в JSON-режим — и оставался вообще без MCP,
     сверяя статус норм по памяти модели. Молча, без единой ошибки.
+
+    Как и exec-двойник, это тест проводки: путь к интерпретатору подменён,
+    потому что `norms/tools/venv/` в gitignore и в чистом чекауте его нет.
     """
     from backend.app.core.config import NORM_VERIFY_TOOLS
+    from backend.app.services.llm import codex_runner
     from backend.app.services.llm.codex_runner import _json_tool_args
 
+    fake_norms_python = tmp_path / "norms-venv-python"
+    fake_norms_python.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(codex_runner, "_norms_mcp_python", lambda: fake_norms_python)
+
     args = _json_tool_args(NORM_VERIFY_TOOLS)
-    assert any("mcp_servers.norms.command=" in a for a in args)
+    assert f"mcp_servers.norms.command={json.dumps(str(fake_norms_python))}" in args
     assert "mcp_servers.norms.required=true" in args
 
 
