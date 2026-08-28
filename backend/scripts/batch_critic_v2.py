@@ -35,6 +35,11 @@ Usage examples:
 
     # Full run across all 109 projects
     python backend/scripts/batch_critic_v2.py --all --output-dir /tmp/batch_all
+
+    # Alternative projects root (synthetic corpus in tests, sandbox copy, ...)
+    # Default stays <repo>/projects — production behaviour is unchanged.
+    python backend/scripts/batch_critic_v2.py \\
+        --projects-root /tmp/corpus --section EOM --output-dir /tmp/batch_synth
 """
 from __future__ import annotations
 
@@ -84,16 +89,19 @@ def discover_projects(
     limit: Optional[int] = None,
     project_patterns: Optional[list[str]] = None,
     all_projects: bool = False,
+    projects_root: Optional[Path] = None,
 ) -> list[Path]:
     """
     Discover project directories that have 03_findings.json.
 
+    projects_root: root to scan (default: module-level PROJECTS_ROOT = <repo>/projects).
     Returns list of project dirs (parent of _output/).
     """
-    findings_files = sorted(PROJECTS_ROOT.rglob("03_findings.json"))
+    root = Path(projects_root) if projects_root is not None else PROJECTS_ROOT
+    findings_files = sorted(root.rglob("03_findings.json"))
 
     if not findings_files:
-        print(f"  No 03_findings.json found under {PROJECTS_ROOT}", file=sys.stderr)
+        print(f"  No 03_findings.json found under {root}", file=sys.stderr)
         return []
 
     # Filter by explicit patterns
@@ -643,6 +651,10 @@ Examples:
 """,
     )
     parser.add_argument(
+        "--projects-root", type=Path, default=PROJECTS_ROOT,
+        help=f"Root directory for projects (default: {PROJECTS_ROOT}).",
+    )
+    parser.add_argument(
         "--section", default=None,
         help="Filter by discipline section (EOM, AR, AI, GP, OV, PT, SS, TX, ...).",
     )
@@ -700,11 +712,12 @@ Examples:
         limit=limit,
         project_patterns=args.projects,
         all_projects=args.all_projects,
+        projects_root=args.projects_root,
     )
 
     if not projects:
         print("ERROR: No projects found matching criteria.", file=sys.stderr)
-        print(f"  Searched in: {PROJECTS_ROOT}", file=sys.stderr)
+        print(f"  Searched in: {args.projects_root}", file=sys.stderr)
         if args.section:
             print(f"  Section filter: {args.section}", file=sys.stderr)
         return 1

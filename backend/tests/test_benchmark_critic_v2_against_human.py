@@ -99,6 +99,121 @@ def _load_script():
     return mod
 
 
+# ─── Synthetic projects/ root ────────────────────────────────────────────────
+#
+# The benchmark used to be pointed at the customer corpus in <repo>/projects
+# (pairs of 03_findings.json + expert_review.json). That corpus is gitignored
+# and never exists in CI. Everything below builds an equivalent corpus in
+# tmp_path and is handed to the CLI via --projects-root, so the tests check
+# benchmark LOGIC (matching, classification, triage), not data presence.
+
+# Distinct subjects on purpose: near-identical findings collapse during dedup
+# and are reported as `merge`, which would blur the accept/reject expectations.
+_TOPICS: list[tuple[str, str, str, str, str]] = [
+    ("cable",
+     "Кабель питания насосной станции выполнен ВВГнг-LS вместо ВВГнг-FRLS",
+     "На листе 3 для линии противопожарного насоса применён кабель ВВГнг-LS 4х6, требуется FRLS",
+     "Заменить кабель на ВВГнг-FRLS 4х6",
+     "СП 6.13130.2021, п. 4.2"),
+    ("grounding",
+     "Отсутствует система уравнивания потенциалов в электрощитовой",
+     "На листе 5 в помещении электрощитовой не показана основная система уравнивания потенциалов",
+     "Предусмотреть ОСУП с подключением к ГЗШ",
+     "СП 256.1325800.2016, п. 8.3"),
+    ("lighting",
+     "Аварийное освещение эвакуационных путей не запитано отдельной линией",
+     "На листе 7 светильники эвакуационного освещения подключены к общей групповой линии",
+     "Выделить отдельную группу аварийного освещения от панели ЩАО",
+     "СП 52.13330.2016, п. 7.6"),
+    ("openings",
+     "Не показаны отверстия под прокладку магистральных лотков в стене оси 4",
+     "На листе 9 в стене по оси 4 отсутствуют проёмы для магистральных лотков",
+     "Показать проёмы с отметками и размерами, согласовать со смежниками",
+     "СП 70.13330.2012, п. 5.7"),
+    ("marks",
+     "Не указана отметка низа закладной детали в узле крепления щита",
+     "На листе 11 в узле крепления щита нет отметки низа закладной детали",
+     "Проставить отметку низа закладной детали в узле",
+     "ГОСТ 21.501-2018, п. 5.4"),
+]
+
+
+def _topic_finding(fid: str, topic: int, with_evidence: bool = True) -> dict:
+    """Finding on a distinct subject; without evidence it is rejected by the critic."""
+    category, problem, description, solution, norm = _TOPICS[topic % len(_TOPICS)]
+    evidence = (
+        [{"block_id": f"BLK-{fid}-A", "type": "image", "page": topic + 1},
+         {"block_id": f"BLK-{fid}-B", "type": "text", "page": topic + 1}]
+        if with_evidence else []
+    )
+    return {
+        "id": fid,
+        "severity": "КРИТИЧЕСКОЕ",
+        "category": category,
+        "problem": problem,
+        "title": problem,
+        "description": description,
+        "solution": solution,
+        "risk": "Нарушение требований пожарной и электробезопасности при эксплуатации здания.",
+        "sheet": f"Лист {topic + 1}",
+        "page": topic + 1,
+        "evidence": evidence,
+        "related_block_ids": [b["block_id"] for b in evidence],
+        "source_block_ids": [b["block_id"] for b in evidence][:1],
+        "norm": norm,
+    }
+
+
+# Reproducible per-project mix (see _corpus_findings / _corpus_decisions):
+#   F-001 evidence, human accepted → critic accept  → agreement (true_accept)
+#   F-002 evidence, human accepted → critic accept  → agreement (true_accept)
+#   F-003 evidence, human rejected → critic accept  → critic_too_soft (false_accept)
+#   F-004 no evidence, human accepted → critic reject → critic_too_strict (false_reject)
+#   F-005 no evidence, human rejected → critic reject → agreement (true_reject)
+CORPUS_TOTAL = 5
+CORPUS_HUMAN_ACCEPTED = 3
+CORPUS_HUMAN_REJECTED = 2
+CORPUS_AGREEMENT = 3
+CORPUS_FALSE_ACCEPT = 1
+CORPUS_FALSE_REJECT = 1
+
+
+def _corpus_findings() -> list[dict]:
+    return [
+        _topic_finding("F-001", 0),
+        _topic_finding("F-002", 1),
+        _topic_finding("F-003", 2),
+        _topic_finding("F-004", 3, with_evidence=False),
+        _topic_finding("F-005", 4, with_evidence=False),
+    ]
+
+
+def _corpus_decisions() -> list[dict]:
+    return [
+        _human_decision("F-001", "accepted"),
+        _human_decision("F-002", "accepted"),
+        _human_decision("F-003", "rejected", "Замечание снято на совещании"),
+        _human_decision("F-004", "accepted"),
+        _human_decision("F-005", "rejected", "Дубль соседнего замечания"),
+    ]
+
+
+def _make_synthetic_root(tmp_path: Path) -> Path:
+    """Synthetic projects/ root: 2 AR projects + 1 KJ project, identical corpus."""
+    root = tmp_path / "projects"
+    for name in ("AR-P1", "AR-P2"):
+        _make_project(root / "AR", name, _corpus_findings(), _corpus_decisions(), section="AR")
+    _make_project(root / "KJ", "KJ-P1", _corpus_findings(), _corpus_decisions(), section="KJ")
+    return root
+
+
+def _snapshot_tree(root: Path) -> dict[str, str]:
+    return {
+        str(p): p.read_text(encoding="utf-8")
+        for p in sorted(root.rglob("*.json"))
+    }
+
+
 # ─── Imports ─────────────────────────────────────────────────────────────────
 
 class TestImports:
@@ -556,17 +671,37 @@ class TestDiscoverProjects:
     def setup_method(self):
         self.mod = _load_script()
 
-    def test_discovers_real_projects(self):
-        projects = self.mod.discover_projects_with_human_decisions(limit=3)
-        assert len(projects) > 0
-        assert len(projects) <= 3
+    # NOTE: `test_discovers_real_projects` asserted that the customer corpus in
+    # <repo>/projects is present on disk — gitignored production data that never
+    # exists in CI — and was removed. `test_section_filter_ar` also checked real
+    # filtering logic, so it was kept but re-pointed at a synthetic root.
 
-    def test_section_filter_ar(self):
-        projects = self.mod.discover_projects_with_human_decisions(section="AR", limit=5)
-        assert len(projects) >= 1
+    def test_discovers_projects_under_given_root(self, tmp_path):
+        root = _make_synthetic_root(tmp_path)
+        projects = self.mod.discover_projects_with_human_decisions(projects_root=root)
+        assert sorted(p.name for p in projects) == ["AR-P1", "AR-P2", "KJ-P1"]
+
+    def test_section_filter_ar(self, tmp_path):
+        root = _make_synthetic_root(tmp_path)
+        projects = self.mod.discover_projects_with_human_decisions(
+            section="AR", limit=5, projects_root=root
+        )
+        assert sorted(p.name for p in projects) == ["AR-P1", "AR-P2"]
         for p in projects:
             section = self.mod._detect_section(p)
             assert section.upper() == "AR"
+
+    def test_limit_caps_discovery(self, tmp_path):
+        root = _make_synthetic_root(tmp_path)
+        projects = self.mod.discover_projects_with_human_decisions(
+            limit=2, projects_root=root
+        )
+        assert len(projects) == 2
+
+    def test_default_root_is_repo_projects_dir(self):
+        """Production default must stay <repo>/projects — the flag only overrides it."""
+        assert self.mod.PROJECTS_ROOT.name == "projects"
+        assert self.mod.PROJECTS_ROOT.parent == Path(__file__).resolve().parent.parent.parent
 
     def test_explicit_paths(self, tmp_path):
         f1 = _finding("F-001")
@@ -667,28 +802,50 @@ class TestWriteOutputs:
 # ─── CLI integration ──────────────────────────────────────────────────────────
 
 class TestCLI:
-    def test_cli_runs_on_real_ar_projects(self, tmp_path):
-        """CLI must run on real AR projects without error."""
-        result = subprocess.run(
-            [sys.executable, str(SCRIPT),
-             "--section", "AR", "--limit", "2",
-             "--output-dir", str(tmp_path), "--quiet"],
-            capture_output=True, text=True, timeout=60,
+    """
+    CLI contract on a synthetic projects root (--projects-root).
+
+    These tests used to run against the customer corpus in <repo>/projects
+    (pairs of 03_findings.json + expert_review.json). It is gitignored and absent
+    in CI, so the CLI exited with rc=1 and no artifact was produced. The corpus is
+    now built in tmp_path, which makes the checks stronger: the expected numbers
+    of agreements, false rejects and false accepts are known up front.
+    """
+
+    def _run(self, root: Path, out_dir: Path, *extra: str, timeout: int = 60):
+        return subprocess.run(
+            [
+                sys.executable, str(SCRIPT),
+                "--projects-root", str(root),
+                "--output-dir", str(out_dir),
+                "--quiet",
+                *extra,
+            ],
+            capture_output=True, text=True, timeout=timeout,
         )
+
+    def test_cli_runs_on_ar_projects(self, tmp_path):
+        """CLI must run on the AR projects of the given root without error."""
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        result = self._run(root, out_dir, "--section", "AR", "--limit", "2")
         assert result.returncode == 0, (
             f"CLI failed (rc={result.returncode}):\n{result.stdout}\n{result.stderr}"
         )
-        assert (tmp_path / "human_benchmark_summary.json").exists()
-        assert (tmp_path / "human_benchmark_summary.md").exists()
+        assert (out_dir / "human_benchmark_summary.json").exists()
+        assert (out_dir / "human_benchmark_summary.md").exists()
+
+        summary = json.loads((out_dir / "human_benchmark_summary.json").read_text())
+        assert summary["run_config"]["projects_processed"] == 2
+        assert sorted(p["project"] for p in summary["per_project"]) == ["AR-P1", "AR-P2"]
 
     def test_cli_output_json_structure(self, tmp_path):
-        subprocess.run(
-            [sys.executable, str(SCRIPT),
-             "--section", "AR", "--limit", "2",
-             "--output-dir", str(tmp_path), "--quiet"],
-            capture_output=True, text=True, timeout=60,
-        )
-        summary = json.loads((tmp_path / "human_benchmark_summary.json").read_text())
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        result = self._run(root, out_dir, "--section", "AR", "--limit", "2")
+        assert result.returncode == 0, result.stderr
+
+        summary = json.loads((out_dir / "human_benchmark_summary.json").read_text())
         assert "overall_metrics" in summary
         assert "false_reject_count" in summary
         assert "per_project" in summary
@@ -697,88 +854,119 @@ class TestCLI:
         assert "false_accept" in om
         assert "agreement_rate" in om
 
+        # two projects × the fixed corpus → exact expectations
+        assert om["total_findings"] == 2 * CORPUS_TOTAL
+        assert om["total_mapped"] == 2 * CORPUS_TOTAL
+        assert om["human_accepted"] == 2 * CORPUS_HUMAN_ACCEPTED
+        assert om["human_rejected"] == 2 * CORPUS_HUMAN_REJECTED
+        assert om["agreement"] == 2 * CORPUS_AGREEMENT
+        assert om["false_reject"] == 2 * CORPUS_FALSE_REJECT
+        assert om["false_accept"] == 2 * CORPUS_FALSE_ACCEPT
+        assert om["critic_rejection_reasons_freq"]["no_evidence"] == 2 * 2
+
     def test_cli_records_have_classification(self, tmp_path):
-        subprocess.run(
-            [sys.executable, str(SCRIPT),
-             "--section", "AR", "--limit", "2",
-             "--output-dir", str(tmp_path), "--quiet"],
-            capture_output=True, text=True, timeout=60,
-        )
-        records = json.loads((tmp_path / "human_benchmark_records.json").read_text())
-        assert len(records) > 0
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        result = self._run(root, out_dir, "--section", "AR", "--limit", "2")
+        assert result.returncode == 0, result.stderr
+
+        records = json.loads((out_dir / "human_benchmark_records.json").read_text())
+        assert len(records) == 2 * CORPUS_TOTAL
         for r in records:
             assert "classification" in r
             assert r["classification"] in (
                 "agreement", "critic_too_strict", "critic_too_soft",
                 "needs_llm", "unmapped",
             )
+        by_class: dict[str, int] = {}
+        for r in records:
+            by_class[r["classification"]] = by_class.get(r["classification"], 0) + 1
+        assert by_class == {
+            "agreement": 2 * CORPUS_AGREEMENT,
+            "critic_too_strict": 2 * CORPUS_FALSE_REJECT,
+            "critic_too_soft": 2 * CORPUS_FALSE_ACCEPT,
+        }
 
     def test_cli_false_rejects_json_is_list(self, tmp_path):
-        subprocess.run(
-            [sys.executable, str(SCRIPT),
-             "--section", "AR", "--limit", "3",
-             "--output-dir", str(tmp_path), "--quiet"],
-            capture_output=True, text=True, timeout=60,
-        )
-        fr = json.loads((tmp_path / "false_rejects.json").read_text())
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        result = self._run(root, out_dir, "--section", "AR", "--limit", "2")
+        assert result.returncode == 0, result.stderr
+
+        fr = json.loads((out_dir / "false_rejects.json").read_text())
         assert isinstance(fr, list)
+        # F-004: human accepted a finding the critic rejected for lack of evidence
+        assert len(fr) == 2 * CORPUS_FALSE_REJECT
+        assert {rec["finding_id"] for rec in fr} == {"F-004"}
         for rec in fr:
             assert rec["classification"] == "critic_too_strict"
             assert rec["human_decision"] == "accepted"
             assert rec["critic_decision"] == "reject"
 
     def test_cli_production_not_modified(self, tmp_path):
-        """Production expert_review.json and 03_findings.json must not be changed."""
-        from pathlib import Path as P
-        review_files = sorted(P("projects").rglob("expert_review.json"))[:3]
-        findings_files = sorted(P("projects").rglob("03_findings.json"))[:3]
-        before_reviews = {str(p): p.read_text(encoding="utf-8") for p in review_files}
-        before_findings = {str(p): p.read_text(encoding="utf-8") for p in findings_files}
+        """Project source files (03_findings.json, expert_review.json) must not change."""
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        before = _snapshot_tree(root)
+        assert before, "synthetic corpus must contain project files to compare"
 
-        subprocess.run(
-            [sys.executable, str(SCRIPT),
-             "--section", "AR", "--limit", "2",
-             "--output-dir", str(tmp_path), "--quiet"],
-            capture_output=True, text=True, timeout=60,
-        )
-        for path_str, original in before_reviews.items():
-            assert P(path_str).read_text(encoding="utf-8") == original
-        for path_str, original in before_findings.items():
-            assert P(path_str).read_text(encoding="utf-8") == original
+        result = self._run(root, out_dir, "--section", "AR", "--limit", "2")
+        assert result.returncode == 0, result.stderr
 
-    def test_cli_no_real_projects_exits_1(self, tmp_path):
+        assert _snapshot_tree(root) == before, "benchmark must not touch project source files"
+
+    def test_cli_no_matching_projects_exits_1(self, tmp_path):
+        """A section nobody matches must exit 1 even when the root holds projects."""
+        root = _make_synthetic_root(tmp_path)
         result = subprocess.run(
             [sys.executable, str(SCRIPT),
+             "--projects-root", str(root),
              "--section", "XXXXNOTEXIST",
-             "--output-dir", str(tmp_path)],
+             "--output-dir", str(tmp_path / "out")],
             capture_output=True, text=True, timeout=30,
         )
         assert result.returncode == 1
 
-    def test_cli_with_llm_gate_mock(self, tmp_path):
+    def test_cli_default_root_used_when_flag_omitted(self, tmp_path):
+        """Without --projects-root the CLI must still look into <repo>/projects."""
         result = subprocess.run(
             [sys.executable, str(SCRIPT),
-             "--section", "AR", "--limit", "2",
-             "--llm-gate", "--llm-provider", "mock",
-             "--output-dir", str(tmp_path), "--quiet"],
-            capture_output=True, text=True, timeout=60,
+             "--section", "XXXXNOTEXIST",
+             "--output-dir", str(tmp_path / "out")],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert result.returncode == 1
+        repo_projects = Path(__file__).resolve().parent.parent.parent / "projects"
+        assert str(repo_projects) in result.stderr
+
+    def test_cli_with_llm_gate_mock(self, tmp_path):
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        result = self._run(
+            root, out_dir, "--section", "AR", "--limit", "2",
+            "--llm-gate", "--llm-provider", "mock",
         )
         assert result.returncode == 0, f"CLI failed: {result.stderr}"
-        assert (tmp_path / "human_benchmark_summary.json").exists()
+        assert (out_dir / "human_benchmark_summary.json").exists()
+        summary = json.loads((out_dir / "human_benchmark_summary.json").read_text())
+        assert summary["run_config"]["llm_gate_used"] is True
+        assert summary["run_config"]["llm_provider"] == "mock"
+        assert summary["provider_errors"] == []
 
     def test_cli_kj_section(self, tmp_path):
-        """KJ section has the most decisions per project."""
-        result = subprocess.run(
-            [sys.executable, str(SCRIPT),
-             "--section", "KJ", "--limit", "3",
-             "--output-dir", str(tmp_path), "--quiet"],
-            capture_output=True, text=True, timeout=90,
-        )
+        """Section filter must pick the KJ project only."""
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        result = self._run(root, out_dir, "--section", "KJ", "--limit", "3", timeout=90)
         assert result.returncode == 0, f"CLI failed: {result.stderr}"
-        summary = json.loads((tmp_path / "human_benchmark_summary.json").read_text())
+        summary = json.loads((out_dir / "human_benchmark_summary.json").read_text())
+        assert [p["project"] for p in summary["per_project"]] == ["KJ-P1"]
+        assert list(summary["by_section"]) == ["KJ"]
         om = summary["overall_metrics"]
-        assert om["total_findings"] > 0
-        assert om["human_accepted"] + om["human_rejected"] > 0
+        assert om["total_findings"] == CORPUS_TOTAL
+        assert om["human_accepted"] + om["human_rejected"] == CORPUS_TOTAL
+
+
 
 
 # ─── Real provider availability ──────────────────────────────────────────────
@@ -1080,77 +1268,112 @@ class TestProviderUnavailableSafeguard:
         assert "false_reject_introduced_by_llm" in summary["llm_impact"]
 
     def test_cli_with_max_candidates(self, tmp_path):
-        """--max-candidates argument accepted and runs without error."""
-        result = subprocess.run(
-            [sys.executable, str(SCRIPT),
-             "--section", "AR", "--limit", "1",
-             "--llm-gate", "--llm-provider", "mock",
-             "--max-candidates", "5",
-             "--output-dir", str(tmp_path), "--quiet"],
-            capture_output=True, text=True, timeout=60,
-        )
-        assert result.returncode == 0, f"CLI failed: {result.stderr}"
-        summary = json.loads((tmp_path / "human_benchmark_summary.json").read_text())
-        assert "llm_impact" in summary
+        """--max-candidates must actually cap how many findings reach the LLM gate."""
+        root = _make_synthetic_root(tmp_path)
+
+        def _llm_decisions_made(out_dir: Path, cap: str) -> int:
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT),
+                 "--projects-root", str(root),
+                 "--section", "AR", "--limit", "1",
+                 "--llm-gate", "--llm-provider", "mock",
+                 "--max-candidates", cap,
+                 "--output-dir", str(out_dir), "--quiet"],
+                capture_output=True, text=True, timeout=60,
+            )
+            assert result.returncode == 0, f"CLI failed: {result.stderr}"
+            summary = json.loads((out_dir / "human_benchmark_summary.json").read_text())
+            assert "llm_impact" in summary
+            breakdown = summary["llm_impact"]["taxonomy_reason_breakdown"]
+            return sum(breakdown.values())
+
+        # 3 findings of the corpus survive the deterministic critic and are eligible
+        uncapped = _llm_decisions_made(tmp_path / "out_all", "50")
+        assert uncapped == 3
+        capped = _llm_decisions_made(tmp_path / "out_capped", "2")
+        assert capped == 2
 
 
 class TestTriageIntegration:
-    """Test --triage flag integration in benchmark script."""
+    """
+    --triage flag integration, run against a synthetic projects root.
+
+    Previously these ran on the customer AR corpus in <repo>/projects and could
+    only assert that keys exist. On the fixed corpus the triage split is known:
+    3 findings stay visible, 2 evidence-less ones are hidden by the critic.
+    """
+
+    def _run_triage(self, root: Path, out_dir: Path):
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT),
+             "--projects-root", str(root),
+             "--section", "AR", "--limit", "1",
+             "--triage",
+             "--output-dir", str(out_dir), "--quiet"],
+            capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, f"CLI failed: {result.stderr}"
+        return result
 
     def test_triage_flag_produces_artifacts(self, tmp_path):
         """--triage flag creates triage artifacts without calling LLM."""
-        result = subprocess.run(
-            [sys.executable, str(SCRIPT),
-             "--section", "AR", "--limit", "1",
-             "--triage",
-             "--output-dir", str(tmp_path), "--quiet"],
-            capture_output=True, text=True, timeout=60,
-        )
-        assert result.returncode == 0, f"CLI failed: {result.stderr}"
-        assert (tmp_path / "critic_v2_triage.json").exists(), "Missing critic_v2_triage.json"
-        assert (tmp_path / "critic_v2_triage_metrics.json").exists(), "Missing critic_v2_triage_metrics.json"
-        assert (tmp_path / "critic_v2_hidden_by_critic.json").exists()
-        assert (tmp_path / "critic_v2_suggested_reject.json").exists()
-        assert (tmp_path / "triage_summary.md").exists()
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        self._run_triage(root, out_dir)
+        assert (out_dir / "critic_v2_triage.json").exists(), "Missing critic_v2_triage.json"
+        assert (out_dir / "critic_v2_triage_metrics.json").exists(), "Missing critic_v2_triage_metrics.json"
+        assert (out_dir / "critic_v2_hidden_by_critic.json").exists()
+        assert (out_dir / "critic_v2_suggested_reject.json").exists()
+        assert (out_dir / "triage_summary.md").exists()
+        # no LLM ran: triage is a pure post-pass over the deterministic decisions
+        summary = json.loads((out_dir / "human_benchmark_summary.json").read_text())
+        assert summary["run_config"]["llm_gate_used"] is False
+        assert json.loads((out_dir / "triage_summary.json").read_text())["llm_decisions_used"] == 0
 
     def test_triage_artifacts_have_correct_structure(self, tmp_path):
-        result = subprocess.run(
-            [sys.executable, str(SCRIPT),
-             "--section", "AR", "--limit", "1",
-             "--triage",
-             "--output-dir", str(tmp_path), "--quiet"],
-            capture_output=True, text=True, timeout=60,
-        )
-        assert result.returncode == 0, f"CLI failed: {result.stderr}"
-        metrics = json.loads((tmp_path / "critic_v2_triage_metrics.json").read_text())
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        self._run_triage(root, out_dir)
+
+        metrics = json.loads((out_dir / "critic_v2_triage_metrics.json").read_text())
         assert "total_findings" in metrics
         assert "workload_reduction_percent" in metrics
         assert "visible_by_default_count" in metrics
         assert "hidden_by_critic_count" in metrics
 
+        # one project × the fixed corpus: 3 accepted stay visible,
+        # the 2 evidence-less findings are hidden by the critic
+        assert metrics["total_findings"] == CORPUS_TOTAL
+        assert metrics["visible_by_default_count"] == 3
+        assert metrics["hidden_by_critic_count"] == 2
+        assert metrics["workload_reduction_percent"] == 40.0
+
+        hidden = json.loads((out_dir / "critic_v2_hidden_by_critic.json").read_text())
+        assert hidden["count"] == 2
+        assert {d["finding_id"].split(":")[-1] for d in hidden["decisions"]} == {"F-004", "F-005"}
+        for d in hidden["decisions"]:
+            assert d["visible_by_default"] is False
+            assert d["reason"] == "det_reject:no_evidence"
+
     def test_triage_does_not_modify_production_files(self, tmp_path):
-        """--triage must not modify any project production files."""
-        # Run benchmark with triage
-        result = subprocess.run(
-            [sys.executable, str(SCRIPT),
-             "--section", "AR", "--limit", "1",
-             "--triage",
-             "--output-dir", str(tmp_path), "--quiet"],
-            capture_output=True, text=True, timeout=60,
-        )
-        assert result.returncode == 0, f"CLI failed: {result.stderr}"
+        """--triage must not modify any project source file."""
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        before = _snapshot_tree(root)
+        assert before, "synthetic corpus must contain project files to compare"
+
+        self._run_triage(root, out_dir)
+
+        assert _snapshot_tree(root) == before, "triage must not touch project source files"
         # No 03_findings.json in output dir (that belongs to project dirs)
-        assert not (tmp_path / "03_findings.json").exists()
+        assert not (out_dir / "03_findings.json").exists()
 
     def test_triage_summary_contains_section_breakdown(self, tmp_path):
-        result = subprocess.run(
-            [sys.executable, str(SCRIPT),
-             "--section", "AR", "--limit", "1",
-             "--triage",
-             "--output-dir", str(tmp_path), "--quiet"],
-            capture_output=True, text=True, timeout=60,
-        )
-        assert result.returncode == 0, f"CLI failed: {result.stderr}"
-        summary = json.loads((tmp_path / "triage_summary.json").read_text())
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        self._run_triage(root, out_dir)
+
+        summary = json.loads((out_dir / "triage_summary.json").read_text())
         assert "metrics" in summary
         assert "section_breakdown" in summary
+        assert list(summary["section_breakdown"]) == ["AR"]

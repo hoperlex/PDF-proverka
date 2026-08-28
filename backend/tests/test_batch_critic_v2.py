@@ -111,6 +111,96 @@ def _bad_finding(fid: str) -> dict:
     }
 
 
+# ─── Synthetic projects/ root ────────────────────────────────────────────────
+#
+# The batch runner used to be pointed at the customer corpus in <repo>/projects,
+# which never exists in CI. Everything below builds an equivalent corpus in
+# tmp_path so that CLI contract tests check batch LOGIC, not data presence.
+
+# Distinct subjects on purpose: near-identical findings collapse in the dedup
+# phase and are reported as `merged`, not `accepted`.
+_TOPICS: list[tuple[str, str, str, str, str]] = [
+    ("cable",
+     "Кабель питания насосной станции выполнен ВВГнг-LS вместо ВВГнг-FRLS",
+     "На листе 3 для линии противопожарного насоса применён кабель ВВГнг-LS 4х6, требуется FRLS",
+     "Заменить кабель на ВВГнг-FRLS 4х6",
+     "СП 6.13130.2021, п. 4.2"),
+    ("grounding",
+     "Отсутствует система уравнивания потенциалов в электрощитовой",
+     "На листе 5 в помещении электрощитовой не показана основная система уравнивания потенциалов",
+     "Предусмотреть ОСУП с подключением к ГЗШ",
+     "СП 256.1325800.2016, п. 8.3"),
+    ("lighting",
+     "Аварийное освещение эвакуационных путей не запитано отдельной линией",
+     "На листе 7 светильники эвакуационного освещения подключены к общей групповой линии",
+     "Выделить отдельную группу аварийного освещения от панели ЩАО",
+     "СП 52.13330.2016, п. 7.6"),
+    ("switchboard",
+     "Не указан тип вводного автоматического выключателя ВРУ",
+     "На листе 2 в однолинейной схеме ВРУ у вводного аппарата отсутствует номинал и характеристика",
+     "Указать тип, номинальный ток и отключающую способность вводного аппарата",
+     "ГОСТ 32396-2013, п. 5.1"),
+]
+
+
+def _topic_finding(fid: str, topic: int) -> dict:
+    """Finding with valid evidence on a distinct subject → deterministic accept."""
+    category, problem, description, solution, norm = _TOPICS[topic % len(_TOPICS)]
+    return {
+        "id": fid,
+        "severity": "КРИТИЧЕСКОЕ",
+        "category": category,
+        "sheet": f"Лист {topic + 1}",
+        "page": topic + 1,
+        "problem": problem,
+        "description": description,
+        "solution": solution,
+        "risk": "Нарушение требований пожарной и электробезопасности при эксплуатации здания.",
+        "norm": norm,
+        "norm_quote": "Цитата пункта нормы для трассировки evidence...",
+        "evidence": [{"block_id": f"BLK-{fid}-A", "type": "image", "page": topic + 1},
+                     {"block_id": f"BLK-{fid}-B", "type": "text", "page": topic + 1}],
+        "related_block_ids": [f"BLK-{fid}-A", f"BLK-{fid}-B"],
+        "source_block_ids": [f"BLK-{fid}-A"],
+    }
+
+
+# Reproducible per-project mix: 4 accepted + 1 rejected (no_evidence).
+CORPUS_TOTAL = 5
+CORPUS_ACCEPTED = 4
+CORPUS_REJECTED = 1
+
+
+def _corpus_findings() -> list[dict]:
+    findings = [_topic_finding(f"F-{i:03d}", i) for i in range(CORPUS_ACCEPTED)]
+    findings.append(_bad_finding("F-900"))
+    return findings
+
+
+def _make_synthetic_root(tmp_path: Path) -> Path:
+    """
+    Build a synthetic projects/ root: 3 EOM projects + 1 AR project.
+
+    Every project holds the same reproducible corpus (see _corpus_findings),
+    a legacy 03_findings_review.json where every finding has verdict `pass`
+    and a 01_blocks_analysis.json listing every evidence block.
+    """
+    root = tmp_path / "projects"
+    for name in ("EOM-P1", "EOM-P2", "EOM-P3"):
+        _make_project(root / "EOM", name, _corpus_findings(), section="EOM",
+                      with_blocks=True, with_review=True)
+    _make_project(root / "AR", "AR-P1", _corpus_findings(), section="AR",
+                  with_blocks=True, with_review=True)
+    return root
+
+
+def _snapshot_tree(root: Path) -> dict[str, str]:
+    return {
+        str(p): p.read_text(encoding="utf-8")
+        for p in sorted(root.rglob("*.json"))
+    }
+
+
 # ─── Import tests ─────────────────────────────────────────────────────────────
 
 class TestBatchImports:
@@ -131,31 +221,47 @@ class TestBatchImports:
 # ─── Project discovery ────────────────────────────────────────────────────────
 
 class TestDiscoverProjects:
-    def test_discovers_real_projects(self):
-        """discover_projects should find real projects under projects/ root."""
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("batch_critic_v2", BATCH_SCRIPT)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        projects = mod.discover_projects(limit=5)
-        assert len(projects) > 0
-        assert len(projects) <= 5
+    # NOTE: `test_discovers_real_projects` and `test_section_filter` used to assert
+    # that the customer corpus in <repo>/projects is present on disk. That corpus is
+    # gitignored production data and never exists in CI, so both were removed.
+    # Discovery LOGIC below is checked on a synthetic root instead.
 
-    def test_section_filter(self):
+    def _load_batch(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("batch_critic_v2", BATCH_SCRIPT)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        projects = mod.discover_projects(section="EOM", limit=10)
-        assert len(projects) >= 1
+        return mod
 
-    def test_empty_result_for_nonexistent_section(self):
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("batch_critic_v2", BATCH_SCRIPT)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        projects = mod.discover_projects(section="XYZNONEXISTENT")
+    def test_discovers_projects_under_given_root(self, tmp_path):
+        mod = self._load_batch()
+        root = _make_synthetic_root(tmp_path)
+        projects = mod.discover_projects(projects_root=root)
+        assert sorted(p.name for p in projects) == ["AR-P1", "EOM-P1", "EOM-P2", "EOM-P3"]
+
+    def test_section_filter_keeps_only_matching_section(self, tmp_path):
+        mod = self._load_batch()
+        root = _make_synthetic_root(tmp_path)
+        projects = mod.discover_projects(section="EOM", limit=10, projects_root=root)
+        assert sorted(p.name for p in projects) == ["EOM-P1", "EOM-P2", "EOM-P3"]
+
+    def test_limit_caps_discovery(self, tmp_path):
+        mod = self._load_batch()
+        root = _make_synthetic_root(tmp_path)
+        projects = mod.discover_projects(section="EOM", limit=2, projects_root=root)
+        assert len(projects) == 2
+
+    def test_empty_result_for_nonexistent_section(self, tmp_path):
+        mod = self._load_batch()
+        root = _make_synthetic_root(tmp_path)
+        projects = mod.discover_projects(section="XYZNONEXISTENT", projects_root=root)
         assert projects == []
+
+    def test_default_root_is_repo_projects_dir(self):
+        """Production default must stay <repo>/projects — the flag only overrides it."""
+        mod = self._load_batch()
+        assert mod.PROJECTS_ROOT.name == "projects"
+        assert mod.PROJECTS_ROOT.parent == Path(__file__).resolve().parent.parent.parent
 
 
 # ─── run_one_project ──────────────────────────────────────────────────────────
@@ -396,37 +502,50 @@ class TestBuildSummary:
 # ─── CLI integration ─────────────────────────────────────────────────────────
 
 class TestCLIBatch:
-    def test_cli_section_eom_limit_3(self, tmp_path):
-        """CLI must run on 3 EOM projects without error."""
-        result = subprocess.run(
+    """
+    CLI contract on a synthetic projects root (--projects-root).
+
+    These tests used to point the CLI at the customer corpus in <repo>/projects.
+    That corpus is gitignored and absent in CI, so the runner exited with rc=1 and
+    no artifact was produced. The corpus is now built in tmp_path, which makes the
+    checks stronger: exact counts are known up front.
+    """
+
+    def _run(self, root: Path, out_dir: Path, *extra: str):
+        return subprocess.run(
             [
                 sys.executable, str(BATCH_SCRIPT),
-                "--section", "EOM",
-                "--limit", "3",
-                "--output-dir", str(tmp_path),
+                "--projects-root", str(root),
+                "--output-dir", str(out_dir),
                 "--quiet",
+                *extra,
             ],
             capture_output=True, text=True, timeout=60,
         )
+
+    def test_cli_section_eom_limit_3(self, tmp_path):
+        """CLI must run on exactly 3 EOM projects and ignore other sections."""
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        result = self._run(root, out_dir, "--section", "EOM", "--limit", "3")
         assert result.returncode == 0, (
             f"CLI failed (rc={result.returncode}):\n{result.stdout}\n{result.stderr}"
         )
-        assert (tmp_path / "batch_summary.json").exists()
-        assert (tmp_path / "batch_results.json").exists()
+        assert (out_dir / "batch_summary.json").exists()
+        assert (out_dir / "batch_results.json").exists()
+
+        results = json.loads((out_dir / "batch_results.json").read_text(encoding="utf-8"))
+        assert sorted(r["project"] for r in results) == ["EOM-P1", "EOM-P2", "EOM-P3"]
+        assert all(r["section"] == "EOM" for r in results)
 
     def test_cli_summary_structure(self, tmp_path):
-        """batch_summary.json must have expected keys."""
-        subprocess.run(
-            [
-                sys.executable, str(BATCH_SCRIPT),
-                "--section", "EOM",
-                "--limit", "2",
-                "--output-dir", str(tmp_path),
-                "--quiet",
-            ],
-            capture_output=True, text=True, timeout=60,
-        )
-        summary = json.loads((tmp_path / "batch_summary.json").read_text(encoding="utf-8"))
+        """batch_summary.json must have expected keys and correct totals."""
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        result = self._run(root, out_dir, "--section", "EOM", "--limit", "2")
+        assert result.returncode == 0, result.stderr
+
+        summary = json.loads((out_dir / "batch_summary.json").read_text(encoding="utf-8"))
         assert "totals" in summary
         assert "by_section" in summary
         assert "rejection_reasons" in summary
@@ -434,140 +553,173 @@ class TestCLIBatch:
         assert "evidence_breakdown" in summary
         assert "run_config" in summary
 
+        assert summary["run_config"]["projects_processed"] == 2
+        assert summary["totals"]["total_findings"] == 2 * CORPUS_TOTAL
+        assert summary["totals"]["accepted"] == 2 * CORPUS_ACCEPTED
+        assert summary["totals"]["rejected"] == 2 * CORPUS_REJECTED
+        assert summary["rejection_reasons"]["no_evidence"] == 2 * CORPUS_REJECTED
+        assert list(summary["by_section"]) == ["EOM"]
+        assert summary["by_section"]["EOM"]["projects"] == 2
+
     def test_cli_per_project_artifacts(self, tmp_path):
         """Each processed project must have its own artifact directory."""
-        subprocess.run(
-            [
-                sys.executable, str(BATCH_SCRIPT),
-                "--section", "EOM",
-                "--limit", "2",
-                "--output-dir", str(tmp_path),
-                "--quiet",
-            ],
-            capture_output=True, text=True, timeout=60,
-        )
-        results = json.loads((tmp_path / "batch_results.json").read_text(encoding="utf-8"))
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        result = self._run(root, out_dir, "--section", "EOM", "--limit", "2")
+        assert result.returncode == 0, result.stderr
+
+        results = json.loads((out_dir / "batch_results.json").read_text(encoding="utf-8"))
+        assert len(results) == 2
+        seen = set()
         for r in results:
             proj_dir = Path(r["output_dir"])
             assert proj_dir.exists()
+            assert proj_dir not in seen, "per-project artifact dirs must not collide"
+            seen.add(proj_dir)
             assert (proj_dir / "critic_v2_decisions.json").exists()
             assert (proj_dir / "critic_v2_metrics.json").exists()
             assert (proj_dir / "critic_v2_accepted.json").exists()
+            decisions = json.loads((proj_dir / "critic_v2_decisions.json").read_text(encoding="utf-8"))
+            assert len(decisions) == CORPUS_TOTAL
 
     def test_cli_production_not_modified(self, tmp_path):
-        """Production files must NOT be modified after batch run."""
-        from pathlib import Path as P
-        # Collect checksums of production files BEFORE run
-        findings_files = sorted(P("projects").rglob("03_findings.json"))[:3]
-        before = {str(p): p.read_text(encoding="utf-8") for p in findings_files}
+        """Source project files must NOT be modified after a batch run."""
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        before = _snapshot_tree(root)
+        assert before, "synthetic corpus must contain project files to compare"
 
-        subprocess.run(
-            [
-                sys.executable, str(BATCH_SCRIPT),
-                "--section", "EOM",
-                "--limit", "3",
-                "--output-dir", str(tmp_path),
-                "--quiet",
-            ],
-            capture_output=True, text=True, timeout=60,
-        )
+        result = self._run(root, out_dir, "--section", "EOM", "--limit", "3")
+        assert result.returncode == 0, result.stderr
 
-        # Verify unchanged
-        for path_str, original in before.items():
-            current = P(path_str).read_text(encoding="utf-8")
-            assert current == original, f"Production file was modified: {path_str}"
+        after = _snapshot_tree(root)
+        assert after == before, "batch run must not touch project source files"
 
     def test_cli_with_llm_gate_mock(self, tmp_path):
         """CLI with --llm-gate --llm-provider mock must work and create LLM artifacts."""
-        result = subprocess.run(
-            [
-                sys.executable, str(BATCH_SCRIPT),
-                "--section", "EOM",
-                "--limit", "2",
-                "--llm-gate",
-                "--llm-provider", "mock",
-                "--output-dir", str(tmp_path),
-                "--quiet",
-            ],
-            capture_output=True, text=True, timeout=60,
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        result = self._run(
+            root, out_dir, "--section", "EOM", "--limit", "2",
+            "--llm-gate", "--llm-provider", "mock",
         )
         assert result.returncode == 0, f"CLI failed: {result.stderr}"
-        results = json.loads((tmp_path / "batch_results.json").read_text(encoding="utf-8"))
+
+        summary = json.loads((out_dir / "batch_summary.json").read_text(encoding="utf-8"))
+        assert summary["run_config"]["llm_gate_used"] is True
+        assert summary["run_config"]["llm_provider"] == "mock"
+
+        results = json.loads((out_dir / "batch_results.json").read_text(encoding="utf-8"))
+        assert len(results) == 2
         for r in results:
+            assert r["llm_gate_used"] is True
             proj_dir = Path(r["output_dir"])
             assert (proj_dir / "critic_v2_final_decisions.json").exists()
             assert (proj_dir / "critic_v2_llm_decisions.json").exists()
+            assert (proj_dir / "critic_v2_borderline.json").exists()
+            # Only findings with evidence may be sent to the gate.
+            llm_decisions = json.loads(
+                (proj_dir / "critic_v2_llm_decisions.json").read_text(encoding="utf-8")
+            )
+            assert "F-900" not in {d["finding_id"] for d in llm_decisions}
 
     def test_cli_compare_legacy(self, tmp_path):
         """CLI --compare-legacy must produce comparison artifacts."""
-        result = subprocess.run(
-            [
-                sys.executable, str(BATCH_SCRIPT),
-                "--section", "EOM",
-                "--limit", "2",
-                "--compare-legacy",
-                "--output-dir", str(tmp_path),
-                "--quiet",
-            ],
-            capture_output=True, text=True, timeout=60,
-        )
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        result = self._run(root, out_dir, "--section", "EOM", "--limit", "2", "--compare-legacy")
         assert result.returncode == 0, f"CLI failed: {result.stderr}"
-        results = json.loads((tmp_path / "batch_results.json").read_text(encoding="utf-8"))
-        # At least one project should have legacy comparison (all EOM projects have 03_findings_review.json)
+
+        results = json.loads((out_dir / "batch_results.json").read_text(encoding="utf-8"))
         with_cmp = [r for r in results if r.get("comparison")]
-        assert len(with_cmp) >= 1
+        assert len(with_cmp) == 2
+        for r in with_cmp:
+            cmp = r["comparison"]
+            # legacy marks every finding `pass`; v2 accepts 4 and rejects the
+            # evidence-less one → 4 agreements + 1 "v2 stricter"
+            assert cmp["total_compared"] == CORPUS_TOTAL
+            assert cmp["agreement"] == CORPUS_ACCEPTED
+            assert cmp["disagree_v2_stricter"] == CORPUS_REJECTED
+            assert cmp["disagree_v2_looser"] == 0
+            assert (Path(r["output_dir"]) / "critic_v2_legacy_comparison.json").exists()
 
     def test_cli_with_blocks(self, tmp_path):
         """CLI --with-blocks must enable blocks_index per project."""
-        result = subprocess.run(
-            [
-                sys.executable, str(BATCH_SCRIPT),
-                "--section", "EOM",
-                "--limit", "2",
-                "--with-blocks",
-                "--output-dir", str(tmp_path),
-                "--quiet",
-            ],
-            capture_output=True, text=True, timeout=60,
-        )
-        assert result.returncode == 0
-        results = json.loads((tmp_path / "batch_results.json").read_text(encoding="utf-8"))
-        # At least one project should have blocks index
-        with_blocks = [r for r in results if r.get("blocks_index_used")]
-        assert len(with_blocks) >= 1
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        result = self._run(root, out_dir, "--section", "EOM", "--limit", "2", "--with-blocks")
+        assert result.returncode == 0, result.stderr
+
+        results = json.loads((out_dir / "batch_results.json").read_text(encoding="utf-8"))
+        assert len(results) == 2
+        assert all(r["blocks_index_used"] for r in results)
+        for r in results:
+            metrics = json.loads(
+                (Path(r["output_dir"]) / "critic_v2_metrics.json").read_text(encoding="utf-8")
+            )
+            assert metrics["blocks_index_used"] is True
+            assert metrics["blocks_count"] > 0
+
+    def test_cli_without_blocks_flag_leaves_index_unused(self, tmp_path):
+        """Default run must NOT load the blocks index even when the file exists."""
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        result = self._run(root, out_dir, "--section", "EOM", "--limit", "1")
+        assert result.returncode == 0, result.stderr
+        results = json.loads((out_dir / "batch_results.json").read_text(encoding="utf-8"))
+        assert all(not r["blocks_index_used"] for r in results)
 
     def test_cli_no_accept_in_zero_evidence_batch(self, tmp_path):
-        """Batch over real EOM projects: no accepted finding should have evidence_quality=none."""
-        result = subprocess.run(
-            [
-                sys.executable, str(BATCH_SCRIPT),
-                "--section", "EOM",
-                "--limit", "3",
-                "--output-dir", str(tmp_path),
-                "--quiet",
-            ],
-            capture_output=True, text=True, timeout=60,
-        )
-        assert result.returncode == 0
-        results = json.loads((tmp_path / "batch_results.json").read_text(encoding="utf-8"))
+        """No accepted finding may have evidence_quality=none; evidence-less one is rejected."""
+        root = _make_synthetic_root(tmp_path)
+        out_dir = tmp_path / "out"
+        result = self._run(root, out_dir, "--section", "EOM", "--limit", "3")
+        assert result.returncode == 0, result.stderr
+
+        results = json.loads((out_dir / "batch_results.json").read_text(encoding="utf-8"))
+        assert len(results) == 3
+        total_accepted = 0
         for r in results:
             proj_dir = Path(r["output_dir"])
             decisions = json.loads((proj_dir / "critic_v2_decisions.json").read_text())
+            by_id = {d["finding_id"]: d for d in decisions}
             for d in decisions:
                 if d["decision"] == "accept":
+                    total_accepted += 1
                     assert d["evidence_quality"] != "none", (
                         f"Accepted finding {d['finding_id']} has evidence_quality=none "
                         f"in project {r['project']}"
                     )
+            # the evidence-less finding must be rejected, with the reason recorded
+            assert by_id["F-900"]["decision"] == "reject"
+            assert by_id["F-900"]["reject_reason"] == "no_evidence"
+        # the check above is worthless if nothing was accepted at all
+        assert total_accepted == 3 * CORPUS_ACCEPTED
 
     def test_cli_invalid_section_exits_1(self, tmp_path):
-        """Invalid section must cause exit code 1."""
+        """Invalid section must cause exit code 1 even when the root has projects."""
+        root = _make_synthetic_root(tmp_path)
         result = subprocess.run(
             [
                 sys.executable, str(BATCH_SCRIPT),
+                "--projects-root", str(root),
                 "--section", "DOESNOTEXIST999",
-                "--output-dir", str(tmp_path),
+                "--output-dir", str(tmp_path / "out"),
             ],
             capture_output=True, text=True, timeout=30,
         )
         assert result.returncode == 1
+
+    def test_cli_default_root_used_when_flag_omitted(self, tmp_path):
+        """Without --projects-root the CLI must still look into <repo>/projects."""
+        result = subprocess.run(
+            [
+                sys.executable, str(BATCH_SCRIPT),
+                "--section", "DOESNOTEXIST999",
+                "--output-dir", str(tmp_path / "out"),
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert result.returncode == 1
+        repo_projects = Path(__file__).resolve().parent.parent.parent / "projects"
+        assert str(repo_projects) in result.stderr

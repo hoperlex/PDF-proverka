@@ -173,12 +173,14 @@ def discover_projects_with_human_decisions(
     section: Optional[str] = None,
     limit: Optional[int] = None,
     explicit_paths: Optional[list[Path]] = None,
+    projects_root: Optional[Path] = None,
 ) -> list[Path]:
     """
     Find project directories that have BOTH:
       - _output/03_findings.json
       - _output/expert_review.json with at least one finding decision
 
+    projects_root: root to scan (default: module-level PROJECTS_ROOT = <repo>/projects).
     Returns list of project dirs (parent of _output/).
     """
     if explicit_paths:
@@ -196,7 +198,8 @@ def discover_projects_with_human_decisions(
                 )
         return result
 
-    candidates = sorted(PROJECTS_ROOT.rglob("expert_review.json"))
+    root = Path(projects_root) if projects_root is not None else PROJECTS_ROOT
+    candidates = sorted(root.rglob("expert_review.json"))
     result = []
 
     for review_path in candidates:
@@ -1649,21 +1652,18 @@ Examples:
     )
     args = parser.parse_args()
 
-    # Update projects root if overridden
-    if args.projects_root != PROJECTS_ROOT:
-        import backend.scripts.benchmark_critic_v2_against_human as _self
-        _self.PROJECTS_ROOT = args.projects_root
-
     # Discover projects
     projects = discover_projects_with_human_decisions(
         section=args.section,
         limit=args.limit,
         explicit_paths=args.project_paths,
+        projects_root=args.projects_root,
     )
 
     if not projects:
         print("ERROR: No projects found with both 03_findings.json and expert_review.json",
               file=sys.stderr)
+        print(f"  Searched in: {args.projects_root}", file=sys.stderr)
         if args.section:
             print(f"  Section filter: {args.section}", file=sys.stderr)
         return 1

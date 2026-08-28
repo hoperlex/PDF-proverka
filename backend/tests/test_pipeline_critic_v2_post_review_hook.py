@@ -105,7 +105,10 @@ def manager_instance(monkeypatch: pytest.MonkeyPatch):
     log_calls: list[tuple[str, str]] = []
     pipeline_log_calls: list[tuple[str, str, dict]] = []
 
-    async def _log(job, msg, level="info"):
+    # Точная сигнатура production `_log` (manager.py:2921) — включая
+    # `stage_override`, который hook передаёт при вызове. Без него заглушка
+    # отставала от кода и роняла тесты на TypeError.
+    async def _log(job, msg, level="info", stage_override=None):
         log_calls.append((msg, level))
 
     # Точная сигнатура production `_update_pipeline_log` (manager.py:1457).
