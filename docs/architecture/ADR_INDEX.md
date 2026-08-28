@@ -1,6 +1,6 @@
 # Реестр архитектурных решений
 
-**Редакция:** 2026-08-27.<br>
+**Редакция:** 2026-08-28.<br>
 **Владелец нумерации:** technical lead/architecture owner.
 
 Номер ADR не переиспользуется. Принятое решение сохраняется в истории; замена
@@ -15,6 +15,7 @@
 | [ADR-0003](adr/ADR-0003-contracts-and-data-ownership.md) | accepted | contract-first, PostgreSQL/S3 ownership, outbox | при contract major v2 или смене source of truth |
 | [ADR-0004](adr/ADR-0004-nextjs-frontend.md) | accepted | Next.js/React/TypeScript и поэтапная миграция маршрутов | после первого сложного PDF/findings route |
 | [ADR-0005](adr/ADR-0005-parallel-delivery.md) | accepted | контрактные волны и file ownership для параллельной разработки | после двух волн, по lead time/conflicts |
+| [ADR-0006](adr/ADR-0006-target-repository-layout.md) | proposed | целевая раскладка репозитория, зоны владения и правила импортов | `W0-ARC-01` после `W0-DEC-01`; до W1-OPS-02 и W1-WEB-01 |
 | [ADR-0013](adr/ADR-0013-llm-reproducibility-and-cost.md) | proposed | prompt/norm/model routing versioning, replay и cost policy | `W0-ADR-04`, до analysis writer |
 | [ADR-0014](adr/ADR-0014-data-classification-retention-and-erasure.md) | proposed | data classes, retention matrix и erasure workflow | `W0-ADR-05`, до storage canary |
 | [ADR-0015](adr/ADR-0015-program-execution-model.md) | proposed | staffed team или human integrator + agents; WIP/forecast | `W0-DEC-01` |
@@ -64,7 +65,7 @@ outbox, immutable result package), действует Bible.
 
 | Кандидат | Owning task | Блокирует | Минимальное решение |
 | --- | --- | --- | --- |
-| ADR-0006 Target repository/package layout | `W0-ARC-01` | массовое создание нового skeleton | ownership zones, imports, dependency rules, composition root |
+| [ADR-0006](adr/ADR-0006-target-repository-layout.md) Target repository/package layout | `W0-ARC-01` | массовое создание нового skeleton | ownership zones, imports, dependency rules, composition root |
 | ADR-0007 PostgreSQL topology and migrations | `W0-ADR-01` | metadata shadow-write | driver/ORM, migration ownership, HA, backup, pooling, RPO/RTO |
 | ADR-0008 S3 provider and bucket policy | `W0-ADR-02` | `s3_shadow_write` | provider/region, keys, encryption, versioning, lifecycle, cost, C-07 |
 | ADR-0009 Durable jobs and outbox | `W0-ADR-03` | новый production job writer | state machine, leases, retries, outbox dispatcher, recovery |
