@@ -3,18 +3,9 @@
 # В основном устаревшие тесты / frontend-drift / ожидания старых флагов —
 # это НЕ регрессии прода. CI зелёный, если НЕТ новых падений сверх этого списка.
 # Пересоздать в свежем окружении: python scripts/ci_regression_gate.py --record
-# Кол-во: 44
+# Кол-во: 35
 
-backend.tests.test_critic_v2_project_scoped_view::test_frontend_has_critic_v2_button_after_discussions
-backend.tests.test_critic_v2_project_scoped_view::test_frontend_has_per_project_critic_v2_button
-backend.tests.test_critic_v2_triage_stage::test_default_config_flags_keep_critic_v2_disabled
-backend.tests.test_critic_v2_ui_project_local_priority::test_ar_project_id_with_pdf_suffix_resolves_to_folder_without_pdf
-backend.tests.test_critic_v2_ui_project_local_priority::test_project_local_artifact_summary_recomputed
-backend.tests.test_critic_v2_ui_project_local_priority::test_project_local_artifact_takes_priority
-backend.tests.test_critic_v2_ui_project_local_priority::test_project_local_works_even_without_global
 backend.tests.test_findings_review_critic_v2_llm_gate.TestMergeLLMDecisions::test_llm_reject_downgrades_accept
-backend.tests.test_gemma_prefetch::test_pregemma_window_eq_1
-tests.test_gemma_base_parallelism_config::test_default_is_one_backward_safe
 tests.test_norms_status_index_fallback::test_db_only_known_norm_is_known_unverified
 tests.test_norms_status_index_fallback::test_db_only_norm_not_authoritative_even_with_vault_present
 tests.test_norms_status_index_fallback::test_db_only_unknown_norm_is_missing
