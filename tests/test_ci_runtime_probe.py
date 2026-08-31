@@ -305,10 +305,11 @@ def test_socket_denied_is_reported_with_its_own_code(monkeypatch):
     assert "PermissionError" in outcome.message
 
 
-def test_inner_timeout_is_strictly_smaller_than_outer():
+@pytest.mark.parametrize("timeout", [0.01, 0.5, 1.0, 2.0, 10.0])
+def test_inner_timeout_is_strictly_smaller_than_outer(timeout: float):
     """Внутренний бюджет меньше внешнего — иначе hang неотличим от отказа."""
-    ctx = probe.ProbeContext(lane="network", enforce=False, timeout=10.0, environment={})
-    assert ctx.inner_timeout < ctx.timeout
+    ctx = probe.ProbeContext(lane="network", enforce=False, timeout=timeout, environment={})
+    assert 0 < ctx.inner_timeout < ctx.timeout
 
 
 @pytest.mark.parametrize("lane", ["unit", "contract", "integration", "network", "chaos"])
@@ -390,6 +391,8 @@ def test_all_emitted_reason_codes_are_registered():
 def test_usage_errors_exit_with_code_2():
     assert run_cli("--profile", "smoke").returncode == probe.EXIT_USAGE
     assert run_cli().returncode == probe.EXIT_USAGE
+    for value in ("0", "-1", "nan", "inf", "-inf"):
+        assert run_cli("--profile", "unit", "--timeout", value).returncode == probe.EXIT_USAGE
 
 
 # --------------------------------------------------------------------------
@@ -428,6 +431,9 @@ def test_dotenv_scan_returns_names_without_values(tmp_path):
         "# комментарий\n"
         "OPENROUTER_API_KEY=sk-secret-value\n"
         "export ANTHROPIC_API_KEY=another-secret\n"
+        "OPENAI_API_KEY=\n"
+        "GOOGLE_API_KEY=''\n"
+        "MISTRAL_API_KEY=  # intentionally unset\n"
         "AUDIT_UI_THEME=dark\n"
         "BROKEN LINE\n",
         encoding="utf-8",
@@ -435,6 +441,19 @@ def test_dotenv_scan_returns_names_without_values(tmp_path):
     names = probe._dotenv_secret_names(dotenv)
     assert names == ["ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"]
     assert all("secret-value" not in n and "another" not in n for n in names)
+
+
+def test_temp_fsync_failure_has_specific_reason_code(monkeypatch):
+    """Отказ fsync не должен маскироваться общим TEMP_WRITE_FAILED."""
+
+    def deny_fsync(_fd):
+        raise OSError("fsync denied (test)")
+
+    monkeypatch.setattr(probe.os, "fsync", deny_fsync)
+    ctx = probe.ProbeContext(lane="unit", enforce=False, timeout=2.0, environment={})
+    outcome = probe.check_temp_rw(ctx)
+    assert outcome.ok is False
+    assert outcome.reason_code == "TEMP_FSYNC_FAILED"
 
 
 def test_secret_scan_ignores_harness_variables(monkeypatch):

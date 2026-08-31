@@ -53,6 +53,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import platform
 import re
@@ -695,10 +696,22 @@ def check_temp_rw(ctx: "ProbeContext") -> Outcome:
             with source.open("wb") as fh:
                 fh.write(payload)
                 fh.flush()
-                os.fsync(fh.fileno())
+                try:
+                    os.fsync(fh.fileno())
+                except OSError as exc:
+                    return Outcome(
+                        False,
+                        "TEMP_FSYNC_FAILED",
+                        f"{type(exc).__name__}: {exc}",
+                        details,
+                    )
         except OSError as exc:
             return Outcome(False, "TEMP_WRITE_FAILED", f"{type(exc).__name__}: {exc}", details)
-        if source.read_bytes() != payload:
+        try:
+            written = source.read_bytes()
+        except OSError as exc:
+            return Outcome(False, "TEMP_WRITE_FAILED", f"{type(exc).__name__}: {exc}", details)
+        if written != payload:
             return Outcome(False, "TEMP_WRITE_FAILED", "прочитано не то, что записано", details)
         try:
             source.rename(target)
@@ -975,7 +988,7 @@ def _scan_provider_secrets() -> list[str]:
 
 
 def _dotenv_secret_names(path: Path) -> list[str]:
-    """Имена provider-ключей внутри .env. Значения не читаются и не хранятся."""
+    """Имена непустых provider-ключей внутри .env; значения не сохраняются."""
     names: set[str] = set()
     try:
         raw = path.read_text(encoding="utf-8", errors="replace")
@@ -985,8 +998,15 @@ def _dotenv_secret_names(path: Path) -> list[str]:
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
-        name = line.split("=", 1)[0].strip().removeprefix("export ").strip()
+        raw_name, raw_value = line.split("=", 1)
+        name = raw_name.strip().removeprefix("export ").strip()
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+            continue
+        value = raw_value.strip()
+        if not value or value in {"''", '""'} or value.startswith("#"):
+            # Пустой placeholder не является присутствующим credential. Это
+            # совпадает с проверкой os.environ выше, где пустое значение тоже
+            # пропускается.
             continue
         upper = name.upper()
         if upper in PROVIDER_SECRET_ENV or PROVIDER_SECRET_PATTERN.match(upper):
@@ -1396,7 +1416,7 @@ class ProbeContext:
     @property
     def inner_timeout(self) -> float:
         """Внутренний бюджет всегда меньше внешнего, чтобы отличать hang от отказа."""
-        return max(1.0, self.timeout / 2.0)
+        return self.timeout / 2.0
 
 
 def _git_commit() -> str | None:
@@ -1625,8 +1645,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.timeout <= 0:
-        print("[probe] --timeout должен быть положительным", file=sys.stderr)
+    if not math.isfinite(args.timeout) or args.timeout <= 0:
+        print("[probe] --timeout должен быть конечным положительным числом", file=sys.stderr)
         return EXIT_USAGE
     report = run_probe(args.profile, enforce=args.enforce, timeout=args.timeout)
     if args.as_json:
