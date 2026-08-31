@@ -1162,6 +1162,8 @@ def test_secret_from_child_cmdline_never_reaches_any_artifact(harness: Harness):
         assert secret not in text, f"секрет утёк в {name}"
 
     # Инвентарь при этом не опустел: дефект не «починен» удалением сведений.
+    # Allowlist не помечает вырезанное — он просто не публикует значение, —
+    # поэтому признаком служит не «[redacted]», а имя флага и отпечаток argv.
     junit_text = artifacts["JUnit"]
     assert "--token" in junit_text, "вместе с секретом исчезла вся диагностика"
-    assert "[redacted]" in junit_text
+    assert "argv:" in junit_text, "отпечаток обязан быть: без него процессы не сличить"

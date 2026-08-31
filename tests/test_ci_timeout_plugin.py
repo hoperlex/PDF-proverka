@@ -141,7 +141,15 @@ def test_child_processes_finds_own_child():
         assert len(found) == 1, "ребёнок не найден в инвентаре"
         entry = found[0]
         assert entry["state"] in {"R", "S"}, entry
-        assert "time.sleep(60)" in entry["cmdline"], entry
+        # Содержимое `-c` НЕ публикуется: это аргумент произвольной формы, и
+        # allowlist его не пропускает. Опознаётся процесс по исполняемому
+        # файлу, имени флага и отпечатку argv.
+        assert "python3" in entry["cmdline"], entry
+        assert "-c" in entry["cmdline"], entry
+        assert "time.sleep(60)" not in entry["cmdline"], (
+            "содержимое -c опубликовано — allowlist пропустил произвольный аргумент"
+        )
+        assert len(str(entry["argv_sha256"])) == 64, entry
         assert isinstance(entry["comm"], str) and entry["comm"]
     finally:
         reap(proc)
@@ -231,7 +239,10 @@ def test_child_processes_is_sorted_and_shaped():
         keys = [(-int(item["depth"]), int(item["pid"])) for item in children]
         assert keys == sorted(keys), "порядок обхода не от листьев к корню"
         for item in children:
-            assert set(item) == {"pid", "comm", "state", "cmdline", "depth"}
+            assert set(item) == {
+                "pid", "comm", "state", "cmdline", "depth",
+                "argc", "positional_count", "argv_sha256",
+            }
             assert int(item["depth"]) >= 1
             assert len(item["cmdline"]) <= 400, "cmdline обязан быть обрезан"
     finally:
@@ -650,9 +661,9 @@ def test_child_cmdline_is_redacted_at_the_source():
         assert mine, "ребёнок не попал в инвентарь — проверять нечего"
         cmdline = str(mine[0]["cmdline"])
         assert secret not in cmdline, f"секрет пережил инвентарь: {cmdline!r}"
-        # Диагностическая ценность сохранена: имя флага видно, вырезано значение.
+        # Диагностическая ценность сохранена: имя флага видно, значение — нет.
         assert "--token" in cmdline
-        assert "[redacted]" in cmdline
+        assert "argv:" in cmdline, "отпечаток обязан быть, иначе процессы не сличить"
     finally:
         reap(proc)
 
@@ -660,9 +671,43 @@ def test_child_cmdline_is_redacted_at_the_source():
 def test_redaction_helper_is_shared_not_forked():
     """Плагин пользуется общим модулем правила, а не своей копией.
 
-    Второе правило redaction в репозитории хуже, чем ни одного: они разойдутся,
-    и никто не заметит. Тест фиксирует, что импорт идёт из `ci_redaction`.
+    Второе правило публикации в репозитории хуже, чем ни одного: они
+    разойдутся, и никто не заметит. Тест фиксирует, что импорт идёт из
+    `ci_redaction`.
     """
     import ci_redaction
 
-    assert plug.redact_cmdline is ci_redaction.redact_cmdline
+    assert plug.safe_cmdline is ci_redaction.safe_cmdline
+    assert plug.summarize_argv is ci_redaction.summarize_argv
+
+
+@requires_proc
+def test_inventory_publishes_counters_and_digest():
+    """Запись инвентаря несёт отпечаток и счётчики, а не только строку.
+
+    Сокращённая строка сама по себе не даёт сличить два процесса: по ней не
+    видно, сколько сведений скрыто. Поэтому рядом публикуются полное число
+    аргументов, число скрытых позиционных и SHA-256 исходного argv.
+    """
+    proc = None
+    try:
+        proc = subprocess.Popen(
+            [
+                sys.executable, "-c",
+                "import sys,time; sys.stdout.write('ready\\n'); "
+                "sys.stdout.flush(); time.sleep(60)",
+                "позиционный-секрет",
+            ],
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        assert proc.stdout.readline().strip() == "ready"
+        mine = [item for item in plug.child_processes() if item["pid"] == proc.pid]
+        assert mine, "ребёнок не попал в инвентарь"
+        record = mine[0]
+        assert record["argc"] == 4
+        assert record["positional_count"] >= 1
+        assert len(str(record["argv_sha256"])) == 64
+        assert "позиционный-секрет" not in str(record)
+    finally:
+        reap(proc)

@@ -54,7 +54,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from ci_redaction import redact_cmdline  # noqa: E402
+from ci_redaction import (  # noqa: E402
+    render_argv_summary,
+    safe_cmdline,
+    summarize_argv,
+)
 
 #: Код возврата, по которому раннер отличает таймаут от обычного падения.
 #: 1–5 заняты самим pytest, поэтому берём заведомо свободный.
@@ -108,22 +112,38 @@ def _scan_proc() -> tuple[dict[int, list[int]], dict[int, dict[str, object]]]:
         try:
             raw = (entry / "cmdline").read_bytes()
             # argv разделён нулями. Разбираем ПО НИМ, а не склеиваем в строку:
-            # только так известны границы аргументов, а без границ невозможно
-            # вырезать значение из формы `--token SECRET`.
+            # без границ аргументов нельзя отличить флаг от значения, а значит
+            # и решить, что разрешено публиковать.
             argv = [
                 part.decode("utf-8", errors="replace")
                 for part in raw.split(b"\0")
                 if part
             ]
-            # Redaction стоит В ИСТОЧНИКЕ, а не перед каждой публикацией:
-            # cmdline уходит в JUnit, журнал событий И диагностику таймаута, и
-            # три точки очистки — это три возможности забыть одну (P-13:
-            # redaction — контракт, а не соглашение).
-            cmdline = redact_cmdline(argv)
+            # Публикуется не «очищенная» строка, а ТОЛЬКО безопасная по
+            # построению структура (P-13: разрешено то, что явно разрешено, а
+            # не то, что не запрещено). Позиционные аргументы не публикуются
+            # вовсе: именно они чаще всего и оказываются секретом.
+            #
+            # Сборка стоит В ИСТОЧНИКЕ, а не перед каждой публикацией: cmdline
+            # уходит в JUnit, журнал событий И диагностику таймаута, и три
+            # точки — это три возможности забыть одну.
+            summary = summarize_argv(argv)
+            cmdline = render_argv_summary(summary)
         except OSError:
             cmdline = ""
+            summary = {"argc": 0, "positional_count": 0, "argv_sha256": ""}
         tree.setdefault(ppid, []).append(pid)
-        info[pid] = {"pid": pid, "comm": comm, "state": state, "cmdline": cmdline[:400]}
+        info[pid] = {
+            "pid": pid,
+            "comm": comm,
+            "state": state,
+            "cmdline": cmdline[:400],
+            # Отпечаток и счётчики — чтобы по сокращённой строке всё же можно
+            # было сличить два процесса и понять, сколько сведений скрыто.
+            "argc": summary["argc"],
+            "positional_count": summary["positional_count"],
+            "argv_sha256": summary["argv_sha256"],
+        }
     return tree, info
 
 

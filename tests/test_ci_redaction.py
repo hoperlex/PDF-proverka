@@ -1,28 +1,35 @@
-"""Redaction командных строк CI-harness (P-13 ADR Bible).
+"""Безопасная публикация командных строк CI-harness (P-13 ADR Bible).
 
-Что доказывают эти тесты
-────────────────────────
-До правки инвентарь дочерних процессов публиковал сырой `/proc/*/cmdline` в
-трёх артефактах сразу: JUnit, журнал событий и диагностику таймаута.
-Синтетический `--token=TEST_SECRET_SENTINEL` действительно попадал во все три.
-P-13 объявляет redaction контрактом: секреты, presigned URL, cookies и ПДн не
-попадают ни в один канал по умолчанию.
+История дефекта
+───────────────
+Первая редакция инвентаря публиковала сырой `/proc/*/cmdline`: синтетический
+`--token=…` попадал в JUnit, журнал событий и диагностику таймаута.
 
-Здесь проверяется три вещи:
+Вторая редакция вырезала ИЗВЕСТНЫЕ формы секрета — и провалилась на всём, чего
+не знала: `--payload SECRET`, `--value=SECRET`, просто `SECRET` позиционным
+аргументом публиковались как есть. Значение попадало в артефакт не потому, что
+было признано безопасным, а потому, что регулярное выражение его не узнало.
+P-13 требует ровно обратного: «Попадание регулируется явным allowlist поля, а
+не отсутствием запрета».
 
-  1. ни одна известная форма секрета не переживает redaction;
-  2. полезная диагностика при этом сохраняется — иначе инвентарь перестанет
-     отвечать на вопрос «что за процесс висел», ради которого он и снимается;
-  3. локальное правило не разошлось с правилом репозитория
-     (`backend/app/core/action_log._scrub`). Оно продублировано сознательно —
-     импорт того модуля загружает `.env` и втаскивает боевой секрет в процесс
-     pytest (находка OPS03-F1), — поэтому расхождение обязано ловиться тестом,
-     а не обнаруживаться на инциденте.
+Третья редакция — allowlist. Публикуется только структура, безопасная по
+построению. Эти тесты доказывают три вещи:
+
+  1. произвольный секрет не публикуется НИ В КАКОЙ позиции — тест не
+     перечисляет известные формы, а требует, чтобы наружу не выходило ничего,
+     кроме явно разрешённого;
+  2. диагностическая ценность при этом сохраняется: исполняемый файл, имена
+     флагов, безопасные значения, счётчики и отпечаток;
+  3. сверка с правилом репозитория не загрязняет процесс pytest секретом —
+     она уехала в отдельный процесс с чистым окружением.
 
 Run: python -m pytest tests/test_ci_redaction.py -q -p no:cacheprovider
 """
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -34,172 +41,254 @@ if str(_ROOT) not in sys.path:
 if str(_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(_ROOT / "scripts"))
 
-from ci_redaction import redact_cmdline, redact_text  # noqa: E402
+from ci_redaction import (  # noqa: E402
+    argv_digest,
+    redact_text,
+    safe_cmdline,
+    summarize_argv,
+)
 
-SENTINEL = "TEST_SECRET_SENTINEL"
-REDACTED_MARK = "[redacted"
+SENTINEL = "SHORT_PRIVATE_SENTINEL"
 
-#: Корпус форм секрета. Каждая запись — argv, внутри которого спрятан SENTINEL
-#: (или иной секрет), и ни одна не имеет права его пережить.
-SECRET_ARGV: list[tuple[str, list[str]]] = [
-    ("флаг со значением через =", ["app", f"--token={SENTINEL}", "--port=8081"]),
-    ("флаг со значением через пробел", ["app", "--api-key", SENTINEL, "--verbose"]),
-    ("короткий флаг через пробел", ["app", "--secret", SENTINEL]),
-    ("переменная окружения в argv", ["env", f"OPENROUTER_API_KEY={SENTINEL}", "app"]),
-    ("password в присвоении", ["app", f"--password={SENTINEL}"]),
-    ("cookie", ["curl", "-H", f"Cookie: session={SENTINEL}"]),
-    ("authorization bearer", ["curl", "-H", f"Authorization: Bearer {SENTINEL}_LONGER"]),
-    ("presigned URL", ["curl", f"https://s3.example.com/o?X-Amz-Signature={SENTINEL}&e=1"]),
-    ("userinfo в URL", ["app", "--url", f"https://user:{SENTINEL}@host/path"]),
-    ("json-подобное присвоение", ["app", "--cfg", f'{{"api_key":"{SENTINEL}"}}']),
+#: Позиции, в которых секрет может оказаться в командной строке. Список
+#: перечисляет ПОЗИЦИИ, а не формы секрета: в этом и смысл allowlist — форма
+#: значения не важна, не разрешено значит не публикуется.
+SECRET_POSITIONS: list[tuple[str, list[str]]] = [
+    ("значение неизвестного флага через пробел", ["app", "--payload", SENTINEL]),
+    ("значение неизвестного флага через =", ["app", f"--value={SENTINEL}"]),
+    ("голый позиционный аргумент", ["app", SENTINEL]),
+    ("первый позиционный из нескольких", ["app", SENTINEL, "--verbose", "x"]),
+    ("значение известного секретного флага", ["app", "--token", SENTINEL]),
+    ("значение флага из allowlist небезопасной формы", ["app", "--port", SENTINEL]),
+    ("переменная окружения в argv", ["env", f"KEY={SENTINEL}", "app"]),
+    ("аргумент после --", ["app", "--", SENTINEL]),
+    ("значение с виду безобидного флага", ["app", "--log-level", SENTINEL]),
+    ("секрет внутри аргумента -c", ["python", "-c", f"x = '{SENTINEL}'"]),
+    ("секрет записан как имя флага", ["app", f"--{SENTINEL}"]),
+    ("секрет как короткий флаг", ["app", f"-{SENTINEL}"]),
 ]
 
-#: Секреты, узнаваемые по форме, а не по имени рядом.
+
+@pytest.mark.parametrize(
+    "label,argv", SECRET_POSITIONS, ids=[c[0] for c in SECRET_POSITIONS]
+)
+def test_arbitrary_secret_is_never_published(label: str, argv: list[str]) -> None:
+    """Произвольное значение не публикуется ни в какой позиции.
+
+    Ключевое отличие от denylist: тест не требует, чтобы секрет был «узнан».
+    Он требует, чтобы наружу не выходило ничего, кроме явно разрешённого, — и
+    поэтому проходит для секрета любой формы, включая ту, которой ещё не
+    придумали.
+    """
+    rendered = safe_cmdline(argv)
+    assert SENTINEL not in rendered, f"{label}: секрет опубликован — {rendered!r}"
+    summary = summarize_argv(argv)
+    assert SENTINEL not in json.dumps(summary, ensure_ascii=False), (
+        f"{label}: секрет остался в структуре — {summary!r}"
+    )
+
+
+def test_positional_arguments_are_counted_but_never_shown() -> None:
+    """Позиционные аргументы считаются, но не публикуются.
+
+    Именно позиционный аргумент чаще всего и оказывается секретом, и признака
+    «этот безопасен» у него нет. Счётчик сообщает, сколько сведений скрыто, —
+    читающий не примет краткость за полноту.
+    """
+    summary = summarize_argv(["app", "секрет-один", "секрет-два", "--verbose"])
+    assert summary["positional_count"] == 2
+    assert summary["flags"] == ["--verbose"]
+    assert "[2 позиционных]" in safe_cmdline(["app", "a", "b", "--verbose"])
+
+
+def test_flag_names_are_published_but_values_are_not() -> None:
+    """Имя флага — структура и публикуется; его значение — данные и нет."""
+    summary = summarize_argv(["app", "--payload", "тайна", "--dry-run"])
+    assert summary["flags"] == ["--payload", "--dry-run"]
+    assert "тайна" not in json.dumps(summary, ensure_ascii=False)
+
+
+def test_allowlisted_flags_keep_safe_values() -> None:
+    """Диагностика сохранена там, где значение доказуемо безопасно.
+
+    Обратное направление проверки обязательно: инвентарь снимают, чтобы
+    узнать, ЧТО за процесс висел. Если allowlist вычистит всё, инструмент
+    перестанет отвечать на свой единственный вопрос.
+    """
+    rendered = safe_cmdline([
+        "/usr/bin/python3", "-m", "uvicorn", "backend.app.main:app",
+        "--host", "127.0.0.1", "--port", "8081", "--reload",
+    ])
+    assert "python3" in rendered
+    assert "-m=uvicorn" in rendered
+    assert "--host=127.0.0.1" in rendered
+    assert "--port=8081" in rendered
+    assert "--reload" in rendered
+
+
+def test_allowlisted_flag_with_unsafe_value_loses_the_value() -> None:
+    """Флаг в allowlist — ещё не разрешение публиковать любое его значение.
+
+    Проверяются оба условия: флаг разрешён И значение подходит под безопасную
+    форму. Достаточно одного `--port $(cat /run/secrets/db)`, чтобы понять,
+    зачем нужно второе.
+    """
+    summary = summarize_argv(["app", "--port", "$(cat /run/secrets/db)"])
+    assert summary["flags"] == ["--port"]
+    assert "secrets" not in json.dumps(summary, ensure_ascii=False)
+
+
+def test_home_directory_is_masked_in_the_executable_path() -> None:
+    """Путь к исполняемому файлу публикуется, но без имени пользователя."""
+    home = os.path.expanduser("~")
+    summary = summarize_argv([f"{home}/venv/bin/python3", "--verbose"])
+    assert str(summary["executable"]).startswith("<home>/")
+    assert home not in str(summary["executable"])
+
+
+def test_digest_identifies_the_command_without_revealing_it() -> None:
+    """Отпечаток позволяет сличить две команды, не раскрывая содержимого."""
+    a = ["app", "--token", SENTINEL]
+    b = ["app", "--token", SENTINEL]
+    c = ["app", "--token", "другое"]
+    assert argv_digest(a) == argv_digest(b)
+    assert argv_digest(a) != argv_digest(c)
+    assert SENTINEL not in argv_digest(a)
+    # Разделитель `\0` исключает коллизию склейки.
+    assert argv_digest(["ab", "c"]) != argv_digest(["a", "bc"])
+
+
+def test_argc_reports_the_full_length() -> None:
+    """Счётчик аргументов показывает полную длину, а не длину опубликованного."""
+    summary = summarize_argv(["app", "--token", SENTINEL, "поз1", "поз2"])
+    assert summary["argc"] == 5
+    assert len(summary["flags"]) == 1
+
+
+def test_control_characters_are_stripped() -> None:
+    """Управляющие символы ломают XML отчёта и в артефакте не нужны."""
+    rendered = safe_cmdline(["app\x00x", "--verbose\x1b[31m"])
+    assert "\x00" not in rendered
+    assert "\x1b" not in rendered
+
+
+def test_empty_argv_is_handled() -> None:
+    summary = summarize_argv([])
+    assert summary["argc"] == 0
+    assert summary["flags"] == []
+    assert safe_cmdline([]) == f"argv:{summary['argv_sha256'][:16]}"
+
+
+def test_malformed_flag_is_treated_as_positional() -> None:
+    """То, что лишь похоже на флаг, не получает привилегий флага.
+
+    «Начинается с дефиса» — ещё не имя флага. Пока форма имени была широкой,
+    `app --SHORT_PRIVATE_SENTINEL` публиковал секрет как имя флага: имена ведь
+    публикуются. Форма сужена до конвенции, и такой токен считается
+    позиционным.
+    """
+    for token in ("--" + SENTINEL * 5, f"--{SENTINEL}", f"-{SENTINEL}"):
+        summary = summarize_argv(["app", token])
+        assert summary["flags"] == [], token
+        assert summary["positional_count"] == 1, token
+
+
+def test_conventional_flag_names_are_still_published() -> None:
+    """Сужение формы не должно съесть обычные флаги — иначе диагностики нет."""
+    argv = [
+        "py", "-m", "pytest", "-p", "no:cacheprovider",
+        "--junitxml", "report.xml", "--per-test-timeout", "30", "--no-header",
+    ]
+    flags = summarize_argv(argv)["flags"]
+    assert "-m=pytest" in flags
+    assert "-p" in flags
+    assert "--junitxml" in flags
+    assert "--per-test-timeout=30" in flags
+    assert "--no-header" in flags
+
+
+# ---------------------------------------------------------------------------
+# Сверка с правилом репозитория — ТОЛЬКО в отдельном процессе
+# ---------------------------------------------------------------------------
+
+#: Секреты, узнаваемые по форме. Для allowlist они не особенные — он не
+#: публикует и неузнаваемые. Корпус нужен эшелонированной защите
+#: `redact_text()`, которая осталась для свободных полей.
 SHAPED_SECRETS: list[tuple[str, str]] = [
     ("JWT", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r"),
     ("AWS access key", "AKIAIOSFODNN7EXAMPLE"),
     ("GitHub token", "ghp_16C7e42F292c6912E7710c838347Ae178B4a"),
     ("Slack token", "xoxb-123456789012-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx"),
     ("Google API key", "AIzaSyA1234567890abcdefghijklmnopqrstuv"),
-    ("OpenAI-подобный", "sk-abcdefghijklmnopqrstuvwxyz0123456789ABCD"),
     ("длинный непрозрачный блоб", "aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5zA7bC9dE1f"),
 ]
 
+_COMPARE_SCRIPT = """
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+before = sorted(k for k in os.environ if "OPENROUTER" in k or "API_KEY" in k)
+from backend.app.core.action_log import _scrub
+after = sorted(k for k in os.environ if "OPENROUTER" in k or "API_KEY" in k)
+secrets = json.loads(sys.argv[2])
+survived = [s for s in secrets if s in _scrub("app " + s + " --port=8081")]
+print("@@RESULT@@" + json.dumps({"before": before, "after": after, "survived": survived}))
+"""
 
-@pytest.mark.parametrize("label,argv", SECRET_ARGV, ids=[c[0] for c in SECRET_ARGV])
-def test_named_secret_never_survives_redaction(label: str, argv: list[str]) -> None:
-    """Секрет, названный своим именем, вырезается в любой форме записи.
 
-    Форма «через пробел» разобрана отдельно не случайно: правило для свободного
-    текста её пропускает, потому что требует `=` или `:`. Здесь границы
-    аргументов ещё известны, поэтому fail-closed вырезает следующий токен, не
-    разбирая его вид.
+def _run_repo_rule(secrets: list[str]) -> dict:
+    """Прогнать правило репозитория В ОТДЕЛЬНОМ процессе с чистым окружением.
+
+    Импорт `backend.app.core.action_log` загружает `.env` и добавляет в
+    окружение процесса provider-секрет — это находка OPS03-F1. Прежняя
+    редакция этого теста импортировала модуль прямо здесь и тем самым САМА
+    затаскивала секрет в общий процесс pytest: тест про утечку устраивал
+    утечку. Измерено в чистом подпроцессе: 0 переменных до импорта, 2 после.
     """
-    result = redact_cmdline(argv)
-    assert SENTINEL not in result, f"{label}: секрет пережил redaction — {result!r}"
-
-
-@pytest.mark.parametrize("label,secret", SHAPED_SECRETS, ids=[c[0] for c in SHAPED_SECRETS])
-def test_shaped_secret_is_recognised_without_a_name(label: str, secret: str) -> None:
-    """Секрет узнаётся по форме, даже если рядом нет подсказывающего имени.
-
-    В командной строке ключ часто стоит голым позиционным аргументом — тогда
-    правило «имя=значение» не срабатывает вовсе, и остаётся только форма.
-    """
-    result = redact_cmdline(["app", secret, "--port=8081"])
-    assert secret not in result, f"{label}: секрет пережил redaction — {result!r}"
-
-
-def test_diagnostics_survive_redaction() -> None:
-    """Redaction не имеет права съесть саму причину, ради которой снят инвентарь.
-
-    Если под правило попадёт каждый длинный путь, диагностика перестанет
-    отвечать на вопрос «что за процесс висел», и инвентарь станет бесполезен.
-    Поэтому проверяем обратное направление тоже.
-    """
-    argv = [
-        "/root/projects/PDF-proverka/.venv/bin/python3",
-        "-m", "uvicorn", "backend.app.main:app",
-        "--host", "127.0.0.1", "--port", "8081", "--reload",
-    ]
-    result = redact_cmdline(argv)
-    assert "uvicorn" in result
-    assert "backend.app.main:app" in result
-    assert "8081" in result
-    assert "127.0.0.1" in result
-    assert "[redacted" not in result, f"вычищено лишнее: {result!r}"
-
-
-#: Флаги, которые ВЫГЛЯДЯТ секретными из-за короткой подстроки внутри слова.
-#: Без границ слова `sig` внутри `design` и `pin` внутри `spin` вырезали бы
-#: совершенно безобидные значения — измерено, `--spin-up worker` превращался в
-#: `--spin-up [redacted]`.
-LOOKALIKE_ARGV: list[tuple[str, list[str]]] = [
-    ("sig внутри design", ["app", "--design-output", "plan.png"]),
-    ("pin внутри spin", ["app", "--spin-up", "worker"]),
-    ("sas внутри sasl", ["app", "--sasl-mechanism", "PLAIN"]),
-    ("otp внутри optimize", ["app", "--optimize-level", "3"]),
-]
-
-
-@pytest.mark.parametrize("label,argv", LOOKALIKE_ARGV, ids=[c[0] for c in LOOKALIKE_ARGV])
-def test_lookalike_flags_do_not_lose_their_values(label: str, argv: list[str]) -> None:
-    """Похожее на секрет имя — ещё не секрет.
-
-    Перередактирование здесь не безобидно: инвентарь снимают, чтобы узнать,
-    ЧТО за процесс висел, и вычищенный ответ равносилен отсутствию ответа.
-    Правило разделяет случаи границами слова — тем же приёмом и по той же
-    причине, что и `action_log._SENSITIVE_NAME_RE`.
-    """
-    result = redact_cmdline(argv)
-    assert REDACTED_MARK not in result, f"{label}: вычищено лишнее — {result!r}"
-    assert argv[-1] in result
-
-
-def test_genuine_short_secret_names_still_redact() -> None:
-    """Границы слова не должны ослабить правило там, где имя настоящее."""
-    for flag in ("--sig", "--sas-token", "--otp", "--pin", "--salt", "--pwd"):
-        result = redact_cmdline(["app", flag, SENTINEL])
-        assert SENTINEL not in result, f"{flag}: секрет пережил redaction — {result!r}"
-
-
-def test_flag_without_value_at_the_end_does_not_crash() -> None:
-    """Секретный флаг последним токеном: значения нет, падать не на чем."""
-    assert redact_cmdline(["app", "--token"]) == "app --token"
-
-
-def test_control_characters_are_stripped() -> None:
-    """Управляющие символы ломают XML отчёта и в артефакте не нужны."""
-    assert "\x00" not in redact_cmdline(["app", "a\x00b"])
-    assert "\x1b" not in redact_cmdline(["app", "\x1b[31mred"])
-
-
-def test_empty_argv_is_empty_string() -> None:
-    assert redact_cmdline([]) == ""
-
-
-# ---------------------------------------------------------------------------
-# Сверка с правилом репозитория
-# ---------------------------------------------------------------------------
-
-
-def _repo_scrub():
-    """Правило redaction из `backend/app/core/action_log`, если оно доступно."""
-    try:
-        from backend.app.core.action_log import _scrub
-    except Exception as exc:  # pragma: no cover — зависит от окружения
-        pytest.skip(f"правило репозитория недоступно: {type(exc).__name__}: {exc}")
-    return _scrub
-
-
-@pytest.mark.parametrize("label,secret", SHAPED_SECRETS, ids=[c[0] for c in SHAPED_SECRETS])
-def test_local_rule_agrees_with_the_repository_rule(label: str, secret: str) -> None:
-    """Два правила не разошлись на одном корпусе секретов.
-
-    Локальное правило продублировано сознательно: импорт репозиторного модуля
-    загружает `.env` и добавляет в окружение процесса боевой provider-секрет
-    (OPS03-F1). Плагин, который ради защиты от утечки сам затаскивает секрет в
-    процесс pytest, — нерабочее решение. Цена дубликата — риск расхождения,
-    и оплачивается он этим тестом.
-    """
-    scrub = _repo_scrub()
-    text = f"app {secret} --port=8081"
-    assert secret not in scrub(text), f"{label}: правило репозитория пропустило"
-    assert secret not in redact_text(text), f"{label}: локальное правило пропустило"
-
-
-def test_local_rule_is_stricter_on_space_separated_secrets() -> None:
-    """Отличие от репозиторного правила — сознательное и в сторону строгости.
-
-    `--token SECRET` через пробел правило для свободного текста пропускает: оно
-    требует `=` или `:`, а в склеенной строке границы аргументов уже потеряны.
-    Локальное правило работает по argv, где границы известны, и потому строже.
-    Тест фиксирует именно это — чтобы отличие не приняли за дефект.
-    """
-    scrub = _repo_scrub()
-    argv = ["app", "--api-key", SENTINEL]
-    assert SENTINEL in scrub(" ".join(argv)), (
-        "правило репозитория неожиданно ловит форму через пробел — "
-        "тогда обоснование дубликата надо пересмотреть"
+    env = {
+        k: v for k, v in os.environ.items()
+        if "API" not in k and "OPENROUTER" not in k and "TOKEN" not in k
+    }
+    env["AUDIT_DISABLE_DOTENV"] = "1"
+    done = subprocess.run(
+        [sys.executable, "-c", _COMPARE_SCRIPT, str(_ROOT), json.dumps(secrets)],
+        capture_output=True, text=True, timeout=120, env=env, cwd=str(_ROOT),
     )
-    assert SENTINEL not in redact_cmdline(argv)
+    marker = [ln for ln in done.stdout.splitlines() if ln.startswith("@@RESULT@@")]
+    if not marker:
+        pytest.skip(f"правило репозитория недоступно: {done.stderr[-400:]}")
+    return json.loads(marker[0][len("@@RESULT@@"):])
+
+
+def test_defence_in_depth_rule_agrees_with_the_repository() -> None:
+    """`redact_text` не разошёлся с правилом репозитория на общем корпусе.
+
+    Он больше не основная гарантия — её даёт allowlist, — но остался
+    эшелонированной защитой свободных полей, и расхождение обязано ловиться
+    тестом, а не обнаруживаться на инциденте.
+    """
+    secrets = [secret for _, secret in SHAPED_SECRETS]
+    result = _run_repo_rule(secrets)
+    assert result["survived"] == [], f"правило репозитория пропустило: {result['survived']}"
+    for secret in secrets:
+        assert secret not in redact_text(f"app {secret} --port=8081"), (
+            "локальное правило пропустило то, что ловит репозиторное"
+        )
+
+
+def test_comparison_does_not_contaminate_the_pytest_process() -> None:
+    """Сама сверка не загрязняет процесс pytest секретом.
+
+    Проверяется не намерение, а результат: подпроцесс сообщает, какие
+    provider-переменные были у него до и после импорта, и здесь же сверяется
+    окружение родителя.
+    """
+    parent_before = {k for k in os.environ if "OPENROUTER" in k or "API_KEY" in k}
+    result = _run_repo_rule(["AKIAIOSFODNN7EXAMPLE"])
+    parent_after = {k for k in os.environ if "OPENROUTER" in k or "API_KEY" in k}
+
+    assert result["before"] == [], (
+        f"подпроцесс стартовал с секретом в окружении: {result['before']}"
+    )
+    assert parent_after == parent_before, (
+        f"сверка добавила переменные в процесс pytest: {parent_after - parent_before}"
+    )
