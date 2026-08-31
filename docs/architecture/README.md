@@ -64,6 +64,12 @@
 LLM: versioned prompts/norms/routing + replay evidence + live quality/cost gate
 ```
 
+## Эксплуатационные runbook'и
+
+- [Диагностируемый test harness](../ops/TEST_HARNESS_RUNBOOK.md) — прогон lanes
+  под бюджетами §7, разбор таймаута и непригодного отчёта, provisioning norm
+  corpus и границы observe-first до `W0-INT-01`.
+
 ## Связанные программы
 
 - [Хранение и движение данных](../data_storage_modernization/00_global_plan.md)

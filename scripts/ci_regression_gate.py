@@ -29,6 +29,11 @@
 тестов, и полученный baseline коммитится с обоснованием. Расхождение из-за
 отсутствующего optional-датасета чинится тестом, а не перезаписью baseline.
 
+С W0-OPS-03 части 2 `--record` дополнительно требует provisioned norm corpus
+(§3.3 quality/runtime contract v1): прогон без выбранного norm-набора не может
+создавать baseline. Проверка выполняется ДО прогона, обхода нет — см.
+`require_norm_corpus_for_record()`.
+
 Baseline обязан описывать сам себя: заголовок объявляет `# Кол-во: N`, и это
 число сверяется с фактическим списком ДО прогона (см. `load_baseline`).
 Расхождение — отказ, а не предупреждение: сравнивать прогон с эталоном,
@@ -45,6 +50,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "scripts" / "ci_known_failures.txt"
+SCRIPTS = ROOT / "scripts"
 JUNIT = ROOT / ".ci_last_report.xml"
 TEST_PATHS = ["tests", "backend/tests"]
 # Заголовок baseline обязан описывать сам себя: строка `# Кол-во: N` сверяется
@@ -169,8 +175,53 @@ def write_baseline(failed: set[str]) -> None:
     BASELINE.write_text("\n".join(header + sorted(failed)) + "\n", encoding="utf-8")
 
 
+def require_norm_corpus_for_record() -> None:
+    """Отказать в `--record`, если norm corpus не provisioned (§3.3 контракта).
+
+    Контракт `docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md` §3.3 говорит
+    прямо: локальный прогон без выбранного norm-набора «не может создавать
+    baseline и не считается G0 receipt». Причина не формальная. Без корпуса
+    десятки тестов уходят в skip или падают на отсутствии данных — и
+    `--record` увековечит это состояние машины как эталон проекта. Ровно тем
+    же способом baseline и портится: не злым умыслом, а записью в окружении,
+    которое отличается от контрактного.
+
+    Проверка стоит ДО прогона: незачем тратить пять минут набора, чтобы потом
+    отказаться записывать результат.
+
+    Обхода нет намеренно. Правильный путь — provisioning:
+        python scripts/ci_provision_norms.py --build-index
+    """
+    sys.path.insert(0, str(SCRIPTS))
+    try:
+        from ci_provision_norms import norm_corpus_state
+    except ImportError as exc:
+        raise SystemExit(
+            "[gate] FATAL: не найден scripts/ci_provision_norms.py — проверить "
+            f"provisioning norm corpus нечем, а `--record` без этой проверки "
+            f"запрещён §3.3 контракта ({exc})"
+        ) from exc
+
+    state = norm_corpus_state()
+    if state.get("provisioned"):
+        return
+    raise SystemExit(
+        "[gate] FATAL: `--record` запрещён — norm corpus не provisioned.\n"
+        f"        причина: {state.get('reason_code')} — {state.get('detail')}\n"
+        "        §3.3 контракта: прогон без выбранного norm-набора не может\n"
+        "        создавать baseline и не считается G0 receipt. Без корпуса\n"
+        "        часть тестов уходит в skip, и запись увековечила бы состояние\n"
+        "        машины как эталон проекта.\n"
+        "        Починить: python scripts/ci_provision_norms.py --build-index"
+    )
+
+
 def main() -> int:
     record = "--record" in sys.argv
+    # Provisioning проверяется ПЕРВЫМ делом: отказ должен стоить ноль секунд,
+    # а не полный прогон набора.
+    if record:
+        require_norm_corpus_for_record()
     # Целостность baseline проверяется ДО прогона: незачем тратить полный
     # прогон набора, чтобы потом отказаться сравнивать с испорченным эталоном.
     # В режиме --record файл всё равно перезаписывается, читать его не нужно.

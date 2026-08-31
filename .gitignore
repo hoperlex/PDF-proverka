@@ -40,6 +40,10 @@ backend/app/data/stage_comparison_saved_config.json
 *.tmp
 *.cache
 .ci_last_report.xml
+# Отчёты и receipt'ы test lanes (scripts/ci_test_lane.py): артефакт прогона,
+# а не исходник. §8 контракта требует свежий отчёт на каждый прогон — версия
+# в git сделала бы «свежесть» непроверяемой.
+.ci/
 
 # === Local settings ===
 .claude/settings.local.json

@@ -274,7 +274,7 @@ baseline. Это единственная волна с намеренно ог�
 | W0-ARC-03 | ARC/OPS | frozen runtime/quality contract v1: clean-room профиль, совместимые зависимости, test lanes, timeout и baseline policy | ADR-0005, аудит 2026-08-28 | нет: один владелец shared contract |
 | W0-ENG-02 | ENG | bounded lifecycle CPU/thread executors и stage runners без зависания shutdown | W0-ARC-03 | да; отдельный legacy hotspot, бизнес-семантику stages не меняет |
 | W0-WEB-02 | WEB | disposition семи Vitest-падений и strict typecheck действующего UI без ослабления контрактов — [disposition](WEB_FRONTEND_DISPOSITION_W0-WEB-02.md) | W0-ARC-03, W0-WEB-01 | да; единственный владелец legacy frontend hotspots |
-| W0-OPS-03 | OPS | runtime probe, timeout/JUnit harness, test-lane markers и provisioning norm corpus без правки shared workflow/defaults | W0-ARC-03 | да; готовит integration, но не включает enforce |
+| W0-OPS-03 | OPS | runtime probe, timeout/JUnit harness, test-lane markers и provisioning norm corpus без правки shared workflow/defaults — [runbook](../ops/TEST_HARNESS_RUNBOOK.md) | W0-ARC-03 | да; готовит integration, но не включает enforce |
 | W0-INT-01 | ARC/OPS | интегрировать dependency pins, test harness, frontend gate и CI; полный clean-room прогон и перевод regression gate в enforce | W0-ARC-03, W0-ENG-02, W0-WEB-02, W0-OPS-03 | нет: root dependencies, pytest и workflow принадлежат интегратору |
 
 ### Контур стабилизации quality baseline: аудит 2026-08-28
@@ -380,6 +380,13 @@ production-код; задачи ниже допустимы как reversible co
 - **Rollback/integration:** поведение за флагом не требуется, если меняется только
   cleanup; при изменении runtime scheduling нужен именованный compatibility mode
   с owner/expiry. Общие hotspots соединяет `W0-INT-01`.
+- **Execution receipt (2026-08-31):** [квитанция](receipts/W0-ENG-02.json).
+  Два дефекта воспроизведены измерением: shutdown возвращался за 0.00 с, а
+  процесс не выходил и за 45 с при зависшем воркере; поздний `run()` поднимал
+  новый пул уже после завершения бэкенда. После правки — 5.01 с и отсутствие
+  воскрешения. Тесты 7 → 18, регресс-гейт без новых падений. Пять других
+  lifecycle-путей из evidence в этом окружении не воспроизвелись — расхождение
+  передано владельцу контракта, догадками не правилось.
 
 #### W0-WEB-02 — legacy frontend contract disposition
 
@@ -405,6 +412,12 @@ production-код; задачи ниже допустимы как reversible co
   telemetry либо явно фиксируется причина неприменимости.
 - **Rollback/integration:** один обратимый legacy change; dependency/typecheck
   wiring соединяет `W0-INT-01`.
+- **Execution receipt (2026-08-31):**
+  [disposition](WEB_FRONTEND_DISPOSITION_W0-WEB-02.md). Регрессий ноль: все семь
+  падений — устаревшие characterization contracts, у каждого назван
+  коммит-причина. Найдено скрытое восьмое падение (тест краснел строкой выше).
+  Vitest 399/399, lint/typecheck/build зелёные. Буквальный `strict: true` НЕ
+  достигнут: 69 ошибок, а `tsconfig` принадлежит `W0-INT-01`.
 
 #### W0-OPS-03 — диагностируемый test harness
 
@@ -428,6 +441,13 @@ production-код; задачи ниже допустимы как reversible co
   seen/passed/failed/skipped, timeout node ID и причину environment skip.
 - **Rollback/integration:** новые probes сначала observe-only; defaults и workflow
   меняет только `W0-INT-01`.
+- **Execution receipt (2026-08-31):** часть 1 —
+  [квитанция](receipts/W0-OPS-03-part1.json), часть 2 —
+  [квитанция](receipts/W0-OPS-03-part2.json), эксплуатация —
+  [runbook](../ops/TEST_HARNESS_RUNBOOK.md). Часть 2 закрыла §7 timeout harness,
+  §8 JUnit/receipt, §5 инвентарь и §3.3 provisioning. Инвентарь доказал объём
+  §5 количественно: 6377 тест-функций из 6390 без primary lane marker. Сама
+  разметка и включение enforce остаются за `W0-INT-01`.
 
 #### W0-INT-01 — clean-room integration и enforce
 

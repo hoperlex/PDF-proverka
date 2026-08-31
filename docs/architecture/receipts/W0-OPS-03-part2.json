@@ -1,0 +1,242 @@
+{
+  "type": "task_receipt",
+  "task_id": "W0-OPS-03",
+  "part": "2 из 2",
+  "captured_at": "2026-08-31",
+  "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6 по docs/architecture/checkpoints/README.md. Это квитанция задачи.",
+  "closes_from_part1": [
+    "§7 timeout harness",
+    "§8 JUnit/run receipt",
+    "§5 полная materialization lanes — инвентарь объёма, но НЕ сама разметка",
+    "provisioning norm corpus",
+    "детерминизм гейта — частично: причина названа, исправление за W0-INT-01"
+  ],
+  "consumes_contract": {
+    "document": "docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md",
+    "profile": "qr-v1",
+    "sections_implemented": [
+      "§3.3",
+      "§5 (инвентарь)",
+      "§7",
+      "§8",
+      "§9 (запрет --record)"
+    ]
+  },
+  "environment": {
+    "python": "3.12.3",
+    "uid": 0,
+    "note": "Прогон под root. По §6 это невалидное окружение для lane network/chaos — probe их и не пропускает. Приёмка на non-root clean-room runner остаётся за W0-INT-01."
+  },
+  "delivered": [
+    {
+      "artifact": "scripts/ci_timeout_plugin.py",
+      "role": "per-test watchdog внутри pytest (§7)",
+      "no_new_dependency": "pytest-timeout в окружении нет, а root requirements принадлежат W0-INT-01. Harness обходится стандартной библиотекой.",
+      "not_registered_in_pytest_ini": "подключается только явным `-p ci_timeout_plugin`; pytest.ini вне объёма задачи. Без флага поведение pytest не меняется."
+    },
+    {
+      "artifact": "scripts/ci_test_lane.py",
+      "role": "раннер lane: бюджеты §7, свежесть отчёта §8, receipt §8",
+      "exit_codes": {
+        "0": "зелено",
+        "1": "тесты падают",
+        "2": "probe не пропустил lane",
+        "3": "исчерпан per-test или wall бюджет",
+        "4": "отчёт непригоден",
+        "5": "выборка пуста"
+      }
+    },
+    {
+      "artifact": "scripts/ci_lane_inventory.py",
+      "role": "§5 инвентарь разметки по фактическому поведению",
+      "observe_only": "по умолчанию exit 0; --fail-on-unmarked включает будущий enforce (владелец W0-INT-01)"
+    },
+    {
+      "artifact": "scripts/ci_provision_norms.py",
+      "role": "§3.3 provisioning norm corpus: наличие, SHA-256, детерминированная сборка индекса",
+      "reuses": "правило digest импортируется из ci_runtime_probe, не дублируется"
+    },
+    {
+      "artifact": "scripts/ci_regression_gate.py",
+      "role": "запрет --record без provisioned корпуса (§3.3), проверка ДО прогона",
+      "no_override": "обхода нет намеренно"
+    },
+    {
+      "artifact": "docs/ops/TEST_HARNESS_RUNBOOK.md",
+      "role": "OPS runbook: прогон lanes, разбор таймаута и непригодного отчёта, границы observe-first"
+    }
+  ],
+  "verification": {
+    "§7_hang_becomes_diagnosable_failure": {
+      "scenario": "синтетический тест с time.sleep(600) и дочерним процессом, бюджет 4-5 с",
+      "result": "exit 3; node ID test_synthetic_hang.py::test_hangs_forever; thread dump указывает на строку 18 самого теста; инвентарь детей 1; cleanup terminate=1 kill=0; осиротевших процессов не осталось",
+      "junit": "<failure type=\"timeout\"> ровно на зависшей ноде; обычное падение в том же прогоне отличимо — у него type отсутствует"
+    },
+    "§7_wall_budget": "при исчерпании wall-бюджета активная нода определяется по журналу событий и попадает в отчёт с той же записью timeout",
+    "§8_report_freshness": {
+      "stale": "inspect_report на файле с mtime 2020-01-01 → 'stale'",
+      "missing": "на несуществующем → 'missing'",
+      "unparseable": "на битом XML → 'unparseable'",
+      "not_reused": "прогон поверх подложенного старого отчёта (tests=999, выдуманный зелёный тест) полностью его заместил — выдуманного теста в новом отчёте нет"
+    },
+    "§8_receipt_fields": "все 27 полей контракта присутствуют; deselected — настоящее число из хука pytest_deselected (проверено: 18 при -m chaos), а не заглушка",
+    "§6_probe_before_pytest": {
+      "contract_lane": "probe прошёл (15 проверок), 86 тестов, exit 0",
+      "network_lane": "probe отказал под root → pytest не запускался, exit 2 (§6 правило 1: setup failure, не skip)"
+    },
+    "§3.3_norm_provisioning": {
+      "local_absent": "exit 0, provisioned=false, reason_code OPTIONAL_NORM_CORPUS_ABSENT",
+      "enforce_absent": "exit 1 (setup failure)",
+      "gate_record_refused": "`ci_regression_gate.py --record` отказывает ДО прогона с указанием причины и способа починки"
+    },
+    "scale_run": {
+      "command": "ci_test_lane.py --lane unit --skip-probe --per-test-timeout 180 --lane-budget 2000",
+      "result": "7097 selected, 6888 passed, 2 failed, 33 errors, 174 skipped, 2 deselected за 286.1 s, таймаутов нет",
+      "matches_reference": "счётчики совпали с прогоном ci_regression_gate.py (2 failed / 6888 passed / 174 skipped / 2 deselected / 33 errors за 274.4 s) до единицы",
+      "overhead": "+11.7 s к 274 s, то есть 4.3 % на 7097 тестах",
+      "artifacts": "журнал событий 6.2 МБ / 35298 событий, JUnit 1.1 МБ",
+      "note": "Число 7097 — снимок дерева на момент замера. После добавления 136 собственных тестов harness сбор больше; сверять надо не абсолютное число, а совпадение счётчиков harness и гейта в ОДНОМ и том же дереве."
+    },
+    "regression_gate": {
+      "command": "python scripts/ci_regression_gate.py",
+      "result": "падений 35, baseline 35, новых 0, exit 0",
+      "run_summary": "2 failed, 7024 passed, 174 skipped, 2 deselected, 33 errors за 307.69 s",
+      "delta": "7024 против 6888 до задачи — это ровно 136 собственных тестов harness; ни один существующий тест не исчез и не ушёл в skip"
+    }
+  },
+  "findings": [
+    {
+      "id": "OPS03-F5",
+      "severity": "высокая",
+      "summary": "Полный набор под ЧЕСТНЫМ бюджетом lane unit падает таймаутом: один тест спит минуту",
+      "detail": "Прогон всего набора с бюджетом unit (30 с по §7) завершился exit 3 на ноде tests/test_agent_grpc_client_12c.py::test_idle_stream_for_one_minute_has_no_reconnect_or_busy_loop. В теле — time.sleep(60) и настоящий gRPC-шлюз на реальном порту, то есть по §5 это lane network (бюджет 180 с). Маркеров у модуля ноль. Это ровно тот inventory failure, который предсказывает §5, и он же объясняет вердикт части 1 о «флаки» именно этого модуля: набор процессно-сетевых тестов, исполняемый в общем прогоне, недетерминирован под нагрузкой.",
+      "owner": "W0-OPS-03 часть 2 — объём доказан инвентарём; сама разметка и переключение выборки принадлежат W0-INT-01"
+    },
+    {
+      "id": "OPS03-F6",
+      "severity": "средняя",
+      "summary": "Четыре теста, размеченных частью 1 как network, по §5 являются chaos",
+      "detail": "Инвентарь нашёл конфликт «маркер vs поведение» на четырёх нодах в tests/test_distributed_workers_executor.py и tests/test_distributed_workers_prepipeline_gate.py: они шлют сигналы живым процессам, а §5 относит SIGTERM/SIGKILL и restart к lane chaos, не network. Разметка части 1 выводилась из маркера slow, то есть из существующей разметки; поведение оказалось строже. Это подтверждает собственную оговорку OPS03-F2 о том, что правило «slow ⇒ network» неполно.",
+      "owner": "W0-OPS-03 часть 2 зафиксировала; переразметка — W0-INT-01 вместе с регистрацией маркеров"
+    },
+    {
+      "id": "OPS03-F7",
+      "severity": "средняя",
+      "summary": "Chaos-тесты падают не тем отказом, который записан во frozen evidence §6",
+      "detail": "§6 контракта фиксирует, что оба chaos-теста в sandbox 2026-08-28 завершались PermissionError на создании socket. Фактически они падают TypeError: 'NoneType' object is not subscriptable в tests/test_process_chaos_12e.py:112. Прогон шёл под root, поэтому продуктовым вердиктом не является. Это третье расхождение с frozen evidence после OPS03-F3, и вместе они означают, что §6 описывает окружение, которого больше нет.",
+      "owner": "W0-ARC-03 (владелец контракта) — перепроверить evidence §6"
+    },
+    {
+      "id": "OPS03-F8",
+      "severity": "низкая",
+      "summary": "Маркер network не зарегистрирован в pytest.ini",
+      "detail": "Часть 1 сняла регистрацию как нарушение ownership. Инвентарь это видит и сообщает отдельной строкой. Следствие: `-m network` работает, но каждый прогон печатает PytestUnknownMarkWarning.",
+      "owner": "W0-INT-01"
+    }
+  ],
+  "own_defects_found_and_fixed": [
+    "thread dump не снимался: faulthandler пишет через файловый дескриптор, io.StringIO его не даёт (UnsupportedOperation: fileno). §7 требует дамп — без него таймаут говорит ЧТО зависло, но не ГДЕ",
+    "зомби считался живым: os.kill(pid, 0) для незабранного процесса возвращает успех, и телеметрия cleanup завышала число kill",
+    "зависшая нода попадала в отчёт дважды: она успевает отдать report фазы setup, и без её исключения тест выглядел наполовину зелёным",
+    "wall-таймаут не называл активную ноду: watchdog внутри pytest не срабатывал, node ID терялся",
+    "пустая выборка маркировалась как unparseable: отчёт при этом исправен, ложный диагноз отправлял бы дежурного искать битый XML",
+    "--json печатал receipt вперемешку с прогресс-точками pytest, и JSON не разбирался — обнаружено на полном наборе",
+    "fsync на каждое событие: +2.9 мс на тест (~20 с на полном наборе) ради гарантии от отказа машины, которая здесь не нужна; заменён на flush",
+    "watchdog мог заблокироваться на замке журнала — сторож, поставленный ловить зависания, зависал сам; замок берётся с бюджетом",
+    "прогон со своим --junit затирал журнал штатного прогона того же lane",
+    "wall-таймаут подписывался в JUnit как per-test и показывал ЧУЖОЙ бюджет: дежурный делал противоположный вывод (сузить тест вместо разбора всего lane). Найдено регрессионным тестом harness",
+    "зависание на СБОРКЕ (импорт conftest) давало пустой зелёный JUnit с report_status=ok и timed_out_node=null — ровно тот молчаливый cancel, который §7 запрещает прямым текстом. Теперь пишется псевдо-node <collection> с kind=collection: node ID здесь не существует, но молчать нельзя. Найдено регрессионным тестом harness",
+    "инвентарь перечислял только ПРЯМЫХ детей: внуки зависшего теста переживали cleanup. Связка «тест → uvicorn → воркер» оставляла воркера с ppid=1, а в JUnit было написано «дочерних процессов: 1». Осиротевший процесс держит порт и валит СЛЕДУЮЩИЙ job причиной не из его кода. Обход стал рекурсивным (с полем depth, порядок от листьев к корню), плюс раннер добивает группу и на ветке per-test таймаута — раньше только на wall",
+    "_split_nodeid оставлял '.py' в середине classname для тестов внутри класса: 'tests.test_x.py.TestC' вместо 'tests.test_x.TestC'. Обычный прогон (JUnit пишет pytest) и прогон с таймаутом (JUnit собираем мы) публиковали один узел под разными classname — агрегаторы, ключующиеся на classname+name, теряли историю ровно того теста, который завис"
+  ],
+  "not_delivered": [
+    "сама разметка 6377 нод маркерами: инвентарь доказал объём, но правка сотен тестовых файлов — отдельное решение, а не побочный эффект задачи harness",
+    "регистрация маркеров в pytest.ini и переключение addopts — W0-INT-01",
+    "вызов harness из .github/workflows/** и снятие continue-on-error — W0-INT-01",
+    "скачивание versioned norm artifact: provisioning проверяет и строит индекс, download — шаг workflow",
+    "39 модулей требуют ручной классификации: динамический диспатч, признаки только из общего helper, kill без доказанного restart, подменённая API"
+  ],
+  "authorizes_next_cutover": false,
+  "observe_only": "ни один новый инструмент не включён ни в один автоматический прогон; всё запускается руками до W0-INT-01",
+  "revision": "1 (2026-08-31)",
+  "own_tests": {
+    "total": 136,
+    "by_file": {
+      "tests/test_ci_lane_inventory.py": {
+        "tests": 49,
+        "duration_sec": 2.66
+      },
+      "tests/test_ci_timeout_plugin.py": {
+        "tests": 40,
+        "duration_sec": 25.9
+      },
+      "tests/test_ci_test_lane.py": {
+        "tests": 29,
+        "duration_sec": 25.9
+      },
+      "tests/test_ci_provision_norms.py": {
+        "tests": 18,
+        "duration_sec": 1.76
+      }
+    },
+    "result": "136 passed, xfail не осталось",
+    "note": "Тесты harness сверяются с ДОКУМЕНТОМ, а не с кодом: таблица бюджетов §7 и список полей receipt §8 разбираются из QUALITY_RUNTIME_CONTRACT_V1.md, поэтому расхождение реализации с контрактом краснеет автоматически."
+  },
+  "lane_inventory_measurement": {
+    "command": "python scripts/ci_lane_inventory.py",
+    "duration_sec": 1.66,
+    "modules": 388,
+    "test_functions": 6390,
+    "nodes_lower_bound": 6962,
+    "nodes_lower_bound_note": "оценка снизу: множитель parametrize считается только по литеральным спискам. Настоящий сбор pytest даёт больше (7082 в части 1) — расхождение объяснимо и указано инструментом.",
+    "inferred_lanes": {
+      "chaos": {
+        "modules": 3,
+        "functions": 95
+      },
+      "network": {
+        "modules": 40,
+        "functions": 1495
+      },
+      "integration": {
+        "modules": 236,
+        "functions": 3268
+      },
+      "contract": {
+        "modules": 7,
+        "functions": 176
+      },
+      "unit": {
+        "modules": 102,
+        "functions": 1356
+      }
+    },
+    "marked_functions": 13,
+    "unmarked_functions": 6377,
+    "modules_without_any_marker": 385,
+    "double_marked": 0,
+    "marker_vs_behavior_conflicts": 4,
+    "modules_needing_manual_classification": 39,
+    "static_blind_spots": [
+      "production-код не разбирается: тест, зовущий функцию backend/, которая сама открывает сокет, признака не имеет. Разбирать нельзя — backend импортирует почти каждый тест, и весь репозиторий стал бы network",
+      "DYNAMIC_DISPATCH (25 модулей): importlib/getattr рядом с признаками",
+      "KILL_WITHOUT_RESTART (4): сигнал есть, доказательства перезапуска нет",
+      "PATCHED_API (3): и подмена subprocess, и настоящий вызов в одном файле",
+      "INHERITED_ONLY (7): lane держится на признаках общего helper-модуля",
+      "conftest.py намеренно не подмешан: иначе весь корень стал бы integration и различия между модулями исчезли бы",
+      "httpx AsyncClient с ASGI-транспортом неотличим от него же с настоящим URL"
+    ],
+    "verdict": "§5 inventory failure подтверждён количественно: 6377 функций из 6390 без primary lane marker, 385 модулей из 388 без единого маркера. Часть 1 разметила 11 нод — 0.2 % объёма."
+  },
+  "defects_found_by_own_tests": {
+    "count": 4,
+    "list": [
+      "wall-таймаут подписан как per-test с чужим бюджетом",
+      "зависание на сборке → пустой зелёный JUnit (молчаливый cancel, §7 запрещает)",
+      "внуки зависшего теста осиротевают (§7 требование 3)",
+      "_split_nodeid расходится с раскладкой pytest на классовых тестах"
+    ],
+    "method": "каждый зафиксирован xfail(strict) или падающим тестом, а не замолчан; затем исправлен, а тест переведён в обычный регрессионный",
+    "why_it_matters": "все четыре отказа МОЛЧАЛИВЫЕ: код возврата оставался честным, врал артефакт, который читают CI и человек"
+  }
+}
