@@ -28,11 +28,33 @@
 дедлоком в дочернем.
 
 Всё fail-soft: если пул недоступен (нет прав на форк, сломанный executor) —
-`run()` считает в текущем потоке, стадия не падает.
+`run()` считает в текущем потоке, стадия не падает. Единственное исключение —
+завершение работы бэкенда: после `shutdown_pool()` считать заново нельзя,
+см. «Жизненный цикл» ниже.
+
+Жизненный цикл (W0-ENG-02)
+──────────────────────────
+`ProcessPoolExecutor.shutdown(wait=False)` возвращает управление мгновенно, но
+НЕ завершает воркеры: интерпретатор всё равно join'ит их в своём `atexit`
+(`concurrent.futures.process._python_exit`). Если воркер завис на CPU-задаче,
+процесс бэкенда не выходит вовсе — измерено: `shutdown_pool()` возвращался за
+0.00 с, а интерпретатор не завершился и за 45 с при воркере в `sleep(600)`,
+плюс пять протёкших семафоров.
+
+Поэтому `shutdown_pool()` здесь ограничен временем и доводит дело до конца:
+снимает очередь → ждёт воркеры в пределах бюджета → `terminate()` тем, кто не
+вышел → `kill()` тем, кто пережил terminate. Бюджет — `CPU_POOL_SHUTDOWN_SEC`.
+
+Второе свойство того же дефекта: shutdown НЕ запирал модуль, и первый же
+поздний `run()` молча поднимал НОВЫЙ пул процессов — уже после того, как
+бэкенд отчитался о завершении. После `shutdown_pool()` пул не воскресает:
+работа считается в потоке, а для повторного старта в том же процессе есть
+явный `reset_pool_state()`.
 
 Переменные окружения:
-  CPU_POOL_WORKERS    — размер пула (0/пусто → авто: min(8, ядра − 2))
-  CPU_POOL_PIN_CORES  — true/1/yes → привязать воркеры к ядрам
+  CPU_POOL_WORKERS       — размер пула (0/пусто → авто: min(8, ядра − 2))
+  CPU_POOL_PIN_CORES     — true/1/yes → привязать воркеры к ядрам
+  CPU_POOL_SHUTDOWN_SEC  — бюджет мягкого завершения воркеров (по умолчанию 5 с)
 """
 from __future__ import annotations
 
@@ -40,6 +62,7 @@ import asyncio
 import multiprocessing
 import os
 import threading
+import time
 from concurrent.futures import BrokenExecutor, ProcessPoolExecutor
 from typing import Any, Callable, Optional, TypeVar
 
@@ -50,10 +73,54 @@ T = TypeVar("T")
 RESERVED_CORES = 2
 DEFAULT_MAX_WORKERS = 8
 
+# Бюджет мягкого завершения: сколько ждём, что воркер выйдет сам, прежде чем
+# слать SIGTERM. Отдельно — сколько ждём после SIGTERM, прежде чем SIGKILL.
+# Оба ограничены намеренно: shutdown обязан завершаться, а не «обычно
+# завершаться».
+DEFAULT_SHUTDOWN_SEC = 5.0
+KILL_GRACE_SEC = 2.0
+
 _POOL_LOCK = threading.Lock()
 _POOL: Optional[ProcessPoolExecutor] = None
 _POOL_DISABLED = False
+_POOL_SHUTDOWN = False
 _POOL_WORKERS = 0
+
+# Счётчики жизненного цикла. Намеренно без labels: ни project_id, ни block_id,
+# ни имени функции — иначе метрика становится high-cardinality (см. §8
+# quality/runtime contract v1, node ID остаётся в логе, а не в метрике).
+_STATS_LOCK = threading.Lock()
+_STATS: dict[str, float] = {
+    "submitted": 0,          # задач отправлено в пул
+    "completed": 0,          # вернулись результатом
+    "failed": 0,             # вернулись исключением самой задачи
+    "cancelled": 0,          # await прерван снаружи
+    "inline_fallbacks": 0,   # посчитано в потоке вместо пула
+    "shutdowns": 0,          # вызовов shutdown_pool с живым пулом
+    "workers_terminated": 0,  # не вышли сами → SIGTERM
+    "workers_killed": 0,     # пережили SIGTERM → SIGKILL
+    "last_shutdown_sec": 0.0,  # длительность последнего завершения
+}
+
+
+def _bump(key: str, delta: float = 1) -> None:
+    with _STATS_LOCK:
+        _STATS[key] += delta
+
+
+def shutdown_budget_sec() -> float:
+    """Бюджет мягкого завершения воркеров. Не может быть нулевым или nan."""
+    raw = (os.environ.get("CPU_POOL_SHUTDOWN_SEC") or "").strip()
+    if not raw:
+        return DEFAULT_SHUTDOWN_SEC
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_SHUTDOWN_SEC
+    # Бесконечность и отрицательное значение убивают саму цель ограничения.
+    if not (value > 0) or value == float("inf"):
+        return DEFAULT_SHUTDOWN_SEC
+    return value
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -114,13 +181,18 @@ def _pin_initializer(counter, cores: list[int]) -> None:
 def _get_pool() -> Optional[ProcessPoolExecutor]:
     """Ленивый общий пул. None → считать в текущем потоке."""
     global _POOL, _POOL_DISABLED, _POOL_WORKERS, _PIN_COUNTER
-    if _POOL_DISABLED:
+    # Порядок проверок значим: после shutdown пул не воскресает. Раньше поздняя
+    # задача поднимала НОВЫЙ пул процессов уже после завершения бэкенда, и
+    # гасить его было некому.
+    if _POOL_DISABLED or _POOL_SHUTDOWN:
         return None
     workers = pool_workers()
     if workers <= 1:
         return None
     with _POOL_LOCK:
-        if _POOL_DISABLED:
+        # Повторная проверка под замком: между первой и взятием замка другой
+        # поток мог погасить пул.
+        if _POOL_DISABLED or _POOL_SHUTDOWN:
             return None
         if _POOL is None:
             ctx = multiprocessing.get_context("spawn")
@@ -151,6 +223,94 @@ def get_executor() -> Optional[ProcessPoolExecutor]:
     return _get_pool()
 
 
+def _terminate_workers(procs: list, budget_sec: float) -> tuple[int, int]:
+    """Довести воркеров до завершения за ограниченное время.
+
+    Возвращает (сколько получили SIGTERM, сколько получили SIGKILL).
+
+    Почему это вообще нужно. `ProcessPoolExecutor.shutdown(wait=False)` только
+    просит менеджер-поток закончить; сами процессы он не трогает. Дальше
+    интерпретатор в своём `atexit` join'ит менеджер-поток, тот join'ит
+    воркеров — и если воркер занят CPU-задачей, выход процесса ждёт её конца.
+    Бюджета там нет никакого, поэтому «завис воркер» превращается в «бэкенд не
+    выключается».
+
+    Лестница строго ступенчатая: сначала даём выйти самим, потом SIGTERM,
+    потом SIGKILL. Пропускать ступени нельзя — SIGTERM даёт воркеру закрыть
+    свои файлы и очереди, а SIGKILL не даёт.
+    """
+    terminated = 0
+    killed = 0
+    deadline = time.monotonic() + budget_sec
+
+    # Ступень 1: дать выйти самим в пределах общего бюджета.
+    for proc in procs:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            proc.join(remaining)
+        except Exception:
+            pass
+
+    # Ступень 2: кто не вышел — SIGTERM.
+    still_alive = []
+    for proc in procs:
+        try:
+            if proc.is_alive():
+                proc.terminate()
+                terminated += 1
+                still_alive.append(proc)
+        except Exception:
+            pass
+
+    if still_alive:
+        kill_deadline = time.monotonic() + KILL_GRACE_SEC
+        for proc in still_alive:
+            remaining = kill_deadline - time.monotonic()
+            if remaining > 0:
+                try:
+                    proc.join(remaining)
+                except Exception:
+                    pass
+        # Ступень 3: пережившие SIGTERM — SIGKILL. Без него бюджет остаётся
+        # обещанием, а не гарантией.
+        for proc in still_alive:
+            try:
+                if proc.is_alive():
+                    proc.kill()
+                    killed += 1
+                    proc.join(KILL_GRACE_SEC)
+            except Exception:
+                pass
+
+    return terminated, killed
+
+
+def _close_pool(pool: Optional[ProcessPoolExecutor], reason: str) -> None:
+    """Снять очередь и довести воркеров до конца за ограниченное время."""
+    if pool is None:
+        return
+    started = time.monotonic()
+    # Список процессов снимается ДО shutdown: `ProcessPoolExecutor.shutdown`
+    # обнуляет `_processes` (CPython 3.12), и после вызова гасить уже некого.
+    procs = list((getattr(pool, "_processes", None) or {}).values())
+    try:
+        pool.shutdown(wait=False, cancel_futures=True)
+    except Exception:
+        pass
+    terminated, killed = _terminate_workers(procs, shutdown_budget_sec())
+    elapsed = time.monotonic() - started
+    _bump("workers_terminated", terminated)
+    _bump("workers_killed", killed)
+    with _STATS_LOCK:
+        _STATS["last_shutdown_sec"] = round(elapsed, 3)
+    print(
+        f"[cpu_pool] пул остановлен ({reason}): воркеров {len(procs)}, "
+        f"terminate {terminated}, kill {killed}, {elapsed:.2f} с"
+    )
+
+
 def disable_pool(reason: str) -> None:
     """Пул сломался — дальше считаем в потоке, стадия не падает."""
     global _POOL, _POOL_DISABLED
@@ -158,23 +318,57 @@ def disable_pool(reason: str) -> None:
         _POOL_DISABLED = True
         pool, _POOL = _POOL, None
     print(f"[cpu_pool] пул процессов отключён: {reason}")
-    if pool is not None:
-        try:
-            pool.shutdown(wait=False, cancel_futures=True)
-        except Exception:
-            pass
+    _close_pool(pool, f"отключён: {reason}")
 
 
 def shutdown_pool() -> None:
-    """Погасить пул (вызывается на shutdown бэкенда)."""
-    global _POOL
+    """Погасить пул на завершении бэкенда.
+
+    Идемпотентна: повторный вызов ничего не ломает и не ждёт. После неё пул не
+    поднимается заново — поздняя задача считается в потоке. Чтобы поднять пул
+    в том же процессе снова, нужен явный `reset_pool_state()`.
+    """
+    global _POOL, _POOL_SHUTDOWN
     with _POOL_LOCK:
+        _POOL_SHUTDOWN = True
         pool, _POOL = _POOL, None
-    if pool is not None:
-        try:
-            pool.shutdown(wait=False, cancel_futures=True)
-        except Exception:
-            pass
+    if pool is None:
+        return
+    _bump("shutdowns")
+    _close_pool(pool, "shutdown")
+
+
+def reset_pool_state() -> None:
+    """Снять запреты и вернуть модуль в исходное состояние.
+
+    Нужна там, где один процесс живёт дольше одного жизненного цикла пула:
+    тесты и повторный старт. Production-путь её не вызывает — у бэкенда
+    shutdown ровно один и он окончательный.
+    """
+    global _POOL_DISABLED, _POOL_SHUTDOWN, _POOL_WORKERS
+    shutdown_pool()
+    with _POOL_LOCK:
+        _POOL_DISABLED = False
+        _POOL_SHUTDOWN = False
+        _POOL_WORKERS = 0
+
+
+def pool_stats() -> dict:
+    """Счётчики жизненного цикла. Без labels — метрика low-cardinality."""
+    with _STATS_LOCK:
+        return dict(_STATS)
+
+
+def reset_pool_stats() -> None:
+    """Обнулить счётчики.
+
+    Отдельно от `reset_pool_state()`: перезапуск пула в одном процессе не
+    должен стирать накопленную эксплуатационную статистику. Обнуление нужно
+    только тому, кто измеряет ОДИН жизненный цикл — то есть тесту.
+    """
+    with _STATS_LOCK:
+        for key in _STATS:
+            _STATS[key] = 0
 
 
 def pool_info() -> dict:
@@ -185,7 +379,10 @@ def pool_info() -> dict:
         "cores": len(available_cores()),
         "pinned": _env_flag("CPU_POOL_PIN_CORES"),
         "disabled": _POOL_DISABLED,
+        "shutdown": _POOL_SHUTDOWN,
         "alive": _POOL is not None,
+        "shutdown_budget_sec": shutdown_budget_sec(),
+        "stats": pool_stats(),
     }
 
 
@@ -193,13 +390,42 @@ async def run(fn: Callable[..., T], *args: Any) -> T:
     """Выполнить CPU-функцию в общем пуле (fallback — поток).
 
     `fn` и аргументы должны быть picklable: пул стартует через spawn.
+
+    Отмена. Прервать уже начатую задачу `ProcessPoolExecutor` нечем: снять
+    конкретный воркер с конкретной задачи API не позволяет. Поэтому отменённый
+    `run()` возвращает управление сразу, но воркер остаётся занят до конца
+    вычисления. Это ограничение фиксируется счётчиком `cancelled`, а не
+    маскируется: гарантию «после отмены ядро свободно» модуль дать не может, и
+    делать вид, что может, хуже, чем сказать прямо. Освобождение занятых
+    воркеров даёт только `shutdown_pool()` со своей лестницей terminate/kill.
     """
     pool = _get_pool()
     if pool is None:
+        _bump("inline_fallbacks")
         return await asyncio.to_thread(fn, *args)
     loop = asyncio.get_running_loop()
+    _bump("submitted")
     try:
-        return await loop.run_in_executor(pool, fn, *args)
+        result = await loop.run_in_executor(pool, fn, *args)
+    except asyncio.CancelledError:
+        _bump("cancelled")
+        raise
     except (BrokenExecutor, OSError) as exc:
+        # Пул сломался ПОТОМУ ЧТО его гасят — пересчитывать нельзя: бэкенд
+        # уходит, а повторный запуск CPU-задачи в потоке продлил бы выключение
+        # ровно на её длительность. Ошибка честно уходит вызывающему.
+        if _POOL_SHUTDOWN:
+            _bump("failed")
+            raise RuntimeError(
+                "cpu_pool: задача прервана остановкой пула процессов"
+            ) from exc
         disable_pool(f"{type(exc).__name__}: {exc}")
+        _bump("inline_fallbacks")
         return await asyncio.to_thread(fn, *args)
+    except BaseException:
+        # Исключение самой задачи. Пул при этом исправен и остаётся жить:
+        # падение одного блока не должно гасить общий бюджет ядер.
+        _bump("failed")
+        raise
+    _bump("completed")
+    return result

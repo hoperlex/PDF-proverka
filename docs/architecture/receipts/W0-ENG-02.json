@@ -1,0 +1,88 @@
+{
+  "type": "task_receipt",
+  "task_id": "W0-ENG-02",
+  "captured_at": "2026-08-31",
+  "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6. Это квитанция задачи.",
+  "consumes_contract": {
+    "document": "docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md",
+    "profile": "qr-v1",
+    "acceptance_section": "§11 W0-ENG-02"
+  },
+  "environment": {
+    "python": "3.12.3",
+    "uid": 0,
+    "note": "Прогон под root. По §6 это невалидное окружение для lane network/chaos; приёмка на non-root clean-room runner остаётся за W0-INT-01."
+  },
+  "defects_reproduced": [
+    {
+      "id": "ENG02-D1",
+      "summary": "Выключение бэкенда не завершалось при зависшем воркере пула",
+      "measurement_before": "shutdown_pool() возвращался за 0.00 с, интерпретатор не выходил за 45 с при воркере в sleep(600); resource_tracker сообщал о 5 протёкших семафорах",
+      "measurement_after": "shutdown_pool() возвращается за 5.01 с (бюджет), воркер снят SIGTERM, интерпретатор выходит с кодом 0",
+      "root_cause": "ProcessPoolExecutor.shutdown(wait=False) не завершает воркеров; их join'ит atexit интерпретатора без какого-либо бюджета"
+    },
+    {
+      "id": "ENG02-D2",
+      "summary": "Пул воскресал после завершения бэкенда",
+      "measurement_before": "после shutdown_pool() первый же run() поднимал НОВЫЙ пул: работа считалась в pid 31887 при родителе 31882",
+      "measurement_after": "после shutdown_pool() работа считается в родительском процессе; pool_info().alive = false, shutdown = true",
+      "root_cause": "shutdown не выставлял запирающий флаг, а _get_pool() проверял только _POOL_DISABLED"
+    }
+  ],
+  "delivered": {
+    "file": "backend/app/services/common/cpu_pool.py",
+    "changes": [
+      "shutdown_pool() ограничен временем: снятие очереди → join в бюджете CPU_POOL_SHUTDOWN_SEC (5 с) → SIGTERM → SIGKILL через 2 с",
+      "shutdown идемпотентен и запирает модуль: пул не воскресает, поздняя задача считается в потоке",
+      "reset_pool_state() — единственный явный способ поднять пул заново в том же процессе",
+      "run() различает отмену, ошибку задачи и поломку пула; при shutdown НЕ пересчитывает задачу в потоке (это продлевало бы выключение на её длительность)",
+      "телеметрия жизненного цикла без labels: 9 скалярных счётчиков в pool_stats(), доступны через pool_info()"
+    ],
+    "characterization_tests": {
+      "file": "tests/test_cpu_pool.py",
+      "before": 7,
+      "after": 18,
+      "added": 11,
+      "paths_covered": ["normal", "error", "cancel", "shutdown"],
+      "result": "18 passed за 12.86 s"
+    }
+  },
+  "acceptance": {
+    "lifecycle_nodes_finish_in_budget": "test_cpu_pool 18/18 за 12.86 s; per-test бюджет lane unit — 30 s, ни один тест к нему не приблизился",
+    "no_orphan_processes": "test_shutdown_leaves_no_worker_processes проверяет каждый pid воркера после shutdown; test_backend_process_exits_despite_a_hung_worker проверяет выход интерпретатора отдельным процессом",
+    "error_cancel_shutdown_evidence": "по одному характеризационному тесту на путь плюс сквозной подпроцессный тест",
+    "regression_gate": {
+      "command": "python scripts/ci_regression_gate.py",
+      "result": "падений 35, baseline 35, новых 0, exit 0",
+      "run_summary": "2 failed, 6888 passed, 174 skipped, 2 deselected, 33 errors за 274.41 s"
+    }
+  },
+  "not_reproduced": {
+    "claim": "evidence 2026-08-28 называет незавершающимися также block_context, debt_control, findings_verify, post-review hook и section-optimization pipeline",
+    "measurement": [
+      "tests/test_block_context.py — 7 passed за 0.71 s",
+      "tests/test_debt_control_stage.py — 6 passed за 0.32 s",
+      "backend/tests/test_findings_verify_stage.py — 6 passed за 0.12 s",
+      "backend/tests/test_pipeline_critic_v2_post_review_hook.py — 7 passed за 0.29 s",
+      "backend/tests/test_section_optimization_pipeline_service.py — 3 passed за 0.12 s"
+    ],
+    "verdict": "в этом окружении не воспроизводится — тот же класс расхождения, что OPS03-F3. Правок в этих модулях задача не делала: они лежат вне allowed paths (pipeline stages), и без воспроизведения правка была бы догадкой.",
+    "owner": "W0-ARC-03 (владелец evidence контракта) для перепроверки; W0-INT-01, если дефект подтвердится на clean-room runner"
+  },
+  "scope_discipline": {
+    "allowed_paths_used": ["backend/app/services/common/cpu_pool.py", "tests/test_cpu_pool.py"],
+    "hotspots_not_touched": [
+      "backend/app/pipeline/manager.py",
+      "backend/app/pipeline/stages/block_context/builder.py",
+      "backend/app/main.py"
+    ],
+    "note": "builder.shutdown_pool() — тонкая обёртка над cpu_pool.shutdown_pool(); правка в общем модуле дала bounded shutdown обоим вызывающим без входа в legacy hotspot.",
+    "flag_not_required": "по roadmap флаг не нужен, если меняется только cleanup. Runtime scheduling не менялось: размер пула, spawn, пиннинг и порядок подачи задач прежние."
+  },
+  "lane_markers": {
+    "status": "не проставлены этой задачей",
+    "reason": "tests/test_cpu_pool.py поднимает настоящие процессы и по §5 относится к lane network, но полная materialization маркеров — предмет W0-OPS-03 части 2 (находка OPS03-F2). Два владельца одного правила дали бы разную разметку.",
+    "owner": "W0-OPS-03 часть 2"
+  },
+  "rollback": "git revert коммита задачи возвращает прежний cpu_pool.py и прежние 7 тестов; вместе с ними возвращается незавершающийся shutdown."
+}
