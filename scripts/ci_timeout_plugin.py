@@ -55,8 +55,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from ci_redaction import (  # noqa: E402
+    publishable_comm,
     render_argv_summary,
     safe_cmdline,
+    sanitize_traceback,
     summarize_argv,
 )
 
@@ -108,7 +110,9 @@ def _scan_proc() -> tuple[dict[int, list[int]], dict[int, dict[str, object]]]:
             pid, ppid = int(entry.name), int(ppid_raw)
         except ValueError:
             continue
-        comm = stat[stat.find("(") + 1 : close]
+        # `comm` задаётся самим процессом через prctl(PR_SET_NAME) — это не
+        # имя программы, а пятнадцать подконтрольных источнику символов.
+        comm = publishable_comm(stat[stat.find("(") + 1 : close])
         try:
             raw = (entry / "cmdline").read_bytes()
             # argv разделён нулями. Разбираем ПО НИМ, а не склеиваем в строку:
@@ -135,7 +139,7 @@ def _scan_proc() -> tuple[dict[int, list[int]], dict[int, dict[str, object]]]:
                 "argc": 0,
                 "positional_count": 0,
                 "hidden_flag_count": 0,
-                "argv_sha256": "",
+                "argv_fingerprint": "",
             }
         tree.setdefault(ppid, []).append(pid)
         info[pid] = {
@@ -145,10 +149,12 @@ def _scan_proc() -> tuple[dict[int, list[int]], dict[int, dict[str, object]]]:
             "cmdline": cmdline[:400],
             # Отпечаток и счётчики — чтобы по сокращённой строке всё же можно
             # было сличить два процесса и понять, сколько сведений скрыто.
+            # Отпечаток — HMAC со случайным ключом прогона: обычный SHA-256
+            # от argv восстанавливается перебором словаря.
             "argc": summary["argc"],
             "positional_count": summary["positional_count"],
             "hidden_flag_count": summary["hidden_flag_count"],
-            "argv_sha256": summary["argv_sha256"],
+            "argv_fingerprint": summary["argv_fingerprint"],
         }
     return tree, info
 
@@ -361,7 +367,12 @@ class LaneTimeoutPlugin:
                 "when": report.when,
                 "outcome": report.outcome,
                 "duration": round(getattr(report, "duration", 0.0) or 0.0, 4),
-                "longrepr": str(report.longrepr)[:2000] if report.failed else "",
+                # `longrepr` не публикуется. Bible объявляет traceback
+                # непроверенным вводом, а журнал ни одним потребителем его не
+                # читал: сборщик JUnit строит отчёт из исходов, не из текста
+                # падения. Поле было чистой обузой — измерено, туда уезжал
+                # `customer_password=…` из assert-сообщения. Не чистим, а не
+                # публикуем: непубликуемое поле не может протечь.
             }
         )
 
@@ -409,7 +420,7 @@ class LaneTimeoutPlugin:
     def _on_timeout(self, nodeid: str) -> None:
         elapsed = time.monotonic() - self._started_at
         children = child_processes()
-        dump = thread_dump()
+        dump = sanitize_traceback(thread_dump())
         cleanup = terminate_children(children)
         payload = {
             "event": "timeout",

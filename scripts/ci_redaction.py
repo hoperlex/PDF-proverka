@@ -55,8 +55,10 @@ Denylist остался, но сменил роль
 from __future__ import annotations
 
 import hashlib
+import hmac
 import os
 import re
+import secrets
 from typing import Callable
 
 REDACTED = "[redacted]"
@@ -181,6 +183,49 @@ def publishable_executable(raw: str) -> str:
         return name
     return "<executable>"
 
+
+def publishable_comm(raw: str) -> str:
+    """То же правило для `comm` из `/proc/<pid>/stat`.
+
+    `comm` выглядит как имя программы, но им не является: процесс задаёт его
+    себе сам через `prctl(PR_SET_NAME)`. Измерено — ребёнок выставил себе
+    `q7z4m2n8p5r3t`, и это значение уходило в инвентарь, журнал событий,
+    диагностику таймаута и JUnit нетронутым. Пятнадцать символов, полностью
+    подконтрольных источнику, — ровно тот случай, ради которого P-13 требует
+    allowlist, а не доверие к виду поля.
+    """
+    token = CTRL_RE.sub(" ", raw).strip()
+    if token in SAFE_EXECUTABLE_NAMES or PYTHON_EXECUTABLE_RE.fullmatch(token):
+        return token
+    return "<comm>"
+
+
+#: Строка faulthandler вида `  File "<путь>", line N in func`.
+_TRACEBACK_FILE_RE = re.compile(r'(\s*File ")([^"]*)(", line \d+)')
+
+
+def sanitize_traceback(text: str) -> str:
+    """Подготовить thread dump к публикации.
+
+    Дамп нужен целиком — он единственный отвечает, ГДЕ зависло, — но каталоги
+    в путях несут идентификаторы проекта и клиента (`/srv/customers/<secret>/`).
+    Поэтому от каждого пути остаётся только имя файла: номер строки и функция
+    сохраняются, а дерево каталогов исчезает.
+
+    Свободный остаток дополнительно проходит `redact_text`. Это эшелон, а не
+    гарантия: для произвольного текста allowlist невозможен, и Bible именно для
+    traceback предписывает ту же обработку, что для прочего непроверенного
+    ввода.
+
+    Остаточный риск назван прямо: если секретом является само ИМЯ файла, оно
+    переживёт обработку. Убрать и его значило бы удалить из дампа последнее,
+    ради чего он снимается.
+    """
+    def _basename(match: "re.Match[str]") -> str:
+        return f"{match.group(1)}{os.path.basename(match.group(2))}{match.group(3)}"
+
+    return redact_text(_TRACEBACK_FILE_RE.sub(_basename, str(text)))
+
 # ---------------------------------------------------------------------------
 # Эшелонированная защита свободных полей (НЕ основная гарантия)
 # ---------------------------------------------------------------------------
@@ -253,19 +298,37 @@ def redact_text(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def argv_digest(argv: list[str]) -> str:
-    """SHA-256 исходного argv.
+#: Ключ отпечатка. Случайный, живёт только в памяти процесса и НИКОГДА не
+#: публикуется. Пересоздаётся на каждый прогон.
+#:
+#: Простой SHA-256 отпечатком не является: у argv низкая энтропия, и значение
+#: восстанавливается перебором словаря. Измерено — `--pin 0427` восстановлен
+#: за 10 000 попыток. Для PIN, короткого идентификатора или имени файла это
+#: значит, что «отпечаток» публиковал само значение, только медленнее.
+#:
+#: HMAC с несекретным ключом перебор не останавливает, поэтому ключ обязан
+#: быть секретом. Публиковать его негде и незачем: отпечаток нужен, чтобы
+#: сличать процессы ВНУТРИ одного прогона, а для этого достаточно ключа,
+#: общего в пределах процесса.
+_FINGERPRINT_KEY = secrets.token_bytes(32)
 
-    Даёт возможность сличить два процесса или два прогона, не раскрывая
-    содержимого: одинаковый отпечаток — одинаковая команда. Разделитель `\\0`
-    тот же, что в `/proc/*/cmdline`, поэтому склейка не порождает коллизий
-    между `["ab","c"]` и `["a","bc"]`.
+
+def argv_fingerprint(argv: list[str]) -> str:
+    """Отпечаток argv, пригодный для сличения и непригодный для восстановления.
+
+    Одинаковый отпечаток означает одинаковую команду — но только в пределах
+    ОДНОГО прогона: ключ случаен и не переживает процесс. Сличать отпечатки
+    двух разных прогонов бессмысленно, и это осознанный размен: возможность
+    сравнивать между прогонами стоила бы возможности перебирать значения.
+
+    Разделитель нулевым байтом тот же, что в `/proc/*/cmdline`, поэтому
+    склейка не даёт коллизий между `["ab","c"]` и `["a","bc"]`.
     """
-    digest = hashlib.sha256()
+    mac = hmac.new(_FINGERPRINT_KEY, digestmod=hashlib.sha256)
     for part in argv:
-        digest.update(part.encode("utf-8", errors="replace"))
-        digest.update(b"\0")
-    return digest.hexdigest()
+        mac.update(part.encode("utf-8", errors="replace"))
+        mac.update(b"\0")
+    return mac.hexdigest()
 
 
 def summarize_argv(argv: list[str]) -> dict[str, object]:
@@ -281,7 +344,7 @@ def summarize_argv(argv: list[str]) -> dict[str, object]:
         return {
             "executable": "", "flags": [], "positional_count": 0,
             "hidden_flag_count": 0,
-            "argc": 0, "argv_sha256": argv_digest([]),
+            "argc": 0, "argv_fingerprint": argv_fingerprint([]),
         }
 
     executable = publishable_executable(argv[0])
@@ -340,7 +403,7 @@ def summarize_argv(argv: list[str]) -> dict[str, object]:
         "positional_count": positional,
         "hidden_flag_count": hidden_flags,
         "argc": len(argv),
-        "argv_sha256": argv_digest(argv),
+        "argv_fingerprint": argv_fingerprint(argv),
     }
 
 
@@ -361,7 +424,7 @@ def render_argv_summary(summary: dict[str, object]) -> str:
     positional = int(summary.get("positional_count") or 0)
     if positional:
         parts.append(f"[{positional} позиционных]")
-    digest = str(summary.get("argv_sha256") or "")
+    digest = str(summary.get("argv_fingerprint") or "")
     if digest:
         parts.append(f"argv:{digest[:16]}")
     return " ".join(parts)

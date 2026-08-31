@@ -42,7 +42,9 @@ if str(_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(_ROOT / "scripts"))
 
 from ci_redaction import (  # noqa: E402
-    argv_digest,
+    argv_fingerprint,
+    publishable_comm,
+    sanitize_traceback,
     redact_text,
     safe_cmdline,
     summarize_argv,
@@ -172,11 +174,11 @@ def test_digest_identifies_the_command_without_revealing_it() -> None:
     a = ["app", "--token", SENTINEL]
     b = ["app", "--token", SENTINEL]
     c = ["app", "--token", "другое"]
-    assert argv_digest(a) == argv_digest(b)
-    assert argv_digest(a) != argv_digest(c)
-    assert SENTINEL not in argv_digest(a)
+    assert argv_fingerprint(a) == argv_fingerprint(b)
+    assert argv_fingerprint(a) != argv_fingerprint(c)
+    assert SENTINEL not in argv_fingerprint(a)
     # Разделитель `\0` исключает коллизию склейки.
-    assert argv_digest(["ab", "c"]) != argv_digest(["a", "bc"])
+    assert argv_fingerprint(["ab", "c"]) != argv_fingerprint(["a", "bc"])
 
 
 def test_argc_reports_the_full_length() -> None:
@@ -197,7 +199,7 @@ def test_empty_argv_is_handled() -> None:
     summary = summarize_argv([])
     assert summary["argc"] == 0
     assert summary["flags"] == []
-    assert safe_cmdline([]) == f"argv:{summary['argv_sha256'][:16]}"
+    assert safe_cmdline([]) == f"argv:{summary['argv_fingerprint'][:16]}"
 
 
 def test_unallowlisted_or_malformed_flag_is_hidden() -> None:
@@ -325,3 +327,88 @@ def test_comparison_does_not_contaminate_the_pytest_process() -> None:
     assert parent_after == parent_before, (
         f"сверка добавила переменные в процесс pytest: {parent_after - parent_before}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Третий круг: comm, отпечаток и traceback
+# ---------------------------------------------------------------------------
+
+
+def test_comm_is_not_trusted_because_a_process_sets_it_itself() -> None:
+    """`comm` — недоверенный ввод, а не имя программы.
+
+    Процесс задаёт его себе сам через `prctl(PR_SET_NAME)`: пятнадцать
+    символов, полностью подконтрольных источнику. Прежде значение уходило в
+    инвентарь, журнал, диагностику и JUnit нетронутым — измерено на подделанном
+    `q7z4m2n8p5r3t`.
+    """
+    assert publishable_comm(OPAQUE_SENTINEL[:15]) == "<comm>"
+    assert publishable_comm("q7z4m2n8p5r3t") == "<comm>"
+    # Обычные имена остаются: иначе инвентарь перестанет отвечать, что висело.
+    for name in ("python3", "python", "uvicorn", "node", "sh"):
+        assert publishable_comm(name) == name
+
+
+def test_fingerprint_is_not_brute_forceable() -> None:
+    """Отпечаток не должен раскрывать значение перебором словаря.
+
+    У argv низкая энтропия. Обычный SHA-256 позволял восстановить `--pin 0427`
+    за 10 000 попыток — то есть «отпечаток» публиковал само значение, только
+    медленнее. Ключ HMAC случаен, в памяти процесса и не публикуется, поэтому
+    перебор без него бесполезен.
+    """
+    target = argv_fingerprint(["app", "--pin", "0427"])
+    recovered = [
+        f"{i:04d}" for i in range(10000)
+        if _offline_sha256(["app", "--pin", f"{i:04d}"]) == target
+    ]
+    assert recovered == [], f"отпечаток восстановлен перебором: {recovered}"
+    # Сличение внутри прогона при этом работает — ради него отпечаток и нужен.
+    assert argv_fingerprint(["a", "b"]) == argv_fingerprint(["a", "b"])
+    assert argv_fingerprint(["a", "b"]) != argv_fingerprint(["a", "c"])
+
+
+def _offline_sha256(argv: list[str]) -> str:
+    """Тот самый перебор, который работал до перехода на HMAC."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    for part in argv:
+        digest.update(part.encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def test_fingerprint_key_is_never_published() -> None:
+    """Ключ отпечатка не выходит наружу ни через одно поле."""
+    import ci_redaction
+
+    key_hex = ci_redaction._FINGERPRINT_KEY.hex()
+    summary = summarize_argv(["app", "--verbose"])
+    blob = json.dumps(summary, ensure_ascii=False) + safe_cmdline(["app", "--verbose"])
+    assert key_hex not in blob
+    assert len(ci_redaction._FINGERPRINT_KEY) == 32
+
+
+def test_traceback_keeps_the_location_and_drops_the_directories() -> None:
+    """Дамп сохраняет файл, строку и функцию, но теряет дерево каталогов.
+
+    Каталоги несут идентификаторы проекта и клиента (`/srv/customers/<id>/`), а
+    отвечает дамп на вопрос «где зависло» — для этого достаточно имени файла.
+    """
+    dump = (
+        "Thread 0x1 (most recent call first):\n"
+        f'  File "/srv/customers/{OPAQUE_SENTINEL}/app/builder.py", line 142 in resolve\n'
+        '  File "/root/projects/PDF-proverka/tests/test_x.py", line 7 in test_y\n'
+    )
+    cleaned = sanitize_traceback(dump)
+    assert OPAQUE_SENTINEL not in cleaned
+    assert "/srv/customers" not in cleaned
+    assert 'File "builder.py", line 142 in resolve' in cleaned
+    assert 'File "test_x.py", line 7 in test_y' in cleaned
+
+
+def test_traceback_still_scrubs_known_secret_shapes() -> None:
+    """Свободный остаток дампа проходит эшелонированную защиту."""
+    cleaned = sanitize_traceback("RuntimeError: token=AKIAIOSFODNN7EXAMPLE failed")
+    assert "AKIAIOSFODNN7EXAMPLE" not in cleaned

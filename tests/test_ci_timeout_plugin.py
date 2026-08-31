@@ -28,6 +28,7 @@ watchdog вызовет `os._exit(87)` в НАШЕМ pytest-процессе и 
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import signal
 import subprocess
@@ -151,7 +152,7 @@ def test_child_processes_finds_own_child():
         assert "time.sleep(60)" not in entry["cmdline"], (
             "содержимое -c опубликовано — allowlist пропустил произвольный аргумент"
         )
-        assert len(str(entry["argv_sha256"])) == 64, entry
+        assert len(str(entry["argv_fingerprint"])) == 64, entry
         assert isinstance(entry["comm"], str) and entry["comm"]
     finally:
         reap(proc)
@@ -219,8 +220,14 @@ def test_child_processes_parses_comm_with_spaces_and_parens():
 
         found = [item for item in plug.child_processes() if item["pid"] == proc.pid]
         assert len(found) == 1, "процесс с «злым» comm потерян инвентарём"
-        assert found[0]["comm"] == _WEIRD_COMM
+        # Разбор проверяется по СОСЕДНИМ полям, а не по самому comm: он теперь
+        # проходит allowlist и наружу не выходит (процесс задаёт его себе сам
+        # через prctl, то есть это недоверенный ввод). Целостность разбора это
+        # доказывает не хуже: при сдвиге полей в state попал бы кусок имени, а
+        # pid подменился бы числом из середины stat.
         assert found[0]["state"] in {"R", "S"}
+        assert found[0]["comm"] == "<comm>", "недоверенный comm опубликован"
+        assert _WEIRD_COMM not in str(found[0])
     finally:
         reap(proc)
 
@@ -243,7 +250,7 @@ def test_child_processes_is_sorted_and_shaped():
         for item in children:
             assert set(item) == {
                 "pid", "comm", "state", "cmdline", "depth",
-                "argc", "positional_count", "hidden_flag_count", "argv_sha256",
+                "argc", "positional_count", "hidden_flag_count", "argv_fingerprint",
             }
             assert int(item["depth"]) >= 1
             assert len(item["cmdline"]) <= 400, "cmdline обязан быть обрезан"
@@ -574,7 +581,12 @@ def test_report_events_carry_phase_and_outcome(tmp_path, monkeypatch):
     assert event["when"] == "call"
     assert event["outcome"] == "failed"
     assert event["duration"] == pytest.approx(1.2346, abs=1e-4)
-    assert event["longrepr"] == "полный текст падения"
+    # `longrepr` не публикуется вовсе. Bible объявляет traceback непроверенным
+    # вводом, а журнал его ни одним потребителем не читал: сборщик JUnit строит
+    # отчёт из исходов. Измерено — туда уезжал `customer_password=…` из
+    # assert-сообщения. Непубликуемое поле не может протечь.
+    assert "longrepr" not in event
+    assert "полный текст падения" not in json.dumps(event, ensure_ascii=False)
 
 
 def test_journal_is_optional(monkeypatch):
@@ -709,7 +721,56 @@ def test_inventory_publishes_counters_and_digest():
         record = mine[0]
         assert record["argc"] == 4
         assert record["positional_count"] >= 1
-        assert len(str(record["argv_sha256"])) == 64
+        assert len(str(record["argv_fingerprint"])) == 64
         assert "позиционный-секрет" not in str(record)
     finally:
         reap(proc)
+
+
+@requires_proc
+def test_forged_comm_from_a_real_child_never_reaches_the_inventory():
+    """Ребёнок, подделавший себе `comm`, не публикует его через инвентарь.
+
+    Это был блокирующий дефект. `comm` читался из `/proc/<pid>/stat` и клался
+    в запись как есть, а процесс задаёт его себе сам через
+    `prctl(PR_SET_NAME)`. Пятнадцать символов, полностью подконтрольных
+    источнику, уходили в журнал событий, диагностику таймаута и JUnit.
+
+    Тест поднимает НАСТОЯЩИЙ процесс с подделанным именем: проверка на
+    синтетической строке доказала бы только правило, но не проводку.
+    """
+    secret = "q7z4m2n8p5r3t"
+    proc = None
+    try:
+        proc = spawn(
+            "import ctypes, sys, time; "
+            'ctypes.CDLL("libc.so.6").prctl(15, b"' + secret + '", 0, 0, 0); '
+            "sys.stdout.write('ready\\n'); sys.stdout.flush(); time.sleep(60)"
+        )
+        raw = Path(f"/proc/{proc.pid}/stat").read_text(encoding="utf-8")
+        assert f"({secret})" in raw, f"prctl не применился: {raw[:80]!r}"
+
+        found = [item for item in plug.child_processes() if item["pid"] == proc.pid]
+        assert found, "процесс потерян инвентарём"
+        assert secret not in json.dumps(found[0], ensure_ascii=False), (
+            f"подделанный comm опубликован: {found[0]!r}"
+        )
+        assert found[0]["comm"] == "<comm>"
+    finally:
+        reap(proc)
+
+
+def test_thread_dump_is_sanitised_before_publication():
+    """Дамп проходит обработку до попадания в артефакт.
+
+    Каталоги в путях несут идентификаторы проекта и клиента. Дамп нужен
+    целиком — он единственный отвечает, ГДЕ зависло, — поэтому от пути
+    остаётся имя файла, а не пустое место.
+    """
+    dump = plug.thread_dump()
+    assert dump.strip(), "дамп пуст — проверять нечего"
+    cleaned = plug.sanitize_traceback(dump)
+    assert "line " in cleaned, "потеряны номера строк — дамп обесценен"
+    assert "/root/" not in cleaned and "/usr/" not in cleaned, (
+        f"каталоги пережили обработку: {cleaned[:200]!r}"
+    )
