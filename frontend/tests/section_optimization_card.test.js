@@ -17,8 +17,17 @@ describe('section optimization card', () => {
     expect(projectLoop).toBeGreaterThan(card);
     expect(html).toContain('v-if="groupIndex === 0"');
     expect(html).toContain('Оптимизация раздела');
-    expect(html).toContain('Все корпуса и части как один проект');
     expect(html).toContain('@click="navigateToSectionOptimization(sidebarFilterSection)"');
+
+    // Подпись «все корпуса и части как один проект» намеренно снята С КАРТОЧКИ
+    // (49c5e9d6: смысл уже несут заголовок, Σ и бейдж «СВОДНАЯ»), но оставлена
+    // в шапке страницы раздела. Прежняя проверка требовала её в документе
+    // целиком и потому продолжала проходить бы даже после реального удаления —
+    // фиксируем обе стороны решения отдельно.
+    const cardMarkup = html.slice(card, projectLoop);
+    expect(cardMarkup).not.toContain('корпуса и части как один проект');
+    expect(cardMarkup).toContain('СВОДНАЯ');
+    expect(html).toContain('· все корпуса и части как один проект</p>');
   });
 
   it('opens a standalone section optimization page instead of an inline sheet', () => {

@@ -506,9 +506,17 @@
             computed: {
                 // Окна лимита приходят отсортированными «самое ограничивающее
                 // первым», и главное число карточки относится именно к нему.
+                //
+                // Соседние computed читают `quotaWindows(this.quota)` заново, а
+                // не `this.windows`: внутри литерала опций `this` — обычный
+                // объект, и `this.windows` для типизатора равно самой функции,
+                // а не её результату (`Property 'slice' does not exist on type
+                // '() => any'`). Vue-обёртка над геттерами существует только в
+                // рантайме, tsc её не видит. Повторный вызов дешёв — это
+                // проверка типа и чтение поля.
                 windows() { return quotaWindows(this.quota); },
-                primaryWindow() { return this.windows[0] || null; },
-                otherWindows() { return this.windows.slice(1); },
+                primaryWindow() { return quotaWindows(this.quota)[0] || null; },
+                otherWindows() { return quotaWindows(this.quota).slice(1); },
                 reasonText() { return quotaReasonText(this.quota); },
                 ageText() { return quotaAgeText(this.quota); },
                 undocumented() { return this.quota && this.quota.sourceStability === 'undocumented'; },

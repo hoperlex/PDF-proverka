@@ -9127,7 +9127,18 @@ const app = createApp({
             revisionData.value = null;
             if (currentProjectId.value) {
                 loadDiscussionItems(currentProjectId.value, discussionTab.value);
-                navigate('/project/' + currentProjectId.value + '/discussions');
+                // Навигации здесь больше нет. Маршрут `/project/{id}/discussions`
+                // удалён вместе с разделом «Проработка замечаний» (aeb0b2f2), и
+                // этот вызов остался осиротевшим: хеш проваливался в замыкающую
+                // ветвь `/^\/project\/(.+)$/`, после чего currentProjectId
+                // становился строкой «{id}/discussions», а loadProject грузил
+                // несуществующий проект. См. RI-1 в
+                // docs/architecture/WEB_ROUTE_INVENTORY_V1.md.
+                //
+                // Функция оставлена: её вызывает resolveDiscussion, а
+                // backend-роутер /api/discussions/**/resolve всё ещё
+                // используется экспертной оценкой. Закрытие обсуждения обязано
+                // сбрасывать состояние и не трогать маршрут.
             }
         }
 

@@ -273,7 +273,7 @@ baseline. Это единственная волна с намеренно ог�
 | W0-OPS-02 | OPS | liveness/readiness контракт и миграция watchdog: фиксация действующего watchdog → новые endpoints → shadow → атомарное переключение → закрытие `/api/info` | нет | да; владелец kill-семантики — OPS, не security |
 | W0-ARC-03 | ARC/OPS | frozen runtime/quality contract v1: clean-room профиль, совместимые зависимости, test lanes, timeout и baseline policy | ADR-0005, аудит 2026-08-28 | нет: один владелец shared contract |
 | W0-ENG-02 | ENG | bounded lifecycle CPU/thread executors и stage runners без зависания shutdown | W0-ARC-03 | да; отдельный legacy hotspot, бизнес-семантику stages не меняет |
-| W0-WEB-02 | WEB | disposition семи Vitest-падений и strict typecheck действующего UI без ослабления контрактов | W0-ARC-03, W0-WEB-01 | да; единственный владелец legacy frontend hotspots |
+| W0-WEB-02 | WEB | disposition семи Vitest-падений и strict typecheck действующего UI без ослабления контрактов — [disposition](WEB_FRONTEND_DISPOSITION_W0-WEB-02.md) | W0-ARC-03, W0-WEB-01 | да; единственный владелец legacy frontend hotspots |
 | W0-OPS-03 | OPS | runtime probe, timeout/JUnit harness, test-lane markers и provisioning norm corpus без правки shared workflow/defaults | W0-ARC-03 | да; готовит integration, но не включает enforce |
 | W0-INT-01 | ARC/OPS | интегрировать dependency pins, test harness, frontend gate и CI; полный clean-room прогон и перевод regression gate в enforce | W0-ARC-03, W0-ENG-02, W0-WEB-02, W0-OPS-03 | нет: root dependencies, pytest и workflow принадлежат интегратору |
 

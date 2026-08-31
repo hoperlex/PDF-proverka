@@ -47,13 +47,24 @@ describe('pipeline stage algorithm guide', () => {
     expect(appJs).toContain("window.removeEventListener('keydown', _stageAlgorithmKeydown)");
   });
 
-  it('documents dual Stage 01 comparison and gap search after independent detection', () => {
+  it('documents N-leg Stage 01 comparison and gap search after independent detection', () => {
     expect(appJs).toContain("model.includes('ensemble/gpt-codex')");
-    expect(appJs).toContain('GPT и Codex не видят ответы друг друга.');
+    // Ансамбль перестал быть жёстко двуногим: 9c508e72 включил третью ногу за
+    // STAGE01_THIRD_LEG_ENABLED и построил ветки из parallel_models. Поэтому
+    // подпись обобщена до «Модели», а прежняя дословная «GPT и Codex»
+    // проверяла состав, которого в проде уже нет. Проверяем то, что делает
+    // подпись правдивой: ветки выводятся из ответа backend, а не зашиты.
+    expect(appJs).toContain('const branches = parallelModels.map((m) => ({');
+    expect(appJs).toContain('Модели не видят ответы друг друга.');
     expect(appJs).toContain('Судья: ${judge} сравнивает результаты');
     expect(appJs).toContain('Совпадения · расширения · новые · спорные');
     expect(appJs).toContain('gap-search пропущенных проблем');
-    expect(appJs).toContain('Замечания + бейджи GPT / Codex');
+    // Тот же корень, что и у подписи выше: список бейджей строится из
+    // фактических веток, а не из зашитой пары. Эта строка не падала раньше
+    // только потому, что тест уже краснел двумя проверками выше.
+    expect(appJs).toContain(
+      'Замечания + бейджи ${[...new Set(branches.map((b) => b.label))].join(\' / \')}',
+    );
     expect(appJs).toContain("d.mode === 'gap_search'");
     expect(appJs).toContain('новое: найдено gap-search');
   });
@@ -106,6 +117,10 @@ describe('pipeline stage algorithm guide', () => {
   it('keeps the guide compact and responsive', () => {
     expect(css).toContain('.stage-algorithm-modal { max-width: 440px;');
     expect(css).toContain('@media (max-width: 460px)');
-    expect(css).toContain('.stage-algorithm-split { grid-template-columns: 1fr;');
+    // Раскладка веток переведена с двухколоночного грида на flex тем же
+    // 9c508e72: грид на 1fr 1fr не вмещал третью ногу. Гарантия та же —
+    // на узком экране ветки стакаются в столбец, — но выражается уже flex'ом.
+    expect(css).toContain('.stage-algorithm-split { display: flex;');
+    expect(css).toContain('.stage-algorithm-split { flex-direction: column;');
   });
 });

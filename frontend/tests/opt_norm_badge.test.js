@@ -76,7 +76,14 @@ describe('статус нормы на карточке предложения',
   it('бейдж подключён к ячейке нормы и стилизован', () => {
     expect(html).toContain('optNormBadge(item)');
     expect(html).toContain("'opt-norm-badge--' + optNormBadge(item).tone");
-    expect(appJs).toContain('optNormBadge, loadOptimization');   // экспорт в setup
+    // Контракт — «optNormBadge отдана из setup», иначе шаблон её не вызовет.
+    // Прежняя проверка требовала дословного соседства `optNormBadge,
+    // loadOptimization` и покраснела, когда между ними встал НЕ связанный с
+    // ней экспорт findingNormBadge (2c3bb681). Соседство имён никогда не было
+    // предметом проверки, поэтому проверяем сам факт экспорта.
+    const setupExports = appJs.slice(appJs.lastIndexOf('\n        return {'));
+    expect(setupExports).toMatch(/\boptNormBadge\b/);
+    expect(setupExports).toMatch(/\bloadOptimization\b/);
     expect(css).toContain('.opt-norm-badge--warn');
   });
 });
