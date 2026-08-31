@@ -4,16 +4,23 @@
   "part": "1 из 2",
   "captured_at": "2026-08-28",
   "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6 по docs/architecture/checkpoints/README.md. Это квитанция задачи, а не точка возврата программы, поэтому лежит отдельно и своего CP-номера не получает.",
-
   "consumes_contract": {
     "document": "docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md",
     "profile": "qr-v1",
     "sha256_16": "eea54ab8e4cb21bc",
-    "sections_implemented": ["§5 lanes (частично)", "§6 capability preflight"],
-    "sections_deferred": ["§7 timeout harness", "§8 JUnit/run receipt", "§5 полная materialization маркеров"]
+    "sections_implemented": [
+      "§5 lanes (частично)",
+      "§6 capability preflight"
+    ],
+    "sections_deferred": [
+      "§7 timeout harness",
+      "§8 JUnit/run receipt",
+      "§5 полная materialization маркеров"
+    ],
+    "committed_as": "bc1df1bc",
+    "note_prior_defect": "До bc1df1bc контракт лежал в дереве незакоммиченным: чистый чекаут HEAD не проходил test_contract_constants_match_frozen_document (FileNotFoundError). Воспроизведено отдельным worktree."
   },
-
-  "head_commit": "96771d90",
+  "head_commit": "7632cf39",
   "branch": "snapshot/w0-ops-03-part1",
   "environment": {
     "python": "3.12.3",
@@ -21,7 +28,6 @@
     "uid": 0,
     "note": "Прогон под root и с активным .env — по §6 это невалидное окружение для lane network/chaos. Приёмка контракта требует non-root clean-room runner и остаётся за W0-INT-01."
   },
-
   "delivered": [
     {
       "artifact": "scripts/ci_runtime_probe.py",
@@ -34,18 +40,22 @@
         "unit_with_AUDIT_DISABLE_DOTENV": "exit 0",
         "network": "exit 1, USER_IS_ROOT + SECRET_DOTENV_ACTIVE",
         "chaos": "exit 1, те же две причины",
-        "own_tests": "41 passed",
+        "own_tests": "46 passed (после пяти правок ревью, 73aac189)",
         "duration_network_sec": 0.43,
         "anti_hang": "подмена сценариев на sleep(600) даёт коды причин за 4 с, дочерние процессы сняты по группе, сирот нет",
         "secret_values_printed": 0,
         "not_run_semantics": "§6.2 соблюдён: невыбранные lanes и неприменимые capabilities помечены NOT_RUN, не passed и не skipped"
-      }
+      },
+      "own_tests": 46
     },
     {
       "artifact": "primary lane marker `network`",
       "commit": "96771d90",
       "tests_marked": 11,
-      "modules": ["tests/test_distributed_workers_prepipeline_gate.py", "tests/test_distributed_workers_executor.py"],
+      "modules": [
+        "tests/test_distributed_workers_prepipeline_gate.py",
+        "tests/test_distributed_workers_executor.py"
+      ],
       "derivation": "Маркер `slow` в pytest.ini уже определён как «поднимает НАСТОЯЩИЕ процессы» — это дословно lane `network` из таблицы §5. Соответствие выведено из документации репозитория, а не назначено.",
       "verified": {
         "select_network": "11 / 7082",
@@ -53,26 +63,38 @@
         "default_collection_before": "7080 / 7082",
         "default_collection_after": "7080 / 7082",
         "slow_and_network": "11 — slow остался ортогональным атрибутом, не lane"
-      }
+      },
+      "pytest_ini_registration": "СНЯТА в 7632cf39: pytest.ini прямо исключён из allowed paths W0-OPS-03 и отложен до W0-INT-01. Маркер в тестах остаётся, -m network работает, ценой PytestUnknownMarkWarning до интеграции."
     },
     {
       "artifact": "классификация ACTION_LOG_REDACTION",
       "commit": "08594942",
-      "outcome": "постоянный kill-switch, владелец OPS, даты удаления нет по обоснованию; §8 DoD п.10 закрыт"
+      "outcome": "постоянный kill-switch, владелец OPS. Формулировка «§8 DoD п.10 закрыт» была преждевременной и исправлена: отсутствие даты удаления — отклонение, оформлено как EXC-0002 с компенсирующими контролями."
     }
   ],
-
   "gate": {
     "command": "python scripts/ci_regression_gate.py",
     "failures_now": 36,
     "baseline": 35,
     "new": 1,
-    "new_entries": ["tests.test_agent_grpc_client_12c::test_agent_restart_adopts_live_executor_higher_epoch_no_duplicate"],
-    "new_attributed_to_this_task": 0,
+    "new_entries": [
+      "tests.test_agent_grpc_client_12c::test_agent_restart_adopts_live_executor_higher_epoch_no_duplicate"
+    ],
+    "new_attributed_to_this_task": "не доказано нулевым для задачи целиком; доказано только для marker-коммита. Задача добавила тесты в сбор по умолчанию, поэтому совпадение 7080/7080 подтверждает нейтральность разметки, но не всей W0-OPS-03. Единственное новое падение — test_agent_grpc_client_12c, модуль вне объёма задачи, дважды зелёный в одиночку.",
     "evidence": "Тест дважды зелёный в одиночку (3.96 с и 3.97 с). Мои изменения выборку по умолчанию не меняли: сбор 7080/7082 до и после.",
-    "verdict": "флаки того же процессного класса, не регрессия"
+    "verdict": "флаки того же процессного класса, не регрессия",
+    "attribution_evidence": {
+      "измерено_по_коммитам": {
+        "6db391b8_до_задачи": 6890,
+        "08594942_перед_probe": 7039,
+        "9affab1b_probe": 7080,
+        "96771d90_маркеры": 7080,
+        "текущий_HEAD": 7085
+      },
+      "вклад_probe": "+41 к сбору (файл даёт 46 тестов; 5 добавлены правками ревью уже после)",
+      "вклад_маркеров": "0 — 7080 до и 7080 после, разметка доказуемо нейтральна"
+    }
   },
-
   "findings": [
     {
       "id": "OPS03-F1",
@@ -95,18 +117,25 @@
       "summary": "Evidence §6 контракта не воспроизвелось",
       "detail": "§6 фиксирует, что в sandbox 2026-08-28 запрещено создание socket и зависает AnyIO worker-thread roundtrip. В текущем окружении обе операции проходят: socket создаётся, roundtrip возвращается за миллисекунды. Probe отрепортил это честно, отказ network/chaos идёт по другим причинам (uid=0, secrets). Контракт использует то evidence как обоснование, почему sandbox-результат нельзя заносить в baseline, поэтому расхождение требует перепроверки владельцем.",
       "owner": "W0-ARC-03 (владелец контракта)"
+    },
+    {
+      "id": "OPS03-F4",
+      "severity": "средняя",
+      "summary": "Утверждение о нейтральности задачи было подменено доказательством нейтральности разметки",
+      "detail": "Первая редакция квитанции заявляла new_attributed_to_this_task: 0, опираясь на одинаковый сбор 7080/7082 до и после marker-коммита. Это доказывает только нейтральность разметки: сам probe добавил 41 тест в сбор по умолчанию. Формулировка исправлена, измерения по коммитам приведены.",
+      "owner": "исправлено в этой редакции"
     }
   ],
-
   "not_delivered": [
     "§7 timeout harness — требует thread dump, child-process inventory, JUnit failure типа timeout; вероятен новый pin pytest-timeout, а root dependencies принадлежат W0-INT-01",
     "§8 JUnit/run receipt — JSON-вывод probe даёт входные поля, сам receipt не строится",
     "§5 полная materialization lanes — по F2 объём определяется поведением тестов; 11 размеченных из 7082",
     "provisioning norm corpus — нет доступа к источнику артефакта",
-    "детерминизм гейта — маркер есть, но исключение network из выборки по умолчанию меняет addopts, что запрещено объёмом W0-OPS-03"
+    "детерминизм гейта — маркер есть, но исключение network из выборки по умолчанию меняет addopts, что запрещено объёмом W0-OPS-03",
+    "регистрация маркера в pytest.ini — снята как нарушение ownership, принадлежит W0-INT-01"
   ],
-
   "authorizes_next_cutover": false,
   "rollback_target": "snapshot/w0-ops-03-part1",
-  "cleanup_receipt": "не выполнялся"
+  "cleanup_receipt": "не выполнялся",
+  "revision": "2 (2026-08-31, по итогам ревью)"
 }
