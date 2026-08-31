@@ -100,10 +100,9 @@
     "regression_gate": {
       "command": "python scripts/ci_regression_gate.py",
       "result": "падений 35, baseline 35, новых 0, exit 0",
-      "run_summary": "2 failed, 7066 passed, 174 skipped, 2 deselected, 33 errors за 335.56 s",
-      "after_review_round": 5,
-      "machine_load": "load average 0.73/0.53/0.59 на старте — условия сопоставимы с зелёными прогонами прошлых кругов",
-      "note": "Прогон под root с активным .env остаётся невалидным профилем: он доказывает отсутствие новых падений здесь, но не является clean-room приёмкой."
+      "run_summary": "2 failed, 7068 passed, 174 skipped, 2 deselected, 33 errors за 337.94 s",
+      "after_review_round": 6,
+      "profile": "под root с активным .env — невалидный профиль по §6; валидный прогон снят отдельно, см. квитанцию clean-room репетиции"
     },
     "review_round_3_independent_checks": {
       "all_ci_suites": "213 passed",
@@ -193,7 +192,7 @@
   ],
   "authorizes_next_cutover": false,
   "observe_only": "ни один новый инструмент не включён ни в один автоматический прогон; всё запускается руками до W0-INT-01",
-  "revision": "6 (2026-08-31, по пятому кругу ревью)",
+  "revision": "7 (2026-08-31, по шестому кругу ревью)",
   "own_tests": {
     "total": 178,
     "measured_by": "python -m pytest <файл> --collect-only -q",
@@ -459,6 +458,41 @@
         "why_narrowed": "проверка по ID целиком давала 109 срабатываний: правило блоба ловит длинные CamelCase-имена классов вроде TestPolicyV3SourceDependencyAndEvidenceChecked. Сужение до `[...]` оставляет 9 — шумная проверка не проверка, ею не пользуются",
         "measured_2026_08_31": "9 срабатываний, все в tests/test_distributed_workers_agent и tests/test_distributed_workers_hardening — тестах самой redaction, где синтетические секреты являются предметом проверки. Ожидаемый профиль; срабатывание в любом другом модуле — повод разобраться"
       }
+    },
+    "round_6_local_review": {
+      "base_commit": "8d91988c",
+      "verdict": "два узких обхода P-13",
+      "fixes": [
+        {
+          "id": "REV-16",
+          "blocking": true,
+          "summary": "Аварийная ветка запасного дампа публиковала текст исключения",
+          "reproduced": "RuntimeError с сообщением /srv/customers/q7z4m2n8p5r3t6v9/frames уходил в дамп целиком",
+          "why_missed": "ветка исполняется редко, и я не считал её каналом публикации. Bible относит текст исключения к непроверенному вводу без оговорок про частоту",
+          "fix": "публикуется только ТИП исключения. Его достаточно, чтобы ответить, почему дампа нет: PermissionError, RuntimeError и MemoryError — разные причины и разные действия",
+          "verified": "регрессионный тест с opaque-sentinel внутри RuntimeError"
+        },
+        {
+          "id": "REV-17",
+          "blocking": true,
+          "summary": "Путь артефакта публиковался в обеих ветках, а обе задаёт пользователь",
+          "reproduced": "<repo>/private/q7z4m2n8p5r3t6v9/report.xml публиковался полным относительным путём; /tmp/q7z4m2n8p5r3t6v9.xml — именем файла. Секрет сохранялся в обоих случаях",
+          "why_missed": "я разделил пути по расположению и счёл 'внутри репозитория' доказательством безопасности. Но --junit задаёт путь целиком, и форма пути безопасности не доказывает — та же ошибка, что с формой имени флага и с comm",
+          "fix": "полный путь публикуется ТОЛЬКО для точной канонической раскладки `.ci/reports/<lane>.*`: её форму задаёт §5.1, а <lane> берётся из закрытого списка. Любой другой путь — метка <custom-junit>/<custom-events>. Файл с произвольным именем ВНУТРИ канонического каталога каноническим не становится",
+          "verified": "сквозной прогон с --junit /tmp/<secret>.xml: секрета нет ни в одном поле receipt; канонический прогон по-прежнему публикует .ci/reports/unit.xml",
+          "side_effect": "тестовый helper больше не берёт путь журнала из receipt — он вычисляет его по тому же правилу, что и раннер"
+        }
+      ]
     }
+  },
+  "cleanroom_rehearsal": {
+    "receipt": "docs/architecture/receipts/W0-OPS-03-cleanroom-rehearsal.json",
+    "headline": "probe проходит для всех пяти lanes на non-root профиле; network зелёный (11 passed)",
+    "blockers_for_W0-INT-01": [
+      "CR-1 нет pytest в манифестах",
+      "CR-2 несогласованный dependency set",
+      "CR-3 жёстко зашитый машинный путь"
+    ],
+    "not_an_acceptance": "§11 закрепляет clean-room acceptance за W0-INT-01"
   }
 }

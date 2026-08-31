@@ -151,14 +151,17 @@ class Harness:
         return path.relative_to(self.root).as_posix()
 
     def events_path(self) -> Path:
-        """Фактический путь журнала событий — из receipt, а не из догадки.
+        """Фактический путь журнала событий.
 
-        Где раннер держит журнал (рядом с JUnit или в `.ci/reports/`) — его
-        внутреннее дело, и оно уже менялось. Receipt публикует этот путь сам,
-        поэтому тест берёт его оттуда и не ломается от переезда артефактов.
+        Раньше он брался из receipt. Так больше нельзя: receipt публикует путь
+        только для канонической раскладки `.ci/reports/<lane>.*`, а для любого
+        своего `--junit` отдаёт метку `<custom-events>` — путь целиком задан
+        пользователем, и его форма безопасности не доказывает.
+
+        Тест знает, какой `--junit` он передал, поэтому вычисляет журнал по
+        тому же правилу, что и раннер: рядом с отчётом, с заменой расширения.
         """
-        raw = Path(self.receipt()["events"])
-        return raw if raw.is_absolute() else self.root / raw
+        return self.junit.with_suffix("").with_suffix(".events.jsonl")
 
     def run(
         self,
@@ -1193,17 +1196,45 @@ def test_receipt_command_does_not_publish_user_supplied_arguments(harness: Harne
     assert "argv:" in receipt["command"]
 
 
-def test_receipt_artifact_paths_outside_the_repo_lose_their_directories(
-    harness: Harness,
-):
-    """Пути артефактов снаружи репозитория публикуются только именем файла.
+def test_receipt_publishes_only_the_canonical_artifact_layout(harness: Harness):
+    """Полный путь публикуется только для канонической раскладки §5.1.
 
-    Внутри репозитория путь безопасен и полезен — это наша же раскладка.
-    Снаружи он задан пользователем и может нести каталог клиента.
+    Обе прежние ветки были неверны по одной причине: путь целиком задаётся
+    пользователем через `--junit`, а форма пути безопасности не доказывает.
+    Внутри репозитория публиковался полный относительный путь, снаружи —
+    имя файла; и то и другое сохраняло секрет.
     """
     harness.write_module("test_ok.py", SOURCE_GREEN)
     harness.run()
     receipt = harness.receipt()
-    assert receipt["junit"] == harness.junit.name
-    assert "/" not in receipt["junit"], receipt["junit"]
-    assert "/" not in receipt["events"], receipt["events"]
+    # Тест задаёт свой --junit во временный каталог — это НЕ каноническая
+    # раскладка, поэтому путь не публикуется вовсе.
+    assert receipt["junit"] == "<custom-junit>", receipt["junit"]
+    assert receipt["events"] == "<custom-events>", receipt["events"]
+    blob = json.dumps(receipt, ensure_ascii=False)
+    assert str(harness.junit) not in blob, "полный путь --junit опубликован"
+    assert str(harness.root) not in blob, "каталог прогона опубликован"
+
+
+def test_publishable_path_accepts_only_the_exact_contract_layout():
+    """Каноничен путь `.ci/reports/<lane>.*`, и только он.
+
+    `<lane>` берётся из закрытого списка, поэтому такая форма задана
+    контрактом, а не пользователем. Файл с произвольным именем ВНУТРИ того же
+    каталога каноническим не становится — иначе достаточно было бы положить
+    туда `q7z4m2n8p5r3t6v9.xml`.
+    """
+    canonical = lane_mod.REPORT_DIR / "unit.xml"
+    assert lane_mod._publishable_path(canonical, "junit") == ".ci/reports/unit.xml"
+    events = lane_mod.REPORT_DIR / "network.events.jsonl"
+    assert lane_mod._publishable_path(events, "events") == ".ci/reports/network.events.jsonl"
+
+    secret = "q7z4m2n8p5r3t6v9"
+    for path in (
+        lane_mod.REPORT_DIR / f"{secret}.xml",          # чужое имя в нашем каталоге
+        lane_mod.ROOT / "private" / secret / "r.xml",   # внутри репозитория
+        Path("/tmp") / f"{secret}.xml",                 # снаружи
+    ):
+        published = lane_mod._publishable_path(path, "junit")
+        assert published == "<custom-junit>", published
+        assert secret not in published

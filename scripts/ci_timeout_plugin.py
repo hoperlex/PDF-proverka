@@ -305,7 +305,16 @@ def _frames_dump() -> str:
             chunks.append("")
         return "\n".join(chunks)
     except Exception as exc:  # pragma: no cover
-        return f"thread dump недоступен: {type(exc).__name__}: {exc}"
+        # Публикуется ТОЛЬКО тип исключения. Текст сообщения — свободный ввод:
+        # туда попадает всё, что положил тот, кто его поднял, включая путь вида
+        # `/srv/customers/<id>/frames`. Bible прямо относит текст исключения к
+        # непроверенному вводу, и аварийная ветка не является исключением из
+        # этого правила — она просто реже исполняется.
+        #
+        # Тип назвать достаточно: он отвечает на вопрос «почему дампа нет»
+        # (PermissionError, RuntimeError, MemoryError — разные причины и разные
+        # действия), а подробности разбираются по коду возврата и stderr.
+        return f"thread dump недоступен: {type(exc).__name__}"
 
 
 class LaneTimeoutPlugin:

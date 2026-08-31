@@ -607,9 +607,33 @@ def run_lane(args: argparse.Namespace) -> dict[str, Any]:
     )
 
 
-def _publishable_path(path: Path) -> str:
-    """Путь артефакта в форме, пригодной для публикации."""
-    return str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else path.name
+#: Канонический каталог отчётов из §5.1. Путь внутри него безопасен не потому,
+#: что «лежит в репозитории», а потому, что его форма задана контрактом и не
+#: содержит ничего пользовательского: `<lane>` берётся из закрытого списка.
+_CANONICAL_REPORT_DIR = REPORT_DIR
+
+
+def _publishable_path(path: Path, kind: str) -> str:
+    """Путь артефакта в форме, пригодной для публикации.
+
+    Обе прежние ветки были неверны, и по одной причине: путь ЦЕЛИКОМ задаётся
+    пользователем через `--junit`, а форма пути безопасности не доказывает.
+
+      * внутри репозитория публиковался полный относительный путь —
+        `private/q7z4m2n8p5r3t6v9/report.xml` уезжал в receipt как есть;
+      * снаружи оставалось имя файла — `/tmp/q7z4m2n8p5r3t6v9.xml`
+        превращалось в `q7z4m2n8p5r3t6v9.xml`, то есть секрет сохранялся
+        целиком.
+
+    Поэтому полный путь публикуется ТОЛЬКО для точной канонической раскладки
+    `.ci/reports/<lane>.*` — её форму задаёт контракт, а `<lane>` берётся из
+    закрытого списка. Любой другой путь заменяется меткой вида
+    `<custom-junit>`: где лежит артефакт, знает тот, кто задал `--junit`, а
+    receipt для этого не нужен.
+    """
+    if path.parent == _CANONICAL_REPORT_DIR and path.name.split(".")[0] in LANES:
+        return str(path.relative_to(ROOT))
+    return f"<custom-{kind}>"
 
 
 def _finish(
@@ -661,8 +685,8 @@ def _finish(
         # Путь внутри репозитория безопасен и полезен — это наша же раскладка.
         # Путь СНАРУЖИ задан пользователем и может нести каталог клиента,
         # поэтому от него остаётся только имя файла.
-        "junit": _publishable_path(junit),
-        "events": _publishable_path(events),
+        "junit": _publishable_path(junit, "junit"),
+        "events": _publishable_path(events, "events"),
         "probe_ran": bool(probe),
         "probe_exit_code": probe.get("exit_code"),
         "note": note,

@@ -828,3 +828,27 @@ def test_primary_and_fallback_dumps_agree_on_shape():
         cleaned = plug.sanitize_traceback(dump)
         assert "/root/" not in cleaned and "/usr/" not in cleaned
         assert "line " in cleaned
+
+
+def test_fallback_failure_publishes_only_the_exception_type(monkeypatch):
+    """Аварийная ветка называет ТИП исключения, но не его текст.
+
+    Текст сообщения — свободный ввод: туда попадает всё, что положил тот, кто
+    исключение поднял. Воспроизведено: `RuntimeError` с сообщением
+    `/srv/customers/<id>/frames` публиковался целиком.
+
+    Bible относит текст исключения к непроверенному вводу, и редко исполняемая
+    ветка не является исключением из этого правила. Типа достаточно, чтобы
+    ответить, ПОЧЕМУ дампа нет: PermissionError, RuntimeError и MemoryError —
+    разные причины и разные действия.
+    """
+    secret = "q7z4m2n8p5r3t6v9"
+
+    def boom():
+        raise RuntimeError(f"/srv/customers/{secret}/frames")
+
+    monkeypatch.setattr(plug.sys, "_current_frames", boom)
+    dump = plug._frames_dump()
+    assert secret not in dump, f"текст исключения опубликован: {dump!r}"
+    assert "RuntimeError" in dump, "тип исключения обязан быть назван"
+    assert "недоступен" in dump, "факт отсутствия дампа обязан быть назван"

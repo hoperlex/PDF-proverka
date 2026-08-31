@@ -66,6 +66,9 @@ LLM: versioned prompts/norms/routing + replay evidence + live quality/cost gate
 
 ## Эксплуатационные runbook'и
 
+- [Clean-room репетиция W0-OPS-03](receipts/W0-OPS-03-cleanroom-rehearsal.json)
+  — non-root прогон по профилю `qr-v1`: что уже работает и что блокирует
+  приёмку `W0-INT-01`.
 - [Диагностируемый test harness](../ops/TEST_HARNESS_RUNBOOK.md) — прогон lanes
   под бюджетами §7, разбор таймаута и непригодного отчёта, provisioning norm
   corpus и границы observe-first до `W0-INT-01`.

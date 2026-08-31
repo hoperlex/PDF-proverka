@@ -1,0 +1,106 @@
+{
+  "type": "rehearsal_receipt",
+  "task_id": "W0-OPS-03",
+  "produced_for": "W0-INT-01",
+  "captured_at": "2026-08-31",
+  "not_an_acceptance": "Это РЕПЕТИЦИЯ, а не приёмка. §11 контракта закрепляет clean-room acceptance за W0-INT-01, и настоящая квитанция её не заменяет: она только снимает evidence, которое интегратору иначе пришлось бы добывать самому. Ни один shared-файл не менялся, enforce не включался.",
+  "base_commit": "8d91988c",
+  "profile": {
+    "source": "git archive HEAD → /home/ciuser/clean-room/src",
+    "clean_checkout_evidence": "2351 файл; .env отсутствует; .venv отсутствует; машинное состояние backend/app/data (stage_models.json, prepare_queue.json, usage_data.json, hidden_projects.json) в чекаут не попадает, потому что не отслеживается git",
+    "user": "ciuser, uid=1001 — §3.1 требует uid != 0",
+    "python": "3.12.3 — совпадает с нормативом §3.1",
+    "isolated_state": "все семь переменных §3.2 выставлены дословно; run-root отдельный; app_data провизионирован из tracked assets",
+    "locale_time": "TZ=UTC, LC_ALL=C.UTF-8, PYTHONHASHSEED=0 — §3.1",
+    "temp_free": "38.4 GiB при требуемых ≥2"
+  },
+  "results": {
+    "capability_probe": {
+      "unit": "exit 0", "contract": "exit 0", "integration": "exit 0",
+      "network": "exit 0", "chaos": "exit 0",
+      "significance": "ВПЕРВЫЕ в программе доказано наличие capabilities для network и chaos. Под root probe отказывал по USER_IS_ROOT и SECRET_DOTENV_ACTIVE, и §6 контракта до сих пор описывает sandbox, где socket создать нельзя. На валидном профиле все пять lanes проходят preflight."
+    },
+    "lanes": {
+      "unit": "exit 5 — 0 отобрано, 7276 deselected",
+      "contract": "exit 5 — 0 отобрано, 7276 deselected",
+      "integration": "exit 5 — 0 отобрано, 7276 deselected",
+      "network": "exit 0 — 12 отобрано, 11 passed, 1 skipped, 0 failed",
+      "chaos": "exit 1 — 3 отобрано, 1 passed, 1 failed, 1 skipped",
+      "significance": "Три lane из пяти отбирают НОЛЬ тестов: маркеры не материализованы (§5). Lane-based приёмка G0 сегодня невозможна не из-за окружения, а из-за разметки. Это измеренное подтверждение F5/F6."
+    },
+    "legacy_aggregate": {
+      "command": "python scripts/ci_regression_gate.py",
+      "run_summary": "6 failed, 7059 passed, 177 skipped, 2 deselected, 33 errors за 348.45 s",
+      "verdict": "падений 39, baseline 35, новых 4, exit 1",
+      "comparison_with_root_run": "тот же коммит под root даёт 7066 passed и НОЛЬ новых падений. Разница — не флаки: четыре падения устойчивы и объясняются двумя причинами ниже"
+    }
+  },
+  "findings": [
+    {
+      "id": "CR-1",
+      "severity": "высокая",
+      "summary": "Манифесты не объявляют pytest — clean-room не может запустить ни одного теста",
+      "measured": "после установки всех шести requirements*.txt: `No module named pytest`. Отсутствуют РОВНО pytest и pytest-asyncio",
+      "corrects_prior_evidence": "evidence 2026-08-28 называла шесть недостающих пакетов (passlib, pytest-asyncio, PyMuPDF, Pillow, openpyxl, grpcio-health-checking). На текущем дереве четыре из них приходят транзитивно; недостающих два, но среди них сам test runner, которого прежний список не называл",
+      "owner": "W0-INT-01 (root dependency files)"
+    },
+    {
+      "id": "CR-2",
+      "severity": "высокая",
+      "summary": "Манифесты разрешаются во внутренне несогласованный набор и не воспроизводят frozen receipt",
+      "measured": {
+        "pip_check": "google-genai 2.20.0 требует pydantic>=2.12.5, установлен 2.10.4 — набор несогласован",
+        "pip_freeze_sha256": "c779d8f4d60fcabb… против эталона §4.1 557e95885700…",
+        "nucleus_drift": {
+          "fastapi": "0.115.6 против 0.141.1",
+          "starlette": "0.41.3 против 1.6.0",
+          "pydantic": "2.10.4 против 2.13.4",
+          "openai": "2.31.0 против 3.3.1",
+          "google-genai": "2.20.0 против 2.19.0"
+        },
+        "совпали": "anyio 4.14.2, httpx 0.28.1, grpcio 1.82.1, protobuf 7.35.1, pytest 9.1.1"
+      },
+      "consequence": "backend/tests/test_http_contract_snapshot::test_snapshot_matches_live_surface падает: разошлись 27 эндпоинтов OpenAPI. Это системный сдвиг схемы от версии фреймворка, а не правка кода — ровно тот риск, ради которого frozen receipt и существует",
+      "owner": "W0-INT-01 (lock/constraints материализуют dependency receipt)"
+    },
+    {
+      "id": "CR-3",
+      "severity": "высокая",
+      "summary": "Три теста пишут в жёстко зашитый машинный путь вне репозитория",
+      "measured": "PermissionError на /home/coder/auditmanager/locks/… у tests/test_worker_bootstrap_11l и двух тестов tests/test_distributed_workers_real_vps_deploy. Путь зашит в scripts/deploy_lock.py, deploy_center_release.py и build_center_release.py",
+      "why_root_run_hides_it": "каталог существует на этой машине и принадлежит root с правами 755: root в него пишет, непривилегированный пользователь — нет. На настоящем CI-раннере каталога не будет вовсе",
+      "fix_is_one_variable": "с AUDITMANAGER_DEPLOY_LOCK_DIR=/tmp/ci-locks те же 59 тестов проходят целиком",
+      "contract_gap": "§3.2 перечисляет семь обязательных переменных изолированного состояния; AUDITMANAGER_DEPLOY_LOCK_DIR среди них нет, хотя без неё три теста уходят за пределы run-root",
+      "owner": "W0-ARC-03 — дополнить рецепт §3.2; W0-INT-01 — выставить переменную в job"
+    },
+    {
+      "id": "CR-4",
+      "severity": "средняя",
+      "summary": "Chaos-тест падает на ВАЛИДНОМ профиле — это продуктовый сигнал, а не ограничение песочницы",
+      "measured": "tests/test_process_chaos_12e::test_12e_gateway_sigkill_recovery_is_persistence_only — TypeError: 'NoneType' object is not subscriptable. Второй chaos-тест (graceful stop) проходит",
+      "corrects_prior_evidence": "§6 контракта фиксирует, что оба chaos-теста падают PermissionError на создании socket и потому sandbox-результат нельзя заносить в baseline. На non-root профиле socket создаётся, lane запускается, и падение оказывается настоящим. Мою собственную оговорку в OPS03-F7 («прогон под root, продуктовым вердиктом не является») этот прогон снимает",
+      "owner": "владелец gateway/chaos-сценария; для контракта — W0-ARC-03 (перепроверить evidence §6)"
+    },
+    {
+      "id": "CR-5",
+      "severity": "низкая",
+      "summary": "Платформа не совпадает с нормативом §3.1 по Node",
+      "measured": "Node 18.19.1 и npm 9.2.0 против пинов 22.23.1 и 10.9.8",
+      "owner": "W0-INT-01"
+    }
+  ],
+  "what_this_does_not_prove": [
+    "Это не clean-room ACCEPTANCE: §11 закрепляет её за W0-INT-01, и до устранения CR-1…CR-3 полный набор в clean-room не зелёный",
+    "Frontend gate в clean-room не прогонялся: Node на машине не соответствует пину §3.1, и его замена — предмет W0-INT-01",
+    "norm corpus отсутствует, поэтому enforce-профиль §3.3 не проверялся; probe помечает это как OPTIONAL_NORM_CORPUS_ABSENT",
+    "Машина не является CI-образом ubuntu-24.04; совпали Python, архитектура и uid != 0, но не платформа целиком"
+  ],
+  "reproduce": {
+    "checkout": "git archive HEAD | tar -x -C <clean>/src",
+    "install": "python3 -m venv <clean>/venv && pip install -r requirements*.txt && pip install pytest==9.1.1 pytest-asyncio==1.4.0",
+    "env": "семь переменных §3.2 плюс TZ=UTC, LC_ALL=C.UTF-8, PYTHONHASHSEED=0",
+    "probe": "python scripts/ci_runtime_probe.py --profile <lane> --json",
+    "lanes": "python scripts/ci_test_lane.py --lane <lane> --use-lane-marker",
+    "aggregate": "python scripts/ci_regression_gate.py"
+  }
+}
