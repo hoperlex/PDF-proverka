@@ -464,14 +464,19 @@ def run_lane(args: argparse.Namespace) -> dict[str, Any]:
     # `unit`, а receipt заявил бы `lane: unit` при `junit: contract.xml`.
     # Молча испортить чужой артефакт хуже, чем отказать: следующий разбор
     # пошёл бы по подменённому отчёту.
-    for path, kind in ((junit, "junit"), (events, "events")):
-        foreign = is_foreign_canonical(path, lane)
+    # Проверяются ВСЕ четыре артефакта, а не только отчёт и журнал: receipt и
+    # диагностика таймаута тоже канонические, и подменить можно любой из них.
+    for path, kind in (
+        (junit, "junit"), (events, "events"),
+        (receipt_path, "receipt"), (diag, "timeout"),
+    ):
+        foreign = is_foreign_canonical(path, lane, kind)
         if foreign is not None:
             raise SystemExit(
                 f"[lane {lane}] FATAL: {kind} указывает на канонический артефакт "
-                f"lane «{foreign}» ({path}). §5.1 задаёт отображение lane → свой "
-                f"файл; прогон отменён до удаления чужого отчёта.\n"
-                f"        Ожидается: {REPORT_DIR / (canonical_artifact_name(lane, kind) or '')}"
+                f"«{foreign}» ({path}). §5.1 задаёт отображение (lane, вид) → свой "
+                f"файл; прогон отменён до удаления чужого артефакта.\n"
+                f"        Ожидается: {canonical_artifact_path(lane, kind)}"
             )
 
     # §8: старый отчёт удаляется ДО прогона. Без этого ранняя смерть pytest
@@ -637,7 +642,22 @@ _CANONICAL_REPORT_DIR = REPORT_DIR
 #: но он не знал, КАКОЙ lane выполняется, и `--lane unit --junit
 #: .ci/reports/contract.xml` признавался каноническим. Receipt получался
 #: внутренне противоречивым: `lane: unit`, `junit: contract.xml`.
-_CANONICAL_SUFFIX: dict[str, str] = {"junit": ".xml", "events": ".events.jsonl"}
+#: ВСЕ четыре вида канонических артефактов, а не два. Прежняя таблица знала
+#: только отчёт и журнал, поэтому `--lane unit --receipt
+#: .ci/reports/network.receipt.json` молча перезаписывал receipt чужого lane, а
+#: `--lane unit --junit .ci/reports/network.receipt.json` клал на его место
+#: XML. Неполная таблица допустимого — такая же дыра, как её отсутствие.
+_CANONICAL_SUFFIX: dict[str, str] = {
+    "junit": ".xml",
+    "events": ".events.jsonl",
+    "receipt": ".receipt.json",
+    "timeout": ".timeout.json",
+}
+
+#: Обратное отображение «имя файла → вид артефакта». Порядок проверки важен:
+#: `.events.jsonl` и `.receipt.json` длиннее `.xml`, и разбор по первой точке
+#: спутал бы их. Сравнение идёт по полному суффиксу.
+_SUFFIX_TO_KIND: dict[str, str] = {v: k for k, v in _CANONICAL_SUFFIX.items()}
 
 
 def canonical_artifact_name(lane: str, kind: str) -> str | None:
@@ -646,24 +666,44 @@ def canonical_artifact_name(lane: str, kind: str) -> str | None:
     return f"{lane}{suffix}" if suffix and lane in LANES else None
 
 
-def is_foreign_canonical(path: Path, lane: str) -> str | None:
-    """Имя другого lane в каноническом каталоге — вернуть имя этого lane.
+def canonical_artifact_path(lane: str, kind: str) -> Path | None:
+    """Единственный канонический путь для пары (lane, вид артефакта)."""
+    name = canonical_artifact_name(lane, kind)
+    return _CANONICAL_REPORT_DIR / name if name else None
 
-    Нужно ДО удаления файлов: `run_lane()` чистит старые артефакты перед
-    прогоном, и без этой проверки `--lane unit --junit
-    .ci/reports/contract.xml` стёр бы отчёт lane `contract` и записал бы на
-    его место результаты `unit`. Молча испортить чужой артефакт хуже, чем
-    отказать: следующий разбор пошёл бы по подменённому отчёту.
-    """
+
+def classify_canonical(path: Path) -> tuple[str, str] | None:
+    """Разобрать канонический путь в пару (lane, вид) или вернуть None."""
     resolved = _resolve(path)
     if resolved.parent != _CANONICAL_REPORT_DIR:
         return None
-    for other in LANES:
-        if other == lane:
-            continue
-        if resolved.name in {f"{other}.xml", f"{other}.events.jsonl"}:
-            return other
+    for suffix, kind in _SUFFIX_TO_KIND.items():
+        if resolved.name.endswith(suffix):
+            lane = resolved.name[: -len(suffix)]
+            if lane in LANES:
+                return lane, kind
     return None
+
+
+def is_foreign_canonical(path: Path, lane: str, kind: str) -> str | None:
+    """Чужой канонический артефакт — вернуть описание, иначе None.
+
+    Чужой значит любой из двух случаев: артефакт ДРУГОГО lane либо артефакт
+    другого ВИДА у своего же lane. Второй случай не безобиднее первого:
+    `--lane unit --junit .ci/reports/unit.receipt.json` положил бы XML на
+    место JSON-квитанции того же прогона.
+
+    Проверка нужна ДО удаления и до открытия на запись: `run_lane()` чистит
+    старые артефакты перед прогоном. Молча испортить чужой артефакт хуже, чем
+    отказать: следующий разбор пошёл бы по подменённому файлу.
+    """
+    found = classify_canonical(path)
+    if found is None:
+        return None
+    other_lane, other_kind = found
+    if other_lane == lane and other_kind == kind:
+        return None
+    return f"{other_lane}.{other_kind}"
 
 
 def _resolve(path: Path) -> Path:
@@ -758,6 +798,7 @@ def _finish(
         # Путь СНАРУЖИ задан пользователем и может нести каталог клиента,
         # поэтому от него остаётся только имя файла.
         "junit": _publishable_path(junit, "junit", lane),
+        "receipt": _publishable_path(receipt_path, "receipt", lane),
         "events": _publishable_path(events, "events", lane),
         "probe_ran": bool(probe),
         "probe_exit_code": probe.get("exit_code"),

@@ -137,6 +137,15 @@ def run_pytest() -> None:
             f"        бюджетом: python scripts/ci_test_lane.py --lane unit\n"
             f"        Бюджет меняется переменной {WALL_BUDGET_ENV}."
         ) from None
+    except BaseException:
+        # Любое прерывание — Ctrl+C, SystemExit, отмена сверху — обязано
+        # добить группу. `start_new_session=True` отвязывает pytest от
+        # управляющего процесса: без этой ветки прерывание убивало бы гейт и
+        # оставляло pytest работать сиротой, держа порты и локи до конца
+        # своего прогона. Ловится BaseException, а не Exception: и
+        # KeyboardInterrupt, и SystemExit наследуются именно от него.
+        _kill_group(proc, pgid)
+        raise
     # Пригодны для сравнения с baseline только 0 (всё прошло) и 1 (есть падения).
     # 2 — прогон прерван (в т.ч. обрыв сбора), 3 — внутренняя ошибка pytest,
     # 4 — ошибка аргументов, 5 — не собрано ни одного теста.
