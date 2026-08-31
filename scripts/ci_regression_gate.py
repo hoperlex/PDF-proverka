@@ -42,9 +42,12 @@ Baseline обязан описывать сам себя: заголовок о�
 """
 from __future__ import annotations
 
+import os
 import re
+import signal
 import subprocess
 import sys
+import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -58,6 +61,49 @@ TEST_PATHS = ["tests", "backend/tests"]
 _DECLARED_COUNT_RE = re.compile(r"^#\s*Кол-во:\s*(\d+)\s*$")
 
 
+#: Бюджет всего прогона. Наблюдённые времена — 335–500 с в зависимости от
+#: загрузки машины, поэтому получасовой потолок не мешает медленному раннеру,
+#: но превращает зависание из бесконечного ожидания в отказ с диагнозом.
+DEFAULT_WALL_BUDGET_SEC = 1800.0
+WALL_BUDGET_ENV = "CI_GATE_WALL_BUDGET_SEC"
+
+
+def wall_budget_sec() -> float:
+    """Бюджет прогона. Ноль, отрицательное и nan отвергаются как бессмысленные."""
+    raw = (os.environ.get(WALL_BUDGET_ENV) or "").strip()
+    if not raw:
+        return DEFAULT_WALL_BUDGET_SEC
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_WALL_BUDGET_SEC
+    if not (value > 0) or value == float("inf"):
+        return DEFAULT_WALL_BUDGET_SEC
+    return value
+
+
+def _kill_group(proc: subprocess.Popen, pgid: int | None) -> None:
+    """Снять группу лестницей SIGTERM → SIGKILL по СОХРАНЁННОМУ pgid.
+
+    Идентификатор снимается при запуске: после выхода лидера его уже не
+    узнать, а группа к тому моменту как раз и нуждается в добивании.
+    """
+    if pgid is None:
+        return
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(pgid, sig)
+        except (ProcessLookupError, OSError):
+            return
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(pgid, 0)
+            except (ProcessLookupError, OSError):
+                return
+            time.sleep(0.05)
+
+
 def run_pytest() -> None:
     # Старый отчёт удаляется ДО запуска. Иначе ранняя смерть pytest (обрыв сбора,
     # internal error, ошибка аргументов) оставляет отчёт прошлого прогона, и гейт
@@ -68,7 +114,29 @@ def run_pytest() -> None:
         "--junitxml", str(JUNIT),
         "-q", "-p", "no:cacheprovider", "--tb=no", "--no-header",
     ]
-    code = subprocess.run(cmd, cwd=str(ROOT)).returncode
+    # Своя группа процессов и бюджет по часам (находка OPS03-F10). Раньше гейт
+    # ждал pytest без ограничения: на машине, где тест зависает, он не
+    # отказывал, а висел неопределённо долго — ревью наблюдало отсутствие
+    # прогресса дольше семи минут и сняло прогон вручную. Это ровно тот класс
+    # отказа, ради которого §7 контракта и вводит бюджеты; сам гейт под них
+    # заведён не был.
+    proc = subprocess.Popen(cmd, cwd=str(ROOT), start_new_session=True)
+    try:
+        pgid = os.getpgid(proc.pid)
+    except OSError:
+        pgid = None
+    budget = wall_budget_sec()
+    try:
+        code = proc.wait(timeout=budget)
+    except subprocess.TimeoutExpired:
+        _kill_group(proc, pgid)
+        raise SystemExit(
+            f"[gate] FATAL: прогон не уложился в {budget:g} s и снят по бюджету.\n"
+            f"        Отчёт непригоден: сравнивать с baseline нечего.\n"
+            f"        Какой именно тест завис, покажет lane-раннер с per-test\n"
+            f"        бюджетом: python scripts/ci_test_lane.py --lane unit\n"
+            f"        Бюджет меняется переменной {WALL_BUDGET_ENV}."
+        ) from None
     # Пригодны для сравнения с baseline только 0 (всё прошло) и 1 (есть падения).
     # 2 — прогон прерван (в т.ч. обрыв сбора), 3 — внутренняя ошибка pytest,
     # 4 — ошибка аргументов, 5 — не собрано ни одного теста.

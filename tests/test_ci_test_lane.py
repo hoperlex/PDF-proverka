@@ -1225,9 +1225,9 @@ def test_publishable_path_accepts_only_the_exact_contract_layout():
     туда `q7z4m2n8p5r3t6v9.xml`.
     """
     canonical = lane_mod.REPORT_DIR / "unit.xml"
-    assert lane_mod._publishable_path(canonical, "junit") == ".ci/reports/unit.xml"
+    assert lane_mod._publishable_path(canonical, "junit", "unit") == ".ci/reports/unit.xml"
     events = lane_mod.REPORT_DIR / "network.events.jsonl"
-    assert lane_mod._publishable_path(events, "events") == ".ci/reports/network.events.jsonl"
+    assert lane_mod._publishable_path(events, "events", "network") == ".ci/reports/network.events.jsonl"
 
     secret = "q7z4m2n8p5r3t6v9"
     for path in (
@@ -1235,7 +1235,7 @@ def test_publishable_path_accepts_only_the_exact_contract_layout():
         lane_mod.ROOT / "private" / secret / "r.xml",   # внутри репозитория
         Path("/tmp") / f"{secret}.xml",                 # снаружи
     ):
-        published = lane_mod._publishable_path(path, "junit")
+        published = lane_mod._publishable_path(path, "junit", "unit")
         assert published == "<custom-junit>", published
         assert secret not in published
 
@@ -1259,15 +1259,89 @@ def test_canonical_name_is_matched_exactly_not_by_prefix():
         ("unit.xml", "events"),
     ]
     for name, kind in hostile:
-        published = lane_mod._publishable_path(lane_mod.REPORT_DIR / name, kind)
+        published = lane_mod._publishable_path(lane_mod.REPORT_DIR / name, kind, "unit")
         assert published == f"<custom-{kind}>", f"{name} [{kind}] -> {published}"
         assert secret not in published
 
-    # Ровно десять канонических имён: пять lanes × два вида артефакта.
+    # У каждого lane каноническое имя РОВНО ОДНО на вид артефакта.
     for lane in lane_mod.LANES:
         assert lane_mod._publishable_path(
-            lane_mod.REPORT_DIR / f"{lane}.xml", "junit"
+            lane_mod.REPORT_DIR / f"{lane}.xml", "junit", lane
         ) == f".ci/reports/{lane}.xml"
         assert lane_mod._publishable_path(
-            lane_mod.REPORT_DIR / f"{lane}.events.jsonl", "events"
+            lane_mod.REPORT_DIR / f"{lane}.events.jsonl", "events", lane
         ) == f".ci/reports/{lane}.events.jsonl"
+
+
+def test_canonicality_is_scoped_to_the_running_lane():
+    """Имя ЧУЖОГО lane каноническим не является.
+
+    §5.1 задаёт отображение lane → собственный файл, а не множество
+    взаимозаменяемых имён. Прежний список из десяти имён не знал, какой lane
+    выполняется, и `--lane unit --junit .ci/reports/contract.xml` признавался
+    каноническим: receipt получался внутренне противоречивым — `lane: unit`
+    при `junit: contract.xml`.
+    """
+    for lane in lane_mod.LANES:
+        for other in lane_mod.LANES:
+            if other == lane:
+                continue
+            assert lane_mod._publishable_path(
+                lane_mod.REPORT_DIR / f"{other}.xml", "junit", lane
+            ) == "<custom-junit>"
+            assert lane_mod._publishable_path(
+                lane_mod.REPORT_DIR / f"{other}.events.jsonl", "events", lane
+            ) == "<custom-events>"
+
+
+def test_relative_canonical_path_is_normalised():
+    """Форма записи пути не меняет того, на какой файл он указывает.
+
+    `.ci/reports/unit.xml` — дословно путь из канонической команды §5.1, и
+    считать его пользовательским только потому, что он записан относительно,
+    неверно.
+    """
+    assert lane_mod._publishable_path(
+        Path(".ci/reports/unit.xml"), "junit", "unit"
+    ) == ".ci/reports/unit.xml"
+    assert lane_mod._publishable_path(
+        Path(".ci/reports/network.events.jsonl"), "events", "network"
+    ) == ".ci/reports/network.events.jsonl"
+    # Нормализация не делает канонической чужую lane.
+    assert lane_mod._publishable_path(
+        Path(".ci/reports/contract.xml"), "junit", "unit"
+    ) == "<custom-junit>"
+
+
+def test_run_refuses_to_overwrite_another_lanes_canonical_artifact(harness: Harness):
+    """Прогон одного lane не стирает канонический артефакт другого.
+
+    Проверка обязана стоять ДО удаления: `run_lane()` чистит старые артефакты
+    перед прогоном, и без неё чужой отчёт был бы снесён и заменён чужими
+    результатами. Молча испортить артефакт хуже, чем отказать: следующий
+    разбор пошёл бы по подменённому отчёту.
+    """
+    # Каталог отчётов КОПИИ раннера: у неё свой ROOT внутри tmp_path.
+    foreign = harness.root / ".ci" / "reports" / "network.xml"
+    foreign.parent.mkdir(parents=True, exist_ok=True)
+    marker = "<testsuite name='контрольный отчёт network'/>"
+    foreign.write_text(marker, encoding="utf-8")
+    try:
+        harness.write_module("test_ok.py", SOURCE_GREEN)
+        # CLI зовётся напрямую: `Harness.run` подставляет свой --junit, а здесь
+        # нужен именно чужой канонический путь.
+        done = run_cli(
+            harness,
+            [
+                "--lane", "unit", "--skip-probe",
+                "--junit", str(foreign),
+                "--paths", str(harness.tests_dir),
+            ],
+            timeout=CLI_HARD_LIMIT,
+        )
+        assert done.returncode != 0, done.stdout + done.stderr
+        assert "network" in (done.stdout + done.stderr)
+        # Главное: чужой артефакт цел.
+        assert foreign.read_text(encoding="utf-8") == marker
+    finally:
+        foreign.unlink(missing_ok=True)

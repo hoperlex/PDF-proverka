@@ -95,20 +95,21 @@
     }
   ],
   "what_this_does_not_prove": [
-    "Это не clean-room ACCEPTANCE: §11 закрепляет её за W0-INT-01, и до устранения CR-1…CR-3 полный набор в clean-room не зелёный",
+    "Это не clean-room ACCEPTANCE: §11 закрепляет её за W0-INT-01, и до устранения CR-1, CR-2, CR-3 и CR-5 полный набор в clean-room не зелёный",
     "Frontend gate в clean-room не прогонялся: Node на машине не соответствует пину §3.1, и его замена — предмет W0-INT-01",
     "norm corpus отсутствует, поэтому enforce-профиль §3.3 не проверялся; probe помечает это как OPTIONAL_NORM_CORPUS_ABSENT",
     "Машина не является CI-образом ubuntu-24.04; совпали Python, архитектура и uid != 0, но не платформа целиком"
   ],
   "reproduce": {
-    "checkout": "git archive HEAD | tar -x -C <clean>/src",
+    "checkout": "git archive 8d91988c | tar -x -C <clean>/src",
     "install": "python3 -m venv <clean>/venv && pip install -r requirements.txt -r requirements-worker.txt -r requirements-worker-pipeline.txt -r requirements-worker-grpc.txt -r requirements-gateway.txt -r requirements-proto.txt && pip install pytest==9.1.1 pytest-asyncio==1.4.0",
     "env": "семь переменных §3.2 плюс TZ=UTC, LC_ALL=C.UTF-8, PYTHONHASHSEED=0",
     "probe": "python scripts/ci_runtime_probe.py --profile <lane> --json",
     "lanes": "python scripts/ci_test_lane.py --lane <lane> --use-lane-marker",
     "aggregate": "python scripts/ci_regression_gate.py",
     "install_note": "Каждый манифест передаётся отдельным `-r`. Прежняя запись `pip install -r requirements*.txt` была неверной: shell раскрывает шаблон, и `-r` применяется только к ПЕРВОМУ файлу, остальные попадают как имена пакетов. Сам прогон шёл циклом по файлам и был корректен — неверной была именно документированная команда повтора.",
-    "lock_dir": "AUDITMANAGER_DEPLOY_LOCK_DIR=<run-root>/locks — без неё три теста уходят в жёстко зашитый машинный путь (CR-3)"
+    "lock_dir": "AUDITMANAGER_DEPLOY_LOCK_DIR=<run-root>/locks — без неё три теста уходят в жёстко зашитый машинный путь (CR-3)",
+    "checkout_note": "Коммит указан явно. Прежняя запись `git archive HEAD` уже воспроизводила бы ДРУГОЙ срез: evidence снята на 8d91988c, а HEAD с тех пор ушёл вперёд."
   },
   "revision": "2 (2026-08-31, по итогам ревью репетиции)",
   "blockers_for_acceptance": {

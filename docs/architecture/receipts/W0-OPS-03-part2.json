@@ -100,9 +100,10 @@
     "regression_gate": {
       "command": "python scripts/ci_regression_gate.py",
       "result": "падений 35, baseline 35, новых 0, exit 0",
-      "run_summary": "2 failed, 7069 passed, 174 skipped, 2 deselected, 33 errors за 337.40 s",
-      "after_review_round": 7,
-      "profile": "под root с активным .env — невалидный профиль §6; валидный прогон снят отдельной репетицией"
+      "run_summary": "2 failed, 7076 passed, 174 skipped, 2 deselected, 33 errors за 371.15 s",
+      "after_review_round": 8,
+      "wall_budget": "1800 s; прогон уложился в 371 s, то есть бюджет не мешает здоровому прогону",
+      "profile": "под root с активным .env — невалидный профиль §6; валидный снят отдельной репетицией"
     },
     "review_round_3_independent_checks": {
       "all_ci_suites": "213 passed",
@@ -164,8 +165,11 @@
       "detail": "Гейт запускает pytest без ограничения по времени: на машине, где часть тестов зависает, он не отказывает, а остаётся в прогоне неопределённо долго (наблюдение ревью: ~1 % за шесть минут). Это ровно тот класс отказа, ради которого §7 и вводит бюджеты, но сам гейт под них не заведён — их получил только новый ci_test_lane.py.",
       "owner": "W0-OPS-03 — реализация wall-budget в scripts/ci_regression_gate.py",
       "not_fixed_here": "Ревью назвало следующим шагом коммит уже готовых правок и non-root clean-room прогон. Расширять объём коммита правкой, о которой не просили, значит отправить на четвёртый круг то, что уже проверено.",
-      "owner_integration": "W0-INT-01 — подключение в CI и clean-room приёмка",
-      "owner_note": "Прежняя запись «W0-OPS-03 либо W0-INT-01» владельца не назначала. Реализация принадлежит владельцу файла, интеграция — интегратору; это разные шаги и разные приёмки."
+      "owner_integration": "W0-INT-01 — подключение в CI и clean-room приёмка (остаётся)",
+      "owner_note": "Прежняя запись «W0-OPS-03 либо W0-INT-01» владельца не назначала. Реализация принадлежит владельцу файла, интеграция — интегратору; это разные шаги и разные приёмки.",
+      "status": "закрыта в этом круге",
+      "fix": "scripts/ci_regression_gate.py получил бюджет по часам (CI_GATE_WALL_BUDGET_SEC, по умолчанию 1800 с) со своей группой процессов и лестницей SIGTERM → SIGKILL по сохранённому pgid. Превышение — отказ с диагнозом и подсказкой, чем найти зависший тест, а не бесконечное ожидание.",
+      "why_now": "Ревью воспроизвело риск на практике: прогон не показывал прогресса дольше семи минут и был снят вручную. Пока находка лежала открытой, она стоила проверяющему прогона."
     }
   ],
   "own_defects_found_and_fixed": [
@@ -192,28 +196,29 @@
   ],
   "authorizes_next_cutover": false,
   "observe_only": "ни один новый инструмент не включён ни в один автоматический прогон; всё запускается руками до W0-INT-01",
-  "revision": "8 (2026-08-31, по седьмому кругу ревью)",
+  "revision": "9 (2026-08-31, по восьмому кругу ревью)",
   "own_tests": {
-    "total": 181,
-    "measured_by": "python -m pytest <файл> --collect-only -q",
+    "total": 188,
+    "measured_by": "python -m pytest <файл> --collect-only -q, ПОСЛЕ всех правок круга",
     "by_file": {
       "tests/test_ci_redaction.py": 30,
       "tests/test_ci_timeout_plugin.py": 48,
-      "tests/test_ci_test_lane.py": 36,
+      "tests/test_ci_test_lane.py": 39,
       "tests/test_ci_lane_inventory.py": 49,
-      "tests/test_ci_provision_norms.py": 18
+      "tests/test_ci_provision_norms.py": 18,
+      "tests/test_ci_regression_gate_budget.py": 4
     },
     "frontend": {
       "frontend/tests/discussions_route_removal.test.js": 4
     },
-    "note": "Числа снимаются сбором в момент редакции. Ревью трижды ловило расхождение — каждый раз потому, что тесты добавлялись после снятия чисел. Правило: сначала правки, потом замер, потом коммит."
+    "note": "Замер снят после последней правки и перед коммитом — правило из редакции 8."
   },
   "lane_inventory_measurement": {
     "command": "python scripts/ci_lane_inventory.py",
     "duration_sec": 1.71,
-    "modules": 389,
-    "test_functions": 6425,
-    "nodes_lower_bound": 6997,
+    "modules": 390,
+    "test_functions": 6432,
+    "nodes_lower_bound": 7004,
     "nodes_lower_bound_note": "оценка снизу: множитель parametrize считается только по литеральным спискам. Настоящий сбор pytest даёт больше (7082 в части 1) — расхождение объяснимо и указано инструментом.",
     "inferred_lanes": {
       "chaos": {
@@ -238,8 +243,8 @@
       }
     },
     "marked_functions": 13,
-    "unmarked_functions": 6412,
-    "modules_without_any_marker": 386,
+    "unmarked_functions": 6419,
+    "modules_without_any_marker": 387,
     "double_marked": 0,
     "marker_vs_behavior_conflicts": 4,
     "modules_needing_manual_classification": 39,
@@ -256,9 +261,9 @@
     "drift_note": "Абсолютные числа сдвигаются с каждым новым тестом. Поэтому в roadmap их больше нет, а здесь они годны только вместе с tree-хешами выше: совпали хеши — числа те же, разошлись — надо пересчитать. Устойчивое утверждение не зависит от прогона: размечено 13 функций, остальные без primary lane marker, и это не изменится, пока разметка не начата.",
     "measured_at": {
       "why_not_a_commit": "Коммит здесь бесполезен: числа меняются от содержимого tests/ и backend/tests/, а коммит меняется и от правки документов. Ревью дважды поймало расхождение именно поэтому. Замер привязан к tree-хешам ровно тех каталогов, которые инструмент читает, — они не сдвигаются от правки квитанции.",
-      "tests_tree_sha1": "fbc08bfe8c6766e25d16a673bf5954b4a13d3d19",
+      "tests_tree_sha1": "da3e1e44580d9fd67a2fc7e9e18403e5efceb463",
       "backend_tests_tree_sha1": "7e19ce4f6e9164b2672e17889b87d88be728a9c1",
-      "output_sha256": "86e25778797459f5a91b448a4145ab42cf2376821f72279659f2c9b03da15544",
+      "output_sha256": "0f9b48bc144030fa77ed4b26ddc0354c751944648637743b0a4f242b66993492",
       "excluded_nonsemantic_output_fields": [
         "root",
         "duration_seconds"
@@ -499,6 +504,37 @@
         }
       ],
       "evidence_refreshed": "числа тестов, tree-хеши и отпечаток инвентаря пересняты ПОСЛЕ всех правок этого круга — прежние устарели ровно потому, что снимались до"
+    },
+    "round_8_local_review": {
+      "base_commit": "fbc680bb",
+      "verdict": "REV-18 закрыл утечку; остался блокер целостности evidence",
+      "fixes": [
+        {
+          "id": "REV-19",
+          "blocking": true,
+          "summary": "Каноничность имени не была привязана к выполняемому lane",
+          "reproduced": "--lane unit --junit .ci/reports/contract.xml признавался каноническим; receipt получался противоречивым (lane: unit, junit: contract.xml), а run_lane() сначала УДАЛИЛ бы чужой отчёт и записал на его место результаты unit",
+          "why_missed": "я перечислил десять имён и счёл список allowlist'ом, но §5.1 задаёт ОТОБРАЖЕНИЕ lane → свой файл, а не набор взаимозаменяемых имён. Список без привязки к контексту — снова имитация allowlist",
+          "fix": [
+            "_publishable_path получает lane и принимает только <lane>.xml и <lane>.events.jsonl",
+            "попытка писать в канонический артефакт ДРУГОГО lane отклоняется ДО unlink, чужой файл остаётся цел",
+            "относительный .ci/reports/unit.xml нормализуется: форма записи не меняет того, на какой файл путь указывает"
+          ],
+          "verified": "прогон unit с --junit .ci/reports/contract.xml завершается кодом 1, контрольное содержимое чужого файла не изменилось; сквозной прогон с относительным путём публикует .ci/reports/unit.xml"
+        },
+        {
+          "id": "REV-20",
+          "blocking": false,
+          "summary": "OPS03-F10 закрыта: у гейта появился бюджет по часам",
+          "detail": "ревью воспроизвело риск на практике — прогон без прогресса дольше семи минут был снят вручную",
+          "verified": "с CI_GATE_WALL_BUDGET_SEC=5 гейт отказывает за секунды с диагнозом и не оставляет осиротевшего pytest; четыре регрессионных теста в tests/test_ci_regression_gate_budget.py"
+        }
+      ],
+      "documentation": [
+        "blockers_for_W0-INT-01 дополнен CR-5 (было три, стало четыре)",
+        "строка «до устранения CR-1…CR-3» в квитанции репетиции приведена к четырём блокерам",
+        "команда повтора использует git archive 8d91988c, а не HEAD: evidence снята на этом коммите, и HEAD с тех пор ушёл вперёд"
+      ]
     }
   },
   "cleanroom_rehearsal": {
@@ -507,8 +543,10 @@
     "blockers_for_W0-INT-01": [
       "CR-1 нет pytest в манифестах",
       "CR-2 несогласованный dependency set",
-      "CR-3 жёстко зашитый машинный путь"
+      "CR-3 жёстко зашитый машинный путь",
+      "CR-5 Node/npm не по пину §3.1 — frontend gate не проверялся вовсе"
     ],
-    "not_an_acceptance": "§11 закрепляет clean-room acceptance за W0-INT-01"
+    "not_an_acceptance": "§11 закрепляет clean-room acceptance за W0-INT-01",
+    "blockers_count": 4
   }
 }

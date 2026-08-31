@@ -458,6 +458,22 @@ def run_lane(args: argparse.Namespace) -> dict[str, Any]:
     diag = Path(f"{stem}.timeout.json")
     receipt_path = Path(args.receipt) if args.receipt else Path(f"{stem}.receipt.json")
 
+    # Отказ ДО удаления: прогон одного lane не имеет права стереть канонический
+    # артефакт другого. Иначе `--lane unit --junit .ci/reports/contract.xml`
+    # снёс бы отчёт lane `contract` и записал бы на его место результаты
+    # `unit`, а receipt заявил бы `lane: unit` при `junit: contract.xml`.
+    # Молча испортить чужой артефакт хуже, чем отказать: следующий разбор
+    # пошёл бы по подменённому отчёту.
+    for path, kind in ((junit, "junit"), (events, "events")):
+        foreign = is_foreign_canonical(path, lane)
+        if foreign is not None:
+            raise SystemExit(
+                f"[lane {lane}] FATAL: {kind} указывает на канонический артефакт "
+                f"lane «{foreign}» ({path}). §5.1 задаёт отображение lane → свой "
+                f"файл; прогон отменён до удаления чужого отчёта.\n"
+                f"        Ожидается: {REPORT_DIR / (canonical_artifact_name(lane, kind) or '')}"
+            )
+
     # §8: старый отчёт удаляется ДО прогона. Без этого ранняя смерть pytest
     # оставила бы отчёт прошлого раза, и сравнение молча уехало бы на него.
     for path in (junit, events, diag):
@@ -612,18 +628,55 @@ def run_lane(args: argparse.Namespace) -> dict[str, Any]:
 #: содержит ничего пользовательского: `<lane>` берётся из закрытого списка.
 _CANONICAL_REPORT_DIR = REPORT_DIR
 
-#: ТОЧНЫЕ имена файлов, а не префиксы. Прежняя проверка брала `name.split(".")[0]`
-#: и потому пропускала пользовательский суффикс: `unit.q7z4m2n8p5r3t6v9.xml`
-#: начинается с имени lane и публиковался целиком. Проверка «начинается с
-#: разрешённого» — это не allowlist, а его имитация; допустимых имён конечное
-#: число, поэтому они перечислены полностью.
-_CANONICAL_NAMES: dict[str, frozenset[str]] = {
-    "junit": frozenset(f"{lane}.xml" for lane in LANES),
-    "events": frozenset(f"{lane}.events.jsonl" for lane in LANES),
-}
+#: Суффикс канонического имени по виду артефакта. §5.1 задаёт ОТОБРАЖЕНИЕ
+#: lane → собственный файл, а не множество взаимозаменяемых имён: у прогона
+#: lane `unit` каноническое имя ровно одно.
+#:
+#: Прежние две редакции ошибались по нарастающей. Сначала сверялся префикс, и
+#: `unit.q7z4m2n8p5r3t6v9.xml` проходил. Потом появился список из десяти имён —
+#: но он не знал, КАКОЙ lane выполняется, и `--lane unit --junit
+#: .ci/reports/contract.xml` признавался каноническим. Receipt получался
+#: внутренне противоречивым: `lane: unit`, `junit: contract.xml`.
+_CANONICAL_SUFFIX: dict[str, str] = {"junit": ".xml", "events": ".events.jsonl"}
 
 
-def _publishable_path(path: Path, kind: str) -> str:
+def canonical_artifact_name(lane: str, kind: str) -> str | None:
+    """Единственное каноническое имя файла для пары (lane, вид артефакта)."""
+    suffix = _CANONICAL_SUFFIX.get(kind)
+    return f"{lane}{suffix}" if suffix and lane in LANES else None
+
+
+def is_foreign_canonical(path: Path, lane: str) -> str | None:
+    """Имя другого lane в каноническом каталоге — вернуть имя этого lane.
+
+    Нужно ДО удаления файлов: `run_lane()` чистит старые артефакты перед
+    прогоном, и без этой проверки `--lane unit --junit
+    .ci/reports/contract.xml` стёр бы отчёт lane `contract` и записал бы на
+    его место результаты `unit`. Молча испортить чужой артефакт хуже, чем
+    отказать: следующий разбор пошёл бы по подменённому отчёту.
+    """
+    resolved = _resolve(path)
+    if resolved.parent != _CANONICAL_REPORT_DIR:
+        return None
+    for other in LANES:
+        if other == lane:
+            continue
+        if resolved.name in {f"{other}.xml", f"{other}.events.jsonl"}:
+            return other
+    return None
+
+
+def _resolve(path: Path) -> Path:
+    """Привести путь к абсолютному виду относительно корня репозитория.
+
+    Без этого `.ci/reports/unit.xml` — дословно путь из канонической команды
+    §5.1 — считался пользовательским только потому, что записан относительно.
+    Форма записи не меняет того, на какой файл путь указывает.
+    """
+    return path if path.is_absolute() else (ROOT / path).resolve()
+
+
+def _publishable_path(path: Path, kind: str, lane: str) -> str:
     """Путь артефакта в форме, пригодной для публикации.
 
     Обе прежние ветки были неверны, и по одной причине: путь ЦЕЛИКОМ задаётся
@@ -635,17 +688,23 @@ def _publishable_path(path: Path, kind: str) -> str:
         превращалось в `q7z4m2n8p5r3t6v9.xml`, то есть секрет сохранялся
         целиком.
 
-    Поэтому полный путь публикуется ТОЛЬКО для точного канонического имени:
-    `.ci/reports/<lane>.xml` для отчёта и `.ci/reports/<lane>.events.jsonl` для
-    журнала, где `<lane>` — один из пяти. Сравнение идёт с полным именем, а не
-    с префиксом: `unit.q7z4m2n8p5r3t6v9.xml` тоже начинается с имени lane и при
-    проверке по префиксу публиковался целиком.
+    Поэтому полный путь публикуется ТОЛЬКО для единственного канонического
+    имени ТЕКУЩЕГО lane: `.ci/reports/<lane>.xml` и
+    `.ci/reports/<lane>.events.jsonl`. §5.1 задаёт отображение lane → свой
+    файл, а не набор взаимозаменяемых имён, поэтому имя чужого lane
+    каноническим здесь не является.
+
+    Сравнение идёт с полным именем, а не с префиксом:
+    `unit.q7z4m2n8p5r3t6v9.xml` тоже начинается с имени lane и при проверке по
+    префиксу публиковался целиком.
 
     Любой другой путь заменяется меткой вида `<custom-junit>`: где лежит
     артефакт, знает тот, кто задал `--junit`, а receipt для этого не нужен.
     """
-    if path.parent == _CANONICAL_REPORT_DIR and path.name in _CANONICAL_NAMES.get(kind, ()):
-        return str(path.relative_to(ROOT))
+    resolved = _resolve(path)
+    expected = canonical_artifact_name(lane, kind)
+    if expected and resolved.parent == _CANONICAL_REPORT_DIR and resolved.name == expected:
+        return str(resolved.relative_to(ROOT))
     return f"<custom-{kind}>"
 
 
@@ -698,8 +757,8 @@ def _finish(
         # Путь внутри репозитория безопасен и полезен — это наша же раскладка.
         # Путь СНАРУЖИ задан пользователем и может нести каталог клиента,
         # поэтому от него остаётся только имя файла.
-        "junit": _publishable_path(junit, "junit"),
-        "events": _publishable_path(events, "events"),
+        "junit": _publishable_path(junit, "junit", lane),
+        "events": _publishable_path(events, "events", lane),
         "probe_ran": bool(probe),
         "probe_exit_code": probe.get("exit_code"),
         "note": note,
