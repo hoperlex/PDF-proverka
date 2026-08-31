@@ -49,7 +49,6 @@ import sys
 import tempfile
 import threading
 import time
-import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -272,15 +271,37 @@ def thread_dump() -> str:
 
 
 def _frames_dump() -> str:
-    """Запасной дамп через sys._current_frames()."""
+    """Запасной дамп: собирается из полей кадра, а не из готового текста.
+
+    `traceback.format_stack()` и `thread.name` здесь не используются, и это не
+    стилистика. Оба публиковали свободный ввод:
+
+      * имя потока задаёт тот, кто его создал — `threading.Thread(name=…)`,
+        то есть это произвольная строка, а не структура. Измерено: имя
+        `q7z4m2n8p5r3t` уходило в дамп целиком;
+      * `format_stack` печатает ТЕКСТ исполняемой строки исходника. Строка
+        вида `conn = connect("postgres://u:p@host")` попадала в артефакт
+        дословно.
+
+    Поэтому кадры обходятся вручную и печатаются ровно три поля: имя файла без
+    каталогов, номер строки и имя функции. Это то же, что печатает
+    `faulthandler` (он тоже показывает числовой идентификатор потока, а не
+    имя), и того же достаточно, чтобы ответить, где зависло.
+    """
     try:
-        names = {thread.ident: thread.name for thread in threading.enumerate()}
-        chunks = []
+        chunks: list[str] = []
         for ident, frame in sys._current_frames().items():
-            chunks.append(f"Thread {names.get(ident, '?')} ({ident}):")
-            chunks.extend(
-                line.rstrip() for line in traceback.format_stack(frame)
-            )
+            chunks.append(f"Thread {ident} (most recent call first):")
+            current = frame
+            depth = 0
+            while current is not None and depth < 200:
+                code = current.f_code
+                chunks.append(
+                    f'  File "{os.path.basename(code.co_filename)}", '
+                    f"line {current.f_lineno} in {code.co_name}"
+                )
+                current = current.f_back
+                depth += 1
             chunks.append("")
         return "\n".join(chunks)
     except Exception as exc:  # pragma: no cover

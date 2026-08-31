@@ -1167,3 +1167,43 @@ def test_secret_from_child_cmdline_never_reaches_any_artifact(harness: Harness):
     junit_text = artifacts["JUnit"]
     assert "--token" in junit_text, "вместе с секретом исчезла вся диагностика"
     assert "argv:" in junit_text, "отпечаток обязан быть: без него процессы не сличить"
+
+
+def test_receipt_command_does_not_publish_user_supplied_arguments(harness: Harness):
+    """Поле `command` не публикует пользовательские пути, маркеры и хвост argv.
+
+    Это был блокирующий дефект: receipt хранил `" ".join(cmd)`, а в cmd входят
+    `--paths`, выражение маркеров и дополнительные аргументы pytest. Измерено —
+    путь вида `/srv/customers/<id>/test.py` и `--token 0427` уходили в receipt
+    дословно.
+
+    §8 требует ПОЛЕ `command`, а не сырой argv, поэтому оно публикуется в той
+    же безопасной форме, что и командные строки дочерних процессов.
+    """
+    harness.write_module("test_ok.py", SOURCE_GREEN)
+    done = harness.run("-m", "not chaos")
+    assert done.returncode == lane_mod.EXIT_OK, done.stdout + done.stderr
+
+    receipt = harness.receipt()
+    blob = json.dumps(receipt, ensure_ascii=False)
+    assert str(harness.tests_dir) not in blob, "пользовательский путь в receipt"
+    assert "not chaos" not in receipt["command"], "выражение маркеров опубликовано"
+    # Опознать команду по-прежнему можно: программа, флаги и отпечаток.
+    assert "pytest" in receipt["command"]
+    assert "argv:" in receipt["command"]
+
+
+def test_receipt_artifact_paths_outside_the_repo_lose_their_directories(
+    harness: Harness,
+):
+    """Пути артефактов снаружи репозитория публикуются только именем файла.
+
+    Внутри репозитория путь безопасен и полезен — это наша же раскладка.
+    Снаружи он задан пользователем и может нести каталог клиента.
+    """
+    harness.write_module("test_ok.py", SOURCE_GREEN)
+    harness.run()
+    receipt = harness.receipt()
+    assert receipt["junit"] == harness.junit.name
+    assert "/" not in receipt["junit"], receipt["junit"]
+    assert "/" not in receipt["events"], receipt["events"]

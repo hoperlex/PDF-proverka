@@ -52,6 +52,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
+from ci_redaction import safe_cmdline  # noqa: E402
 from ci_timeout_plugin import EXIT_TIMEOUT  # noqa: E402
 
 CONTRACT_ID = "quality-runtime/v1"
@@ -593,12 +594,22 @@ def run_lane(args: argparse.Namespace) -> dict[str, Any]:
     return _finish(
         lane=lane, junit=junit, events=events, receipt_path=receipt_path,
         started_wall=started_wall, started_mono=started_mono, probe=probe,
-        exit_code=final, command=" ".join(cmd), per_test=per_test, wall=wall,
+        # Команда публикуется в той же безопасной форме, что и командные строки
+        # дочерних процессов. Сырой argv тут не безопаснее: в него входят
+        # пользовательские --paths, выражение маркеров и хвостовые аргументы
+        # pytest. Измерено — путь /srv/customers/<id>/test.py и `--token 0427`
+        # уходили в receipt дословно. §8 требует ПОЛЕ command, а не сырой argv.
+        exit_code=final, command=safe_cmdline(cmd), per_test=per_test, wall=wall,
         report_status=report_status, counts=counts,
         timed_out=(str(timeout_info.get("nodeid")) if timeout_info else None),
         note=note, pytest_exit_code=exit_code,
         deselected=deselected_count(event_list),
     )
+
+
+def _publishable_path(path: Path) -> str:
+    """Путь артефакта в форме, пригодной для публикации."""
+    return str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else path.name
 
 
 def _finish(
@@ -647,8 +658,11 @@ def _finish(
         "capabilities": probe.get("capabilities") or {},
         "norm_artifact_sha256": probe.get("norm_artifact_sha256"),
         "report_status": report_status,
-        "junit": str(junit.relative_to(ROOT)) if junit.is_relative_to(ROOT) else str(junit),
-        "events": str(events.relative_to(ROOT)) if events.is_relative_to(ROOT) else str(events),
+        # Путь внутри репозитория безопасен и полезен — это наша же раскладка.
+        # Путь СНАРУЖИ задан пользователем и может нести каталог клиента,
+        # поэтому от него остаётся только имя файла.
+        "junit": _publishable_path(junit),
+        "events": _publishable_path(events),
         "probe_ran": bool(probe),
         "probe_exit_code": probe.get("exit_code"),
         "note": note,

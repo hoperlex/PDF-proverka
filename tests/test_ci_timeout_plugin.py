@@ -30,8 +30,10 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import signal
 import subprocess
+import threading
 import sys
 import time
 from pathlib import Path
@@ -402,14 +404,22 @@ def test_thread_dump_falls_back_when_faulthandler_fails(monkeypatch):
     monkeypatch.setattr(plug.faulthandler, "dump_traceback", boom)
     dump = plug.thread_dump()
     assert "недоступен" not in dump, dump[:400]
-    assert "MainThread" in dump, "запасной дамп обязан называть потоки"
+    # Поток называется числовым идентификатором, а НЕ именем: имя задаёт тот,
+    # кто создал поток, то есть это свободный ввод. Так же поступает и сам
+    # faulthandler. Прежняя редакция требовала здесь «MainThread» и тем самым
+    # закрепляла публикацию произвольной строки.
+    assert "MainThread" not in dump, "имя потока опубликовано"
+    assert re.search(r"Thread \d+", dump), "поток обязан быть назван идентификатором"
+    # Кадр по-прежнему опознаётся: имя функции — часть структуры кода.
     assert "test_thread_dump_falls_back_when_faulthandler_fails" in dump
 
 
 def test_frames_dump_reports_failure_honestly(monkeypatch):
     """Если не сработал и запасной путь — это должно быть СКАЗАНО, а не скрыто."""
+    # Патчится то, чем запасной путь пользуется СЕЙЧАС: он больше не зовёт
+    # threading.enumerate — имена потоков не публикуются.
     monkeypatch.setattr(
-        plug.threading, "enumerate", lambda: (_ for _ in ()).throw(RuntimeError("нет"))
+        plug.sys, "_current_frames", lambda: (_ for _ in ()).throw(RuntimeError("нет"))
     )
     assert "недоступен" in plug._frames_dump()
 
@@ -774,3 +784,47 @@ def test_thread_dump_is_sanitised_before_publication():
     assert "/root/" not in cleaned and "/usr/" not in cleaned, (
         f"каталоги пережили обработку: {cleaned[:200]!r}"
     )
+
+
+def test_fallback_dump_publishes_no_free_text():
+    """Запасной дамп не публикует ни имя потока, ни строку исходника.
+
+    Это был блокирующий дефект. `_frames_dump()` строился из
+    `traceback.format_stack()` и `thread.name`, а оба несут свободный ввод:
+    имя потока задаёт тот, кто его создал, а `format_stack` печатает ТЕКСТ
+    исполняемой строки. Измерено — имя `q7z4m2n8p5r3t` уходило в дамп целиком.
+
+    Теперь кадры обходятся вручную и печатаются три поля: имя файла без
+    каталогов, номер строки и имя функции. Того же достаточно, чтобы ответить,
+    где зависло.
+    """
+    secret_name = "q7z4m2n8p5r3t"
+    started = threading.Event()
+    release = threading.Event()
+
+    def worker():
+        started.set()
+        release.wait(10)
+
+    thread = threading.Thread(target=worker, name=secret_name, daemon=True)
+    thread.start()
+    try:
+        assert started.wait(5), "поток не стартовал"
+        dump = plug._frames_dump()
+        assert secret_name not in dump, f"имя потока опубликовано: {dump[:200]!r}"
+        assert "release.wait(10)" not in dump, "строка исходника опубликована"
+        # Диагностическая ценность сохранена.
+        assert "line " in dump and " in " in dump
+        assert "/root/" not in dump and "/usr/" not in dump, "каталоги в дампе"
+    finally:
+        release.set()
+        thread.join(5)
+
+
+def test_primary_and_fallback_dumps_agree_on_shape():
+    """Оба пути дают одну форму: файл без каталогов, строка, функция."""
+    for dump in (plug.thread_dump(), plug._frames_dump()):
+        assert dump.strip()
+        cleaned = plug.sanitize_traceback(dump)
+        assert "/root/" not in cleaned and "/usr/" not in cleaned
+        assert "line " in cleaned
