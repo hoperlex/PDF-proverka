@@ -255,7 +255,7 @@ baseline. Это единственная волна с намеренно ог�
 | W0-DATA-02 | MIG | mapping legacy identity → UID и ambiguity report | текущие identity rules | да |
 | W0-LEG-01 | ARC/ENG | sustainment register: ≤1 active capability slot/волна; weekly human hours/available-hours и 20% reporting target; owner/deadline/target task | inventory текущего backlog | да |
 | W0-OPS-01 | OPS | baseline: latency/errors/RSS/disk/job duration, runs/week и cost/audit | нет | да |
-| W0-WEB-01 | WEB | route/feature inventory старого UI и deeplinks | нет | да |
+| W0-WEB-01 | WEB | route/feature inventory старого UI и deeplinks — [inventory v1](WEB_ROUTE_INVENTORY_V1.md) | нет | да |
 | W0-SEC-01 | OPS/API | auth/data-flow threat model без изменения кода | нет | да |
 | W0-SEC-02 | OPS/MIG | data classification inventory и draft retention matrix | W0-SEC-01, W0-DATA-01 | да после inventory |
 | W0-SEC-03 | OPS/API | до 2026-10-15 закрыть EXC-0001: production auth preflight, staff credential provisioning, enabled/fail-closed вне local mode | W0-SEC-01 + подтверждённый список пользователей | security change, отдельный runbook/provisioning/rollback |
