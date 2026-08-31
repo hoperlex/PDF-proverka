@@ -405,18 +405,39 @@ def run_probe(lane: str, enforce: bool) -> dict[str, Any]:
     return report
 
 
-def _kill_group(proc: subprocess.Popen) -> None:
-    """Снять группу процессов лестницей SIGTERM → SIGKILL."""
+def _kill_group(proc: subprocess.Popen, pgid: int | None) -> None:
+    """Снять группу процессов лестницей SIGTERM → SIGKILL.
+
+    PGID передаётся снаружи, а НЕ вычисляется здесь через `os.getpgid(pid)`.
+    Причина в порядке событий: после per-test таймаута лидер группы уже вышел
+    (watchdog внутри pytest вызывает `os._exit`) и `proc.wait()` его забрал,
+    поэтому `os.getpgid()` отвечает `ProcessLookupError` — и прежняя редакция
+    молча выходила из функции, не отправив группе ни одного сигнала. Группа
+    при этом жива: измерено, `child_alive_after_kill_group: true`. Сама
+    группа переживает своего лидера, её идентификатор — не идентификатор
+    процесса, и снимать её надо по номеру, сохранённому при запуске.
+
+    Возврат при `ProcessLookupError` от `killpg` остаётся правильным: там он
+    означает «в группе никого нет», то есть цель уже достигнута.
+    """
+    if pgid is None:
+        return
     for sig in (signal.SIGTERM, signal.SIGKILL):
         try:
-            os.killpg(os.getpgid(proc.pid), sig)
-        except (OSError, ProcessLookupError):
+            os.killpg(pgid, sig)
+        except ProcessLookupError:
+            return          # группа пуста — добивать некого
+        except OSError:
             return
-        try:
-            proc.wait(timeout=5)
-            return
-        except subprocess.TimeoutExpired:
-            continue
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(pgid, 0)
+            except ProcessLookupError:
+                return      # группа опустела
+            except OSError:
+                return
+            time.sleep(0.05)
 
 
 def run_lane(args: argparse.Namespace) -> dict[str, Any]:
@@ -497,12 +518,20 @@ def run_lane(args: argparse.Namespace) -> dict[str, Any]:
         cmd, cwd=str(ROOT), env=env, start_new_session=True,
         stdout=(sys.stderr if args.json else None),
     )
+    # PGID снимается СРАЗУ и хранится до конца: после выхода лидера группы его
+    # уже не узнать, а группа к тому моменту как раз и нуждается в добивании.
+    # `start_new_session=True` делает потомка лидером, поэтому pgid == pid, но
+    # полагаться на это совпадение нельзя — спрашиваем ядро.
+    try:
+        child_pgid: int | None = os.getpgid(proc.pid)
+    except OSError:
+        child_pgid = None
     timed_out_by_wall = False
     try:
         exit_code = proc.wait(timeout=wall)
     except subprocess.TimeoutExpired:
         timed_out_by_wall = True
-        _kill_group(proc)
+        _kill_group(proc, child_pgid)
         exit_code = proc.returncode if proc.returncode is not None else EXIT_TIMEOUT
     else:
         if exit_code == EXIT_TIMEOUT:
@@ -511,7 +540,7 @@ def run_lane(args: argparse.Namespace) -> dict[str, Any]:
             # выходом зависший тест мог породить ещё процесс, а сирота с
             # занятым портом валит СЛЕДУЮЩИЙ job причиной не из его кода.
             # Раньше добивание группы стояло только на ветке wall-бюджета.
-            _kill_group(proc)
+            _kill_group(proc, child_pgid)
 
     duration = time.monotonic() - started_mono
     event_list = read_events(events)

@@ -52,6 +52,10 @@ import time
 import traceback
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from ci_redaction import redact_cmdline  # noqa: E402
+
 #: Код возврата, по которому раннер отличает таймаут от обычного падения.
 #: 1–5 заняты самим pytest, поэтому берём заведомо свободный.
 EXIT_TIMEOUT = 87
@@ -102,9 +106,20 @@ def _scan_proc() -> tuple[dict[int, list[int]], dict[int, dict[str, object]]]:
             continue
         comm = stat[stat.find("(") + 1 : close]
         try:
-            cmdline = (entry / "cmdline").read_bytes().replace(b"\0", b" ").decode(
-                "utf-8", errors="replace"
-            ).strip()
+            raw = (entry / "cmdline").read_bytes()
+            # argv разделён нулями. Разбираем ПО НИМ, а не склеиваем в строку:
+            # только так известны границы аргументов, а без границ невозможно
+            # вырезать значение из формы `--token SECRET`.
+            argv = [
+                part.decode("utf-8", errors="replace")
+                for part in raw.split(b"\0")
+                if part
+            ]
+            # Redaction стоит В ИСТОЧНИКЕ, а не перед каждой публикацией:
+            # cmdline уходит в JUnit, журнал событий И диагностику таймаута, и
+            # три точки очистки — это три возможности забыть одну (P-13:
+            # redaction — контракт, а не соглашение).
+            cmdline = redact_cmdline(argv)
         except OSError:
             cmdline = ""
         tree.setdefault(ppid, []).append(pid)

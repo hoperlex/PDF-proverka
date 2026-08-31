@@ -242,7 +242,11 @@ def harness(tmp_path: Path) -> Harness:
     root = tmp_path / "lane_root"
     (root / "scripts").mkdir(parents=True)
     (root / "t").mkdir()
-    for script in ("ci_test_lane.py", "ci_timeout_plugin.py"):
+    # `ci_redaction.py` копируется вместе с ними: плагин импортирует правило
+    # redaction, и без него он вообще не грузится. Список — единственное место,
+    # где связь раннера с его модулями зафиксирована, поэтому новая зависимость
+    # обязана появляться здесь же.
+    for script in ("ci_test_lane.py", "ci_timeout_plugin.py", "ci_redaction.py"):
         shutil.copy2(SCRIPTS / script, root / "scripts" / script)
     return Harness(root)
 
@@ -1060,3 +1064,104 @@ def test_collection_hang_is_recorded_in_junit(harness: Harness):
     receipt = harness.receipt()
     assert receipt["timed_out_node"] == lane_mod.COLLECTION_NODE
     assert receipt["report_status"] == "ok"
+
+
+# ---------------------------------------------------------------------------
+# Блокирующие дефекты ревью: PGID-cleanup и redaction
+# ---------------------------------------------------------------------------
+
+
+def test_kill_group_works_after_the_leader_has_been_reaped():
+    """Группа снимается по СОХРАНЁННОМУ pgid, а не по pid уже мёртвого лидера.
+
+    Это был блокирующий дефект. После per-test таймаута watchdog внутри pytest
+    выходит через `os._exit`, `proc.wait()` забирает лидера, и
+    `os.getpgid(proc.pid)` отвечает `ProcessLookupError` — прежняя редакция
+    молча выходила, не отправив группе ни одного сигнала. Группа при этом жива:
+    она переживает своего лидера, её идентификатор — не идентификатор процесса.
+
+    Сценарий воспроизводит ровно этот порядок: лидер порождает долгоживущего
+    участника группы и выходит сам.
+    """
+    proc = subprocess.Popen(
+        [
+            sys.executable, "-c",
+            "import subprocess, sys; "
+            "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)']); "
+            "sys.exit(0)",
+        ],
+        start_new_session=True,
+    )
+    pgid = os.getpgid(proc.pid)
+    proc.wait()
+    time.sleep(0.4)
+
+    # Лидера уже нет — старый способ узнать pgid не работает.
+    with pytest.raises(ProcessLookupError):
+        os.getpgid(proc.pid)
+    # А группа жива.
+    os.killpg(pgid, 0)
+
+    try:
+        lane_mod._kill_group(proc, pgid)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(pgid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.05)
+        else:
+            pytest.fail("группа пережила cleanup: child_alive_after_kill_group")
+    finally:
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except (ProcessLookupError, OSError):
+            pass
+
+
+def test_kill_group_without_pgid_is_a_no_op():
+    """Неизвестный pgid — не повод разослать сигнал наугад.
+
+    `os.getpgid` при запуске может отказать; тогда добивать группу нечем, но и
+    бить по чужой группе нельзя. Молчаливый возврат здесь — правильное
+    поведение, а не забытая ветка.
+    """
+    proc = subprocess.Popen([sys.executable, "-c", "pass"])
+    proc.wait()
+    lane_mod._kill_group(proc, None)   # не должно ни падать, ни кого-то трогать
+
+
+def test_secret_from_child_cmdline_never_reaches_any_artifact(harness: Harness):
+    """Сквозная проверка: секрет не попадает ни в JUnit, ни в receipt, ни в журнал.
+
+    Дефект был именно сквозной: одна точка чтения `/proc/*/cmdline` питала три
+    артефакта, и синтетический `--token=…` находился во всех трёх. Поэтому и
+    проверка сквозная — модульной проверки источника мало, если публикация
+    когда-нибудь пойдёт в обход него.
+    """
+    secret = "TEST_SECRET_SENTINEL_E2E"
+    harness.write_module(
+        "test_secret.py",
+        "import subprocess, sys, time\n\n\n"
+        "def test_hangs_with_secret_bearing_child():\n"
+        "    subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)',\n"
+        f"                      '--token={secret}'])\n"
+        "    time.sleep(600)\n",
+    )
+
+    done = harness.run(per_test=4, wall=60)
+    assert done.returncode == lane_mod.EXIT_LANE_TIMEOUT, done.stdout + done.stderr
+
+    artifacts = {
+        "JUnit": harness.junit.read_text(encoding="utf-8"),
+        "receipt": harness.receipt_path.read_text(encoding="utf-8"),
+        "журнал событий": harness.events_path().read_text(encoding="utf-8"),
+    }
+    for name, text in artifacts.items():
+        assert secret not in text, f"секрет утёк в {name}"
+
+    # Инвентарь при этом не опустел: дефект не «починен» удалением сведений.
+    junit_text = artifacts["JUnit"]
+    assert "--token" in junit_text, "вместе с секретом исчезла вся диагностика"
+    assert "[redacted]" in junit_text

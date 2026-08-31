@@ -100,8 +100,9 @@
     "regression_gate": {
       "command": "python scripts/ci_regression_gate.py",
       "result": "падений 35, baseline 35, новых 0, exit 0",
-      "run_summary": "2 failed, 7024 passed, 174 skipped, 2 deselected, 33 errors за 307.69 s",
-      "delta": "7024 против 6888 до задачи — это ровно 136 собственных тестов harness; ни один существующий тест не исчез и не ушёл в skip"
+      "run_summary": "2 failed, 7063 passed, 174 skipped, 2 deselected, 33 errors за 335.07 s",
+      "after_review_fixes": true,
+      "delta": "7063 против 6888 до задачи — 175 собственных тестов (136 harness + 39 добавленных по итогам ревью); ни один существующий тест не исчез и не ушёл в skip"
     }
   },
   "findings": [
@@ -132,6 +133,14 @@
       "summary": "Маркер network не зарегистрирован в pytest.ini",
       "detail": "Часть 1 сняла регистрацию как нарушение ownership. Инвентарь это видит и сообщает отдельной строкой. Следствие: `-m network` работает, но каждый прогон печатает PytestUnknownMarkWarning.",
       "owner": "W0-INT-01"
+    },
+    {
+      "id": "OPS03-F9",
+      "severity": "средняя",
+      "summary": "Тест запускает интерпретатор литералом `python`, а не sys.executable",
+      "detail": "tests/test_distributed_workers_inference_gate.py вызывает интерпретатор литералом `python` в двух местах (строки 110 и 116), а не через sys.executable. Без .venv/bin в PATH гейт получает одно новое падение; с активным venv тест проходит — проверено, здесь `python3` разрешается в .venv/bin/python3. Это дефект воспроизводимости: исход прогона зависит от PATH, а не от кода, и на чистом non-root runner (§3 clean-room) поведение будет другим.",
+      "owner": "W0-INT-01",
+      "not_fixed_here": "файл вне allowed paths W0-OPS-03 (разрешены scripts/ci_*, узкие runtime-probe тесты и OPS runbook). Правка чужого файла ради зелёного прогона — ровно то, что задача обязана не делать."
     }
   ],
   "own_defects_found_and_fixed": [
@@ -158,7 +167,7 @@
   ],
   "authorizes_next_cutover": false,
   "observe_only": "ни один новый инструмент не включён ни в один автоматический прогон; всё запускается руками до W0-INT-01",
-  "revision": "1 (2026-08-31)",
+  "revision": "2 (2026-08-31, по итогам ревью)",
   "own_tests": {
     "total": 136,
     "by_file": {
@@ -184,10 +193,10 @@
   },
   "lane_inventory_measurement": {
     "command": "python scripts/ci_lane_inventory.py",
-    "duration_sec": 1.66,
-    "modules": 388,
-    "test_functions": 6390,
-    "nodes_lower_bound": 6962,
+    "duration_sec": 1.71,
+    "modules": 389,
+    "test_functions": 6404,
+    "nodes_lower_bound": 6976,
     "nodes_lower_bound_note": "оценка снизу: множитель parametrize считается только по литеральным спискам. Настоящий сбор pytest даёт больше (7082 в части 1) — расхождение объяснимо и указано инструментом.",
     "inferred_lanes": {
       "chaos": {
@@ -195,8 +204,8 @@
         "functions": 95
       },
       "network": {
-        "modules": 40,
-        "functions": 1495
+        "modules": 41,
+        "functions": 1509
       },
       "integration": {
         "modules": 236,
@@ -212,8 +221,8 @@
       }
     },
     "marked_functions": 13,
-    "unmarked_functions": 6377,
-    "modules_without_any_marker": 385,
+    "unmarked_functions": 6391,
+    "modules_without_any_marker": 386,
     "double_marked": 0,
     "marker_vs_behavior_conflicts": 4,
     "modules_needing_manual_classification": 39,
@@ -226,7 +235,9 @@
       "conftest.py намеренно не подмешан: иначе весь корень стал бы integration и различия между модулями исчезли бы",
       "httpx AsyncClient с ASGI-транспортом неотличим от него же с настоящим URL"
     ],
-    "verdict": "§5 inventory failure подтверждён количественно: 6377 функций из 6390 без primary lane marker, 385 модулей из 388 без единого маркера. Часть 1 разметила 11 нод — 0.2 % объёма."
+    "verdict": "§5 inventory failure подтверждён количественно: 6377 функций из 6390 без primary lane marker, 385 модулей из 388 без единого маркера. Часть 1 разметила 11 нод — 0.2 % объёма.",
+    "measured_at_commit": "dc9d7e8f",
+    "drift_note": "Абсолютные числа сдвигаются с каждым новым тестом и устаревают быстрее, чем документ: ревью справедливо поймало расхождение на единицу. Устойчивое утверждение — ОТНОШЕНИЕ: размечено 13 функций, то есть 0.2 % набора, и оно не изменится, пока не начата сама разметка. Актуальное число всегда даёт `python scripts/ci_lane_inventory.py`; сверять надо с ним, а не с этой квитанцией."
   },
   "defects_found_by_own_tests": {
     "count": 4,
@@ -238,5 +249,44 @@
     ],
     "method": "каждый зафиксирован xfail(strict) или падающим тестом, а не замолчан; затем исправлен, а тест переведён в обычный регрессионный",
     "why_it_matters": "все четыре отказа МОЛЧАЛИВЫЕ: код возврата оставался честным, врал артефакт, который читают CI и человек"
+  },
+  "review_fixes": {
+    "verdict_addressed": "dc9d7e8f не принят до исправления PGID cleanup и redaction",
+    "fixes": [
+      {
+        "id": "REV-1",
+        "blocking": true,
+        "summary": "Timeout harness публиковал секреты из командной строки",
+        "reproduced": "синтетический --token=TEST_SECRET_SENTINEL попадал в ТРИ артефакта, не в один: JUnit, диагностику таймаута и журнал событий (измерено: 1/1/1)",
+        "violated": "P-13 (redaction как контракт) и P-14 (fail-closed) ADR Bible",
+        "fix": "правило redaction вынесено в scripts/ci_redaction.py и применяется В ИСТОЧНИКЕ — внутри child_processes(), до любой публикации. Три точки очистки были бы тремя возможностями забыть одну",
+        "why_local_rule": "backend/app/core/action_log._scrub уже реализует это правило, но его импорт загружает .env и добавляет в окружение процесса 10 переменных, включая боевой provider-секрет (OPS03-F1). Плагин, втаскивающий секрет ради защиты от утечки, нерабочий. Согласованность двух правил доказывается тестом на общем корпусе",
+        "deliberate_difference": "локальное правило СТРОЖЕ: работает по argv, где известны границы аргументов, и потому ловит форму `--token SECRET` через пробел, которую правило для свободного текста пропускает (требует = или :). Отличие зафиксировано отдельным тестом",
+        "verified": "0/0/0 секретов в тех же трёх артефактах; диагностика сохранена — имя флага видно, вырезано значение",
+        "own_defect_found_while_fixing": "первая редакция правила перередактировала: без границ слова `sig` внутри `--design-output` и `pin` внутри `--spin-up` вырезали значения безобидных флагов. Для инвентаря это не мелочь — его снимают, чтобы узнать, ЧТО за процесс висел. Границы восстановлены тем же приёмом, что в action_log._SENSITIVE_NAME_RE; на оба случая есть тесты. Известное общее с правилом репозитория перередактирование (`design` в форме «имя=значение») оставлено намеренно: расходиться с ним ради одного слова дороже."
+      },
+      {
+        "id": "REV-2",
+        "blocking": true,
+        "summary": "Cleanup process-group не работал после per-test timeout",
+        "reproduced": "после proc.wait() лидер группы забран, os.getpgid(proc.pid) даёт ProcessLookupError, и _kill_group молча выходил, не отправив ни одного сигнала. Группа при этом жива и достижима по сохранённому PGID — измерено",
+        "fix": "PGID снимается сразу после Popen(start_new_session=True) и передаётся в cleanup явным аргументом. Ожидание опустошения группы идёт через killpg(pgid, 0), а не через proc.wait(): лидера уже нет, ждать на нём нечего",
+        "verified": "child_alive_after_kill_group: False; регрессионный тест воспроизводит порядок «лидер вышел, группа жива»"
+      },
+      {
+        "id": "REV-3",
+        "blocking": false,
+        "summary": "Для closeDiscussion() не было регрессионного теста (W0-WEB-02)",
+        "fix": "frontend/tests/discussions_route_removal.test.js — 4 проверки: ни одна навигация не ведёт на /discussions, в разметке ссылок нет, диспетчер маршрут не разбирает, функция сохранена и сбрасывает состояние",
+        "verified": "тест доказуемо ловит дефект: при временном возврате навигации 2 из 4 проверок краснеют; app.js восстановлен без изменений",
+        "closes": "дыру, из-за которой RI-1 прожил незамеченным с aeb0b2f2 (2026-07-06): ни один тест не проверял, что удалённый маршрут перестал быть целью навигации"
+      }
+    ],
+    "own_tests_added": {
+      "tests/test_ci_redaction.py": 29,
+      "tests/test_ci_timeout_plugin.py": "+2 (42 всего)",
+      "tests/test_ci_test_lane.py": "+3 (32 всего)",
+      "frontend/tests/discussions_route_removal.test.js": 4
+    }
   }
 }

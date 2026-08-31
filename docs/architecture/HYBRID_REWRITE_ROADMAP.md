@@ -412,12 +412,15 @@ production-код; задачи ниже допустимы как reversible co
   telemetry либо явно фиксируется причина неприменимости.
 - **Rollback/integration:** один обратимый legacy change; dependency/typecheck
   wiring соединяет `W0-INT-01`.
-- **Execution receipt (2026-08-31):**
+- **Execution receipt (2026-08-31), принято ЧАСТИЧНО:**
   [disposition](WEB_FRONTEND_DISPOSITION_W0-WEB-02.md). Регрессий ноль: все семь
   падений — устаревшие characterization contracts, у каждого назван
   коммит-причина. Найдено скрытое восьмое падение (тест краснел строкой выше).
-  Vitest 399/399, lint/typecheck/build зелёные. Буквальный `strict: true` НЕ
-  достигнут: 69 ошибок, а `tsconfig` принадлежит `W0-INT-01`.
+  Vitest 403/403, lint/typecheck/build зелёные; RI-1 закрыт регрессионным
+  тестом `frontend/tests/discussions_route_removal.test.js`.
+  **Не закрыто:** буквальный `strict: true` даёт 69 ошибок, поэтому acceptance
+  §11 контракта по этому пункту остаётся открытой. `tsconfig` и типизация
+  модулей принадлежат `W0-INT-01`.
 
 #### W0-OPS-03 — диагностируемый test harness
 
@@ -441,13 +444,18 @@ production-код; задачи ниже допустимы как reversible co
   seen/passed/failed/skipped, timeout node ID и причину environment skip.
 - **Rollback/integration:** новые probes сначала observe-only; defaults и workflow
   меняет только `W0-INT-01`.
-- **Execution receipt (2026-08-31):** часть 1 —
+- **Execution receipt (2026-08-31), задача НЕ завершена:** часть 1 —
   [квитанция](receipts/W0-OPS-03-part1.json), часть 2 —
   [квитанция](receipts/W0-OPS-03-part2.json), эксплуатация —
   [runbook](../ops/TEST_HARNESS_RUNBOOK.md). Часть 2 закрыла §7 timeout harness,
-  §8 JUnit/receipt, §5 инвентарь и §3.3 provisioning. Инвентарь доказал объём
-  §5 количественно: 6377 тест-функций из 6390 без primary lane marker. Сама
-  разметка и включение enforce остаются за `W0-INT-01`.
+  §8 JUnit/receipt и §3.3 provisioning; по §5 сделан только инвентарь объёма.
+  Ревью нашло два блокирующих дефекта harness — публикацию секретов из
+  командной строки (P-13) и неработающий cleanup process-group; оба исправлены
+  отдельным review-fix коммитом с регрессионными тестами.
+  **Не закрыто:** materialized markers. Инвентарь показывает 13 размеченных
+  функций против 6391 неразмеченной — 0.2 % набора. Сама разметка, регистрация
+  маркера `network` в `pytest.ini` и включение enforce принадлежат
+  `W0-INT-01`; до них `W0-OPS-03` считать завершённой нельзя.
 
 #### W0-INT-01 — clean-room integration и enforce
 

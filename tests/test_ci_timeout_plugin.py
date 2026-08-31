@@ -611,3 +611,58 @@ def test_timeout_exit_code_cannot_be_confused_with_pytest():
     assert plug.EXIT_TIMEOUT != 0
     assert plug.EXIT_TIMEOUT not in range(0, 6)
     assert 0 < plug.EXIT_TIMEOUT < 256, "код обязан быть представим в wait status"
+
+
+# ---------------------------------------------------------------------------
+# Redaction в источнике инвентаря (P-13)
+# ---------------------------------------------------------------------------
+
+
+@requires_proc
+def test_child_cmdline_is_redacted_at_the_source():
+    """Секрет из командной строки ребёнка не доживает до инвентаря.
+
+    Это был блокирующий дефект. `child_processes()` читал сырой
+    `/proc/<pid>/cmdline`, и раннер публиковал его в JUnit, журнал событий И
+    диагностику таймаута — секрет попадал во все три артефакта сразу.
+    P-13 объявляет redaction контрактом, а не соглашением.
+
+    Очистка стоит именно В ИСТОЧНИКЕ, а не перед каждой публикацией: трёх
+    точек очистки достаточно, чтобы однажды забыть одну. Тест проверяет
+    источник, потому что все каналы питаются из него.
+    """
+    proc = None
+    secret = "TEST_SECRET_SENTINEL_IN_CMDLINE"
+    try:
+        proc = subprocess.Popen(
+            [
+                sys.executable, "-c",
+                "import sys,time; sys.stdout.write('ready\\n'); "
+                "sys.stdout.flush(); time.sleep(60)",
+                f"--token={secret}",
+            ],
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        assert proc.stdout.readline().strip() == "ready"
+
+        mine = [item for item in plug.child_processes() if item["pid"] == proc.pid]
+        assert mine, "ребёнок не попал в инвентарь — проверять нечего"
+        cmdline = str(mine[0]["cmdline"])
+        assert secret not in cmdline, f"секрет пережил инвентарь: {cmdline!r}"
+        # Диагностическая ценность сохранена: имя флага видно, вырезано значение.
+        assert "--token" in cmdline
+        assert "[redacted]" in cmdline
+    finally:
+        reap(proc)
+
+
+def test_redaction_helper_is_shared_not_forked():
+    """Плагин пользуется общим модулем правила, а не своей копией.
+
+    Второе правило redaction в репозитории хуже, чем ни одного: они разойдутся,
+    и никто не заметит. Тест фиксирует, что импорт идёт из `ci_redaction`.
+    """
+    import ci_redaction
+
+    assert plug.redact_cmdline is ci_redaction.redact_cmdline

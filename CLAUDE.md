@@ -99,6 +99,11 @@ python -m pytest tests backend/tests -k "grounding"
 # (известный долг по тестам — в scripts/ci_known_failures.txt)
 python scripts/ci_regression_gate.py            # проверка (для CI и после правок)
 python scripts/ci_regression_gate.py --record   # пересоздать baseline в новом окружении
+# --record требует provisioned norm corpus (§3.3 quality/runtime contract):
+# без него отказывает ДО прогона. Починить — scripts/ci_provision_norms.py --build-index
+
+# Один test lane под бюджетами §7 со свежим JUnit и receipt §8:
+python scripts/ci_test_lane.py --lane unit      # разбор отказов — docs/ops/TEST_HARNESS_RUNBOOK.md
 ```
 
 ## JSON Pipeline
