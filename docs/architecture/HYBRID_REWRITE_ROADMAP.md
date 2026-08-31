@@ -2,7 +2,7 @@
 
 **Статус:** proposed — программный roadmap для утверждения; согласован по
 терминам с ADR Bible и действующим планом хранения.<br>
-**Редакция:** 2026-08-27.<br>
+**Редакция:** 2026-08-28.<br>
 **Горизонт:** два несмешиваемых planning scenario: 11–19 календарных месяцев
 для четырёх опытных специалистов либо 15–34 месяца для одного human integrator
 с агентами. Это диапазоны до калибровки волнами 0–1, а не обещание срока;
@@ -271,6 +271,203 @@ baseline. Это единственная волна с намеренно ог�
 | W0-STD-01 | ARC/OPS | applicability matrix корпоративного стандарта: принять/адаптировать/отложить/отклонить/требует подтверждения → связанный ADR, причина, компенсирующий контроль, владелец проверки | нет | да; evidence для ADR, contract slot не занимает |
 | W0-SEC-04 | OPS/API | inventory cookie-authenticated mutations, единая Origin/intent policy, автоматический coverage test, trusted proxy headers, поэтапный CSP | W0-SEC-01 | да; отдельно от W0-SEC-03, её срок не трогает |
 | W0-OPS-02 | OPS | liveness/readiness контракт и миграция watchdog: фиксация действующего watchdog → новые endpoints → shadow → атомарное переключение → закрытие `/api/info` | нет | да; владелец kill-семантики — OPS, не security |
+| W0-ARC-03 | ARC/OPS | frozen runtime/quality contract v1: clean-room профиль, совместимые зависимости, test lanes, timeout и baseline policy | ADR-0005, аудит 2026-08-28 | нет: один владелец shared contract |
+| W0-ENG-02 | ENG | bounded lifecycle CPU/thread executors и stage runners без зависания shutdown | W0-ARC-03 | да; отдельный legacy hotspot, бизнес-семантику stages не меняет |
+| W0-WEB-02 | WEB | disposition семи Vitest-падений и strict typecheck действующего UI без ослабления контрактов | W0-ARC-03, W0-WEB-01 | да; единственный владелец legacy frontend hotspots |
+| W0-OPS-03 | OPS | runtime probe, timeout/JUnit harness, test-lane markers и provisioning norm corpus без правки shared workflow/defaults | W0-ARC-03 | да; готовит integration, но не включает enforce |
+| W0-INT-01 | ARC/OPS | интегрировать dependency pins, test harness, frontend gate и CI; полный clean-room прогон и перевод regression gate в enforce | W0-ARC-03, W0-ENG-02, W0-WEB-02, W0-OPS-03 | нет: root dependencies, pytest и workflow принадлежат интегратору |
+
+### Контур стабилизации quality baseline: аудит 2026-08-28
+
+Контур добавлен после запуска приложения и всех доступных test lanes на текущем
+`dev`. Он не объявляет ограничение конкретной песочницы дефектом продукта и не
+подменяет `W0-OPS-01`: тот измеряет production behavior/SLO, а этот контур
+доказывает воспроизводимость локальной и CI-проверки, требуемую Bible §5.7 и
+Definition of Done п. 11.
+
+Факт готовности файлов задачи и ADR-статус — разные вещи. На дату evidence
+владелец сообщил о завершении `W0-DEC-01`, `W0-ARC-01` и `W0-ARC-02`, но Bible,
+ADR-0002, ADR-0006, ADR-0015 и ADR-0018 в реестре всё ещё имеют статус
+`proposed`. До появления явной acceptance-записи это не разрешает необратимый W1
+production-код; задачи ниже допустимы как reversible contract-hardening и
+подготовка evidence.
+
+Зафиксированная evidence-квитанция:
+
+- Uvicorn импортирует приложение и завершает startup; HTTP loopback текущей
+  sandbox недоступен, поэтому endpoint smoke в ней не является доказательством;
+- pytest собирает 7041 тест, из них два chaos-теста штатно исключены основным
+  профилем;
+- канонический `scripts/ci_regression_gate.py` в restricted sandbox не завершает
+  прогон и не создаёт пригодный JUnit: полный-app `TestClient` блокируется там же,
+  где bounded probe зависает на AnyIO worker-thread wake-up, а socket probe
+  получает `PermissionError`. На том же exact dependency tuple вне sandbox
+  минимальный `TestClient` вернул HTTP 200, а три сфокусированных
+  TestClient/route/socket файла дали `30 passed`; поэтому это capability mismatch
+  среды, а не доказанная dependency regression;
+- fresh venv из текущих CI manifests собирается неполно: root/proto requirements
+  не объявляют как минимум `passlib`, `pytest-asyncio`, `PyMuPDF`, `Pillow`,
+  `openpyxl` и `grpcio-health-checking`. Проверенный полный freeze и правило его
+  materialization зафиксированы в runtime/quality contract v1;
+- после отделения environment-sensitive файлов backend-пакет дал
+  `1567 passed / 10 skipped / 1 failed`; единственное assertion-падение уже
+  присутствует в `ci_known_failures.txt` и не является новой регрессией;
+- отдельно воспроизводятся незавершающиеся executor/stage lifecycle paths в
+  `cpu_pool`, `block_context`, `debt_control`, `findings_verify`, post-review hook
+  и section-optimization pipeline;
+- полный frontend Vitest дал `395 passed / 7 failed`; lint и build зелёные,
+  strict typecheck падает на `distributed-feature.js`;
+- оба chaos-теста в текущей sandbox завершаются `PermissionError` на создании
+  socket. Их логика должна проверяться на non-root runner с разрешённым loopback;
+  sandbox-результат не заносится в product baseline;
+- CI остаётся observe-first: regression и chaos имеют `continue-on-error`, а
+  источник `norms/vault` не provisioned. Blind `--record` на такой машине
+  запрещён.
+
+#### W0-ARC-03 — runtime/quality contract v1
+
+- **Outcome:** один versioned clean-room профиль фиксирует Python/OS/user mode,
+  совместимый dependency set, наличие loopback/process capabilities, команды
+  test lanes, per-test timeout, JUnit и правила baseline.
+- **Frozen inputs:** `requirements.txt`, `pytest.ini`, frontend lockfile,
+  `.github/workflows/ci.yml`, текущие 35 baseline entries и evidence выше.
+- **Allowed paths:** `docs/architecture/**`; production/runtime/test defaults не
+  меняются.
+- **Forbidden shared files:** root dependencies/lockfiles, `pytest.ini`,
+  `.github/workflows/**`, frontend manifests и composition roots.
+- **Non-goals:** выбор новой backend/frontend архитектуры, исправление тестов,
+  пересоздание known-failure baseline.
+- **Deliverable:** [Quality/runtime contract v1](QUALITY_RUNTIME_CONTRACT_V1.md)
+  с version/checksum входов, профилями `unit`, `contract`, `integration`,
+  `network`, `chaos`, локальными командами и правилом обновления.
+- **Verification:** профиль однозначно определяет, где socket/process тест
+  обязан исполняться, где допустим явный skip и какой timeout превращает hang в
+  диагностируемый failure с node ID.
+- **Telemetry:** не применима к документационному change; сам contract фиксирует
+  обязательные CI-метрики completion, duration, timeout и stale/missing report.
+- **Rollback/integration:** документационный change обратим; frozen version
+  потребляет `W0-INT-01`, несовместимое изменение создаёт v2.
+- **ADR escalation:** если contract выбирает новый package/dependency manager,
+  test framework или release topology как долгоживущий cross-context pattern,
+  до реализации создаётся отдельный ADR; фиксация совместимых версий и команд
+  существующих инструментов нового ADR не требует.
+- **Execution receipt (2026-08-28):** задача завершена в разрешённом docs-only
+  scope. Frozen Python receipt имеет SHA-256
+  `557e95885700a44013febcc6559fa8ee278923507b71df8adba761e1e247f99c`;
+  clean venv дал `7039/7041` collected, `pip check` без конфликтов,
+  `86 passed` domain-contract и `30 passed` сфокусированных runtime-тестов.
+  Non-root полный regression/enforce остаётся acceptance `W0-INT-01`, а не этой
+  документационной задачи.
+
+#### W0-ENG-02 — executor/stage lifecycle
+
+- **Outcome:** завершение или ошибка stage освобождает thread/process resources;
+  shutdown ограничен временем, повтор безопасен, зависший worker диагностируем.
+- **Frozen inputs:** runtime/quality contract v1 и текущая бизнес-семантика stage
+  outputs; assertion/golden expectations не переписываются этой задачей.
+- **Allowed paths:** `backend/app/services/common/cpu_pool.py` и перечисленные в
+  evidence lifecycle tests. Если исправление требует `backend/app/pipeline/manager.py`,
+  composition root или иного legacy hotspot, работа останавливается и переносится
+  в `W0-INT-01` с явным владельцем.
+- **Forbidden shared files:** `requirements*.txt`, `pytest.ini`, workflow,
+  composition roots и frontend hotspots.
+- **Non-goals:** изменение порядка stages, result schema, retry/business policy и
+  параллельный рефакторинг каждого зависшего сервиса.
+- **Deliverables:** characterization tests для normal/error/cancel/shutdown,
+  bounded cleanup и lifecycle telemetry без high-cardinality labels.
+- **Verification:** перечисленные lifecycle tests завершаются в clean-room
+  профиле под per-test timeout; после процесса не остаются executor/worker tasks.
+- **Rollback/integration:** поведение за флагом не требуется, если меняется только
+  cleanup; при изменении runtime scheduling нужен именованный compatibility mode
+  с owner/expiry. Общие hotspots соединяет `W0-INT-01`.
+
+#### W0-WEB-02 — legacy frontend contract disposition
+
+- **Outcome:** каждое из семи Vitest-падений классифицировано как regression,
+  устаревший characterization contract или незавершённая функция; решение имеет
+  ссылку на journey/route inventory. Удаление проверки ради зелёного CI запрещено.
+- **Frozen inputs:** route inventory `W0-WEB-01`, четыре падающих test files и
+  действующий UI как baseline фактического поведения.
+- **Allowed paths:** `frontend/static/js/app.js`,
+  `frontend/static/js/distributed-feature.js`, связанные legacy CSS/HTML и четыре
+  падающих test files; в этой задаче других владельцев этих hotspots нет.
+- **Forbidden shared files:** `frontend/package*.json`, `frontend/tsconfig*.json`
+  и CI workflow; ими владеет `W0-INT-01`.
+- **Non-goals:** перенос route на Next.js, новый API и изменение OpenAPI.
+- **Legacy budget:** characterization/test repair и восстановление уже
+  утверждённого поведения slot не расходуют. Новая либо сознательно изменённая
+  пользовательская семантика требует `W0-LEG-01` capability slot или отдельной
+  target-contour task.
+- **Verification:** полный Vitest, lint, strict typecheck и build зелёные; любое
+  намеренное изменение поведения имеет golden/route disposition.
+- **Telemetry:** число необъяснённых contract failures равно нулю; для
+  восстановленного пользовательского поведения сохраняется существующая route
+  telemetry либо явно фиксируется причина неприменимости.
+- **Rollback/integration:** один обратимый legacy change; dependency/typecheck
+  wiring соединяет `W0-INT-01`.
+
+#### W0-OPS-03 — диагностируемый test harness
+
+- **Outcome:** hang становится bounded failure, каждый lane отдаёт JUnit и
+  machine-readable summary, отсутствие обязательного corpus/dependency является
+  явной причиной отказа, а не сменой baseline.
+- **Frozen inputs:** runtime/quality contract v1, текущий regression-gate и
+  политика optional external sources.
+- **Allowed paths:** `scripts/ci_regression_gate.py`, новые `scripts/ci_*`, узкие
+  runtime-probe tests и OPS runbook. `.github/workflows/**`, `pytest.ini` и root
+  dependency files запрещены до integration task.
+- **Non-goals:** исправление business assertions, автоматическая перезапись
+  baseline, включение платных provider calls и изменение production watchdog.
+- **Deliverables:** minimal ASGI/TestClient probe, timeout/JUnit wrapper,
+  классификация test lanes, проверка non-root/loopback и provisioning contract
+  для `norms/vault`.
+- **Verification:** намеренно зависший synthetic test завершается failure с node
+  ID и свежим отчётом; старый JUnit не переиспользуется; missing norm corpus не
+  разрешает `--record`.
+- **Telemetry:** каждый lane публикует completion status, duration, tests
+  seen/passed/failed/skipped, timeout node ID и причину environment skip.
+- **Rollback/integration:** новые probes сначала observe-only; defaults и workflow
+  меняет только `W0-INT-01`.
+
+#### W0-INT-01 — clean-room integration и enforce
+
+- **Outcome:** совместимый dependency set закреплён root-файлами, backend и
+  frontend gates завершаются на fresh non-root runner, regression CI блокирует
+  новые падения.
+- **Frozen inputs:** outputs `W0-ENG-02`, `W0-WEB-02`, `W0-OPS-03` и
+  runtime/quality contract v1.
+- **Allowed shared paths:** `requirements*.txt`, `pytest.ini`,
+  `.github/workflows/**`, `frontend/package*.json`, `frontend/tsconfig*.json` и
+  только явно перечисленные composition/hotspot files из незакрытых provider
+  tasks.
+- **Ownership gate:** proposed ADR-0006 §4.2/§10 сейчас резервирует часть этих
+  файлов за `W1-INT-00`, `W1-OPS-02` и `W1-WEB-02`. До root-правок architecture
+  owner обязан согласовать в ADR-0006 ограниченное pre-G1 владение
+  `W0-INT-01`; если ADR-0006 к тому времени accepted, изменение оформляется
+  новым ADR, а не правкой задним числом. До reconciliation задача готовит только
+  evidence и change plan.
+- **Non-goals:** blind `ci_regression_gate.py --record`, объявление sandbox
+  socket failure product regression, перевод chaos в blocking до отдельной
+  stability evidence.
+- **Acceptance:** fresh install проходит dependency check; minimal TestClient
+  отвечает за bounded время; основной набор собирается и завершается; нет новых
+  падений сверх разобранного baseline; каждая оставшаяся baseline-запись имеет
+  owner, closing task и expiry/review date; frontend test/typecheck/lint/build
+  зелёные; network/chaos реально стартуют на runner с loopback; regression
+  `continue-on-error` удалён, chaos остаётся отдельным наблюдаемым job.
+- **Telemetry:** CI хранит lane summaries/JUnit, время до первого failure,
+  timeout count и age/owner оставшихся baseline entries.
+- **Rollback:** до выполнения всех acceptance criteria observe-first сохраняется;
+  изменение dependency/CI интегрируется одним revertable change set, предыдущий
+  совместимый dependency set документирован.
+
+Эта ветка добавляет один non-ADR shared contract slot (`W0-ARC-03`) и один
+integration slot (`W0-INT-01`), но не увеличивает число owner-only ADR decisions.
+До калибровки ADR-0015 planning delta учитывается как 2–3 integrator-days и риск
+до одной календарной недели; ENG/WEB/OPS implementation после contract freeze
+идут параллельно только в разных ownership zones. В сценарии A одновременно
+допустимы три задачи при трёх фактических владельцах; в сценарии B запускаются не
+более двух, третья ждёт свободный implementation slot.
 
 ### Очередь решений и календарь W0
 
@@ -363,6 +560,9 @@ Timeout относится **только** к нормативной силе �
 - матрица `W0-STD-01` закрыта либо помечена истёкшим decision timeout; ни один
   ADR не ссылается на неподтверждённое положение стандарта как на обязательное;
 - target layout даёт непересекающиеся ownership zones;
+- `W0-INT-01` закрыта: clean-room regression завершается с пригодным JUnit,
+  dependency/TestClient probe зелёный, frontend gate не имеет необъяснённых
+  падений, а known-failure baseline не является вечным allowlist;
 - legacy sustainment register соблюдает предел 1 active capability slot;
   human integration hours имеют явный denominator и еженедельный 20% reporting
   target, но до baseline не используются как stop gate; contract-hardening
@@ -384,7 +584,8 @@ package v1, AnalysisProfile/replay contract v1, metric names v1.
 
 Открывает новый контур: `pyproject.toml`, каталоги модулей по ADR-0006 §4.1,
 composition root `src/auditmanager/bootstrap/**` и правку `pytest.ini`.
-Владелец — интегратор волны, lane ARC/OPS; зависимость — `W0-ARC-01`.
+Владелец — интегратор волны, lane ARC/OPS; зависимости — `W0-ARC-01` и
+`W0-INT-01`.
 Выполняется до задач лейнов волны: без неё модули не имеют корня, в
 который пишут. `W1-INT-01` соединяет уже готовые модули и остаётся
 замыкающей.
@@ -412,7 +613,7 @@ composition root `src/auditmanager/bootstrap/**` и правку `pytest.ini`.
 | W1-WEB-04 | WEB | FSD pilot | `_pages/distributed-overview`; `audit-workers.js` и mutations вне scope | W1-WEB-02, W1-WEB-03, W0-ADR-09 |
 | W1-MIG-01 | MIG | migration tools | dry-run/journal/report framework | W0-DATA-01 |
 | W1-OPS-01 | OPS | telemetry | trace/log/metrics skeleton и local dashboards | W0-ADR-07 + metric names v1 |
-| W1-OPS-02 | OPS | CI | dependency boundary, contract, migration и build gates | W0-ARC-01, W1-INT-00 |
+| W1-OPS-02 | OPS | CI | dependency boundary, contract, migration и build gates | W0-ARC-01, W0-INT-01, W1-INT-00 |
 
 Задачи внутри одного lane последовательны. Разные lanes параллельны только при
 разных фактических владельцах и свободном WIP: в сценарии A `JOB/ENG/AI` имеют
@@ -750,6 +951,8 @@ Planning range: 15–34 календарных месяца до калибро�
 - merge/file ownership conflicts;
 - escaped defects по slice;
 - flaky tests и время CI;
+- доля test lanes, завершившихся с пригодным JUnit, число timeout/hang и возраст
+  каждой записи known-failure baseline;
 - integration wait как доля lead time;
 - rework после human review;
 - human hours и agent/LLM/CI cost на завершённый slice.
@@ -796,6 +999,8 @@ Planning range: 15–34 календарных месяца до калибро�
 - неизвестна версия contract/manifest/package;
 - checksum/FK/semantic parity расходятся без объяснения;
 - rollback или restore не воспроизводится;
+- regression-gate не завершается за runtime/quality budget, не создаёт свежий
+  JUnit либо minimal dependency/TestClient probe зависает;
 - новая система требует прямого legacy path/DB/S3 обхода;
 - error budget canary превышен;
 - owner или on-call для новой критической зависимости отсутствует;

@@ -10,19 +10,30 @@
    следующие production-шаги.
 3. [Roadmap](HYBRID_REWRITE_ROADMAP.md) — волны, capability lanes, независимые
    task IDs, зависимости и cutover gates.
-4. [Глоссарий](GLOSSARY.md) — канонические имена сущностей и разбор
+4. [Quality/runtime contract v1](QUALITY_RUNTIME_CONTRACT_V1.md) — clean-room
+   профиль, test lanes, capabilities, timeout/JUnit и baseline policy.
+5. [Глоссарий](GLOSSARY.md) — канонические имена сущностей и разбор
    конфликтов действующего словаря.
-5. [Domain contract v1](DOMAIN_CONTRACT_V1.md) — идентификаторы, состояния
+6. [Domain contract v1](DOMAIN_CONTRACT_V1.md) — идентификаторы, состояния
    и ошибки нового контура.
-6. [Шаблон ADR](ADR_TEMPLATE.md) — форма нового архитектурного решения.
-7. [Реестр исключений](EXCEPTIONS.md) — временные нарушения принципов с owner и
+7. [Шаблон ADR](ADR_TEMPLATE.md) — форма нового архитектурного решения.
+8. [Реестр исключений](EXCEPTIONS.md) — временные нарушения принципов с owner и
    expiry.
-8. [Разбор ревью 2026-08-27](REVIEW_DISPOSITION_2026-08-27.md) — принятые,
+9. [Разбор ревью 2026-08-27](REVIEW_DISPOSITION_2026-08-27.md) — принятые,
    оспоренные и оставленные развилкой замечания.
-9. [Разбор ревью R2](REVIEW_DISPOSITION_2026-08-27_R2.md) — исправления дефектов,
+10. [Разбор ревью R2](REVIEW_DISPOSITION_2026-08-27_R2.md) — исправления дефектов,
    внесённых первым ужесточением.
-10. [Разбор ревью R3](REVIEW_DISPOSITION_2026-08-27_R3.md) — пересчёт W0,
+11. [Разбор ревью R3](REVIEW_DISPOSITION_2026-08-27_R3.md) — пересчёт W0,
    contract review-batch и уточнение измеримости/security provisioning.
+
+## Презентации
+
+- [Основной пользовательский маршрут](presentations/AUDITMANAGER_USER_WORKFLOW_RU.pdf)
+  — объект → проект → версия → аудит → экспертное решение → экспорт;
+  [редактируемый ODP](presentations/AUDITMANAGER_USER_WORKFLOW_RU.odp).
+- [ADR Bible и roadmap простыми словами](presentations/ADR_BIBLE_ROADMAP_PLAIN_RU.pdf)
+  — правила, безопасный переход, волны, gates и текущее состояние;
+  [редактируемый ODP](presentations/ADR_BIBLE_ROADMAP_PLAIN_RU.odp).
 
 ## Иерархия решений
 
