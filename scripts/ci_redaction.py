@@ -27,8 +27,8 @@ denylist, и он проваливается на всём, чего не зна
 ──────────────────────
 Только структура, безопасная по построению:
 
-  * исполняемый файл (argv[0]) — с маскировкой домашнего каталога;
-  * ИМЕНА флагов, без значений;
+  * безопасное basename argv[0] из явного списка;
+  * только явно разрешённые ИМЕНА флагов, без значений;
   * значения — исключительно для короткого явного списка флагов
     (`SAFE_VALUE_FLAGS`) и только если значение подходит под домен ИМЕННО
     ЭТОГО флага: число для `--port`, loopback для `--host`, перечисление для
@@ -43,14 +43,13 @@ denylist, и он проваливается на всём, чего не зна
 
 Denylist остался, но сменил роль
 ────────────────────────────────
-`redact_text()` больше не является защитой командной строки. Он применяется
-как эшелонированная защита к тем немногим свободным полям, которые всё же
-публикуются (путь исполняемого файла), — на случай, если секрет попал внутрь
-пути. Основную гарантию даёт allowlist, а не он.
+`redact_text()` больше не участвует в публикации argv: все его публикуемые
+части проходят точный allowlist. Функция остаётся эшелонированной
+защитой для свободного текста в других точках harness.
 
 Цена решения названа честно: диагностика беднее. По `cmdline` больше нельзя
 прочитать, какой файл обрабатывал зависший процесс. Взамен остаются
-исполняемый файл, набор флагов, число аргументов и отпечаток — этого хватает,
+безопасное имя executable, набор флагов, число аргументов и отпечаток — этого хватает,
 чтобы опознать процесс, и не хватает, чтобы утечь.
 """
 from __future__ import annotations
@@ -127,6 +126,22 @@ SAFE_VALUE_FLAGS: dict[str, "Callable[[str], bool]"] = {
     "--profile": _is_lane,
 }
 
+#: Имена флагов также данные, а не безопасны по одной лишь
+#: синтаксической форме: opaque секрет `q7z4...` можно записать как
+#: `--q7z4...`. Поэтому публикуются только имена, нужные штатным
+#: Python/pytest/uvicorn и скриптам harness. Новое имя — отдельное
+#: осознанное решение.
+SAFE_FLAG_NAMES = frozenset(SAFE_VALUE_FLAGS) | frozenset({
+    "-c", "-k", "-p", "-q", "-s", "-v", "-x",
+    "--api-key", "--build-index", "--collect-only", "--disable-warnings",
+    "--dry-run", "--enforce", "--evidence-sha256", "--fail-on-unmarked",
+    "--json", "--junit",
+    "--junitxml", "--marker", "--maxfail", "--no-header", "--paths",
+    "--payload", "--receipt", "--record", "--reload", "--root", "--samples",
+    "--skip-probe", "--strict-markers", "--tb", "--token",
+    "--use-lane-marker", "--value", "--verbose", "--version",
+})
+
 
 def value_is_publishable(flag: str, value: str) -> bool:
     """Разрешено ли публиковать значение этого флага.
@@ -139,17 +154,32 @@ def value_is_publishable(flag: str, value: str) -> bool:
     return bool(check and check(value))
 
 
-#: Форма имени флага. Имя — структура, а не данные, и публиковать его
-#: разрешено. Но «начинается с дефиса» ещё не делает токен именем флага:
-#: `app --SHORT_PRIVATE_SENTINEL` публиковал секрет как имя флага. Поэтому
-#: форма сужена до конвенции: короткий флаг — один символ, длинный — строчные
-#: буквы, цифры и дефисы. Заглавные и подчёркивания в длинных флагах
-#: встречаются редко, а секрет выглядит именно так; цена ошибки несимметрична.
-#: Не подошедший под форму токен считается позиционным и не публикуется.
+#: Грамматический gate перед точным `SAFE_FLAG_NAMES`.
+#: Сам по себе он ничего не разрешает: opaque lowercase секрет может
+#: удовлетворять этой форме и всё равно будет скрыт.
 SAFE_FLAG_RE = re.compile(r"^(?:-[A-Za-z0-9]|--[a-z0-9][a-z0-9-]{0,31})$")
 
 #: Управляющие символы: в артефакте CI не нужны и ломают XML.
 CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+#: argv[0] можно подменить при execve, а каталоги пути могут
+#: содержать project/customer ID. Публикуем только basename и
+#: только для конечного набора обычных executable. Отпечаток argv
+#: всё равно позволяет сличить два скрытых процесса.
+SAFE_EXECUTABLE_NAMES = frozenset({
+    "app", "bash", "curl", "dash", "env", "git", "node", "npm", "npx",
+    "pytest", "sh", "sleep", "uvicorn",
+})
+PYTHON_EXECUTABLE_RE = re.compile(r"^python(?:3(?:\.\d{1,2})?)?$")
+
+
+def publishable_executable(raw: str) -> str:
+    """Вернуть разрешённый basename или нейтральный placeholder."""
+    token = CTRL_RE.sub(" ", raw)
+    name = os.path.basename(token.rstrip("/"))
+    if name in SAFE_EXECUTABLE_NAMES or PYTHON_EXECUTABLE_RE.fullmatch(name):
+        return name
+    return "<executable>"
 
 # ---------------------------------------------------------------------------
 # Эшелонированная защита свободных полей (НЕ основная гарантия)
@@ -201,8 +231,7 @@ def redact_text(text: str) -> str:
     ЭШЕЛОНИРОВАННАЯ защита, а не основная. Основную даёт allowlist
     `summarize_argv()`: там значение публикуется, только если признано
     безопасным. Здесь — наоборот, вырезается лишь узнанное, и полагаться на
-    это как на гарантию нельзя. Применяется к тем немногим свободным полям,
-    которые всё же публикуются: путь исполняемого файла.
+    это как на гарантию нельзя. Для argv она больше не используется.
 
     Порядок правил повторяет `action_log._scrub`: URL раньше именованных
     секретов, bearer раньше «имя=значение», блоб раньше вендорского префикса.
@@ -217,18 +246,6 @@ def redact_text(text: str) -> str:
         lambda m: "[redacted:blob]" if _blob_is_opaque(m.group()) else m.group(), value
     )
     return _CREDENTIAL_PREFIX_RE.sub("[redacted:credential]", value)
-
-
-def mask_home(path: str) -> str:
-    """Заменить домашний каталог на `<home>`.
-
-    Путь к исполняемому файлу публикуется, а он несёт имя пользователя. Это
-    не секрет, но и не то, что обязано лежать в артефакте CI.
-    """
-    home = os.path.expanduser("~")
-    if home and home != "/" and path.startswith(home):
-        return "<home>" + path[len(home):]
-    return path
 
 
 # ---------------------------------------------------------------------------
@@ -256,23 +273,38 @@ def summarize_argv(argv: list[str]) -> dict[str, object]:
 
     Правило одно: публикуется только то, что явно разрешено. Значение флага
     попадает в результат, если И флаг перечислен в `SAFE_VALUE_FLAGS`, И само
-    значение подходит под `SAFE_VALUE_RE`. Позиционные аргументы не
+    значение проходит доменную проверку этого флага. Позиционные аргументы не
     публикуются никогда — именно они чаще всего и оказываются секретом
     (`app SHORT_PRIVATE_SENTINEL`).
     """
     if not argv:
         return {
             "executable": "", "flags": [], "positional_count": 0,
+            "hidden_flag_count": 0,
             "argc": 0, "argv_sha256": argv_digest([]),
         }
 
-    executable = redact_text(mask_home(CTRL_RE.sub(" ", argv[0])))
+    executable = publishable_executable(argv[0])
     flags: list[str] = []
     positional = 0
+    hidden_flags = 0
     expect_value_for: str | None = None
+    options_ended = False
 
     for raw in argv[1:]:
         token = CTRL_RE.sub(" ", raw)
+        # POSIX/argparse separator: everything after `--` is positional even
+        # when it happens to look exactly like an allowlisted option. Without
+        # this state transition `app -- --port=8081` published a positional
+        # value as `--port=8081`, contradicting the guarantee above.
+        if options_ended:
+            positional += 1
+            continue
+        if token == "--":
+            options_ended = True
+            expect_value_for = None
+            continue
+
         if expect_value_for is not None:
             flag, expect_value_for = expect_value_for, None
             if value_is_publishable(flag, token):
@@ -282,9 +314,12 @@ def summarize_argv(argv: list[str]) -> dict[str, object]:
 
         if token.startswith("-"):
             name, sep, value = token.partition("=")
-            if not SAFE_FLAG_RE.match(name):
-                # Не похоже на имя флага: считаем позиционным и не публикуем.
-                positional += 1
+            if not SAFE_FLAG_RE.match(name) or name not in SAFE_FLAG_NAMES:
+                # Конвенционная форма не доказывает безопасность:
+                # opaque секрет тоже может выглядеть как `--name`.
+                # Неизвестный токен скрываем и учитываем отдельно:
+                # называть его позиционным было бы ложной телеметрией.
+                hidden_flags += 1
                 continue
             if sep:
                 if value_is_publishable(name, value):
@@ -303,6 +338,7 @@ def summarize_argv(argv: list[str]) -> dict[str, object]:
         "executable": executable,
         "flags": flags,
         "positional_count": positional,
+        "hidden_flag_count": hidden_flags,
         "argc": len(argv),
         "argv_sha256": argv_digest(argv),
     }
@@ -319,6 +355,9 @@ def render_argv_summary(summary: dict[str, object]) -> str:
     if executable:
         parts.append(executable)
     parts.extend(str(flag) for flag in summary.get("flags") or [])
+    hidden_flags = int(summary.get("hidden_flag_count") or 0)
+    if hidden_flags:
+        parts.append(f"[{hidden_flags} скрытых флагов]")
     positional = int(summary.get("positional_count") or 0)
     if positional:
         parts.append(f"[{positional} позиционных]")

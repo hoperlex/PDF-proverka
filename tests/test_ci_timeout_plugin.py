@@ -144,7 +144,9 @@ def test_child_processes_finds_own_child():
         # Содержимое `-c` НЕ публикуется: это аргумент произвольной формы, и
         # allowlist его не пропускает. Опознаётся процесс по исполняемому
         # файлу, имени флага и отпечатку argv.
-        assert "python3" in entry["cmdline"], entry
+        # sys.executable может заканчиваться как `python`, `python3`
+        # или версионное имя; проверяем фактический executable.
+        assert Path(sys.executable).name in entry["cmdline"], entry
         assert "-c" in entry["cmdline"], entry
         assert "time.sleep(60)" not in entry["cmdline"], (
             "содержимое -c опубликовано — allowlist пропустил произвольный аргумент"
@@ -241,7 +243,7 @@ def test_child_processes_is_sorted_and_shaped():
         for item in children:
             assert set(item) == {
                 "pid", "comm", "state", "cmdline", "depth",
-                "argc", "positional_count", "argv_sha256",
+                "argc", "positional_count", "hidden_flag_count", "argv_sha256",
             }
             assert int(item["depth"]) >= 1
             assert len(item["cmdline"]) <= 400, "cmdline обязан быть обрезан"

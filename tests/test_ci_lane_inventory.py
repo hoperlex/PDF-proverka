@@ -626,6 +626,16 @@ def test_cli_json_is_machine_readable(tmp_path):
     assert payload["lanes"]["network"]["modules"] == 1
     assert payload["modules"][0]["inferred_lane"] == "network"
 
+    # Полный JSON не годится для evidence: duration меняется,
+    # а root зависит от машины. Специальный режим должен дать
+    # один и тот же отпечаток на повторных запусках.
+    digest_a = run_cli(tmp_path, "--evidence-sha256")
+    digest_b = run_cli(tmp_path, "--evidence-sha256")
+    assert digest_a.returncode == inventory.EXIT_OK, digest_a.stderr
+    assert digest_b.returncode == inventory.EXIT_OK, digest_b.stderr
+    assert digest_a.stdout == digest_b.stdout
+    assert len(digest_a.stdout.strip()) == 64
+
 
 def test_cli_unknown_root_is_usage_error(tmp_path):
     done = run_cli(tmp_path / "нет-такого", "--json")

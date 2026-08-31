@@ -23,6 +23,7 @@
     python scripts/ci_lane_inventory.py [PATH ...]
 
         --json               машиночитаемый отчёт на stdout
+        --evidence-sha256    SHA-256 канонического отчёта без root/времени
         --fail-on-unmarked   ненулевой код возврата при inventory failure
         --samples N          сколько примеров показывать в человеческом выводе
 
@@ -138,6 +139,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import json
 import re
 import sys
@@ -150,7 +152,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 CONTRACT_DOC = "docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md"
 CONTRACT_SECTION = "§5"
-TOOL_VERSION = "1"
+TOOL_VERSION = "2"
 
 #: §5: пять primary lanes. Порядок = порядок каскада вывода (тяжёлые первыми).
 PRIMARY_LANES: tuple[str, ...] = ("chaos", "network", "integration", "contract", "unit")
@@ -1287,6 +1289,29 @@ def build_report(root: Path, paths: list[str] | None = None) -> dict[str, Any]:
     }
 
 
+def evidence_sha256(report: dict[str, Any]) -> str:
+    """Отпечаток воспроизводимой семантики инвентаря.
+
+    Полный `--json` намеренно содержит абсолютный root и время
+    прогона. Они полезны для диагностики, но делают SHA-256
+    разным на каждом запуске и машине. Evidence исключает только
+    эти два несемантических поля; все lanes, markers, счётчики и
+    находки остаются под отпечатком.
+    """
+    semantic = {
+        key: value
+        for key, value in report.items()
+        if key not in {"root", "duration_seconds"}
+    }
+    encoded = json.dumps(
+        semantic,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def render_human(report: dict[str, Any], samples: int) -> str:
     """Человекочитаемая сводка: числа, а не мнение."""
     totals = report["totals"]
@@ -1401,7 +1426,13 @@ def main(argv: list[str] | None = None) -> int:
         "paths", nargs="*", help="каталоги/файлы вместо testpaths из pytest.ini"
     )
     parser.add_argument("--root", default=str(ROOT), help="корень репозитория")
-    parser.add_argument("--json", action="store_true", help="машиночитаемый отчёт")
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument("--json", action="store_true", help="машиночитаемый отчёт")
+    output.add_argument(
+        "--evidence-sha256",
+        action="store_true",
+        help="воспроизводимый SHA-256 отчёта без root и duration",
+    )
     parser.add_argument(
         "--fail-on-unmarked",
         action="store_true",
@@ -1421,7 +1452,9 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_USAGE
     report = build_report(root, args.paths or None)
 
-    if args.json:
+    if args.evidence_sha256:
+        print(evidence_sha256(report))
+    elif args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         print(render_human(report, max(0, args.samples)))

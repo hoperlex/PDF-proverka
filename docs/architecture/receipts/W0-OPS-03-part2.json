@@ -100,9 +100,17 @@
     "regression_gate": {
       "command": "python scripts/ci_regression_gate.py",
       "result": "падений 35, baseline 35, новых 0, exit 0",
-      "run_summary": "2 failed, 7055 passed, 174 skipped, 2 deselected, 33 errors за 336.49 s",
-      "after_review_round": 2,
-      "note": "прогон запускался по содержимому индекса: правки после старта гейта делали бы вердикт относящимся не к тому коду, поэтому прогон дважды перезапускался намеренно"
+      "run_summary": "2 failed, 7055 passed, 174 skipped, 2 deselected, 33 errors за 340.88 s",
+      "after_review_round": 3,
+      "note": "В песочнице ревью полный набор и гейт не идут: thread/event-loop сценарии там зависают. Здесь прогон проходит, поэтому вердикт снят в этом окружении. Это НЕ заменяет non-root clean-room приёмку: прогон шёл под root с активным .env, то есть на профиле, который сам probe признаёт невалидным."
+    },
+    "review_round_3_independent_checks": {
+      "all_ci_suites": "213 passed",
+      "cpu_pool_full": "18 passed (в песочнице ревью проходили только 2 конфигурационных)",
+      "frontend": "403 passed; lint/typecheck/build зелёные",
+      "evidence_digest_repeats": "три прогона --evidence-sha256 дали один и тот же 3c19f2b5…c33c; прежняя команда --json | sha256sum давала 5b3ac87c / 50a4dbe7 / 76cdc8b1",
+      "end_to_end_leak_probe": "зависший тест с секретом в четырёх позициях сразу (после --, как имя флага, позиционным и значением --token): 0 вхождений в JUnit, диагностике и журнале; диагностика сохранена — `python3 -c --token [1 скрытых флагов] [2 позиционных] argv:b8b3bebf`",
+      "tree_hashes": "tests/ и backend/tests сверены с индексом перед коммитом, совпадают"
     }
   },
   "findings": [
@@ -141,6 +149,14 @@
       "detail": "tests/test_distributed_workers_inference_gate.py вызывает интерпретатор литералом `python` в двух местах (строки 110 и 116), а не через sys.executable. Без .venv/bin в PATH гейт получает одно новое падение; с активным venv тест проходит — проверено, здесь `python3` разрешается в .venv/bin/python3. Это дефект воспроизводимости: исход прогона зависит от PATH, а не от кода, и на чистом non-root runner (§3 clean-room) поведение будет другим.",
       "owner": "W0-INT-01",
       "not_fixed_here": "файл вне allowed paths W0-OPS-03 (разрешены scripts/ci_*, узкие runtime-probe тесты и OPS runbook). Правка чужого файла ради зелёного прогона — ровно то, что задача обязана не делать."
+    },
+    {
+      "id": "OPS03-F10",
+      "severity": "средняя",
+      "summary": "У ci_regression_gate.py нет собственного wall-budget",
+      "detail": "Гейт запускает pytest без ограничения по времени: на машине, где часть тестов зависает, он не отказывает, а остаётся в прогоне неопределённо долго (наблюдение ревью: ~1 % за шесть минут). Это ровно тот класс отказа, ради которого §7 и вводит бюджеты, но сам гейт под них не заведён — их получил только новый ci_test_lane.py.",
+      "owner": "W0-OPS-03 (scripts/ci_regression_gate.py входит в allowed paths) либо W0-INT-01 вместе с переводом CI на lane-раннер",
+      "not_fixed_here": "Ревью назвало следующим шагом коммит уже готовых правок и non-root clean-room прогон. Расширять объём коммита правкой, о которой не просили, значит отправить на четвёртый круг то, что уже проверено."
     }
   ],
   "own_defects_found_and_fixed": [
@@ -159,7 +175,7 @@
     "_split_nodeid оставлял '.py' в середине classname для тестов внутри класса: 'tests.test_x.py.TestC' вместо 'tests.test_x.TestC'. Обычный прогон (JUnit пишет pytest) и прогон с таймаутом (JUnit собираем мы) публиковали один узел под разными classname — агрегаторы, ключующиеся на classname+name, теряли историю ровно того теста, который завис"
   ],
   "not_delivered": [
-    "сама разметка 6377 нод маркерами: инвентарь доказал объём, но правка сотен тестовых файлов — отдельное решение, а не побочный эффект задачи harness",
+    "сама разметка остальных непомеченных нод: инвентарь доказал объём, но правка сотен тестовых файлов — отдельное решение, а не побочный эффект задачи harness",
     "регистрация маркеров в pytest.ini и переключение addopts — W0-INT-01",
     "вызов harness из .github/workflows/** и снятие continue-on-error — W0-INT-01",
     "скачивание versioned norm artifact: provisioning проверяет и строит индекс, download — шаг workflow",
@@ -167,7 +183,7 @@
   ],
   "authorizes_next_cutover": false,
   "observe_only": "ни один новый инструмент не включён ни в один автоматический прогон; всё запускается руками до W0-INT-01",
-  "revision": "3 (2026-08-31, по второму кругу ревью)",
+  "revision": "4 (2026-08-31, по третьему кругу ревью)",
   "own_tests": {
     "total": 136,
     "by_file": {
@@ -235,14 +251,18 @@
       "conftest.py намеренно не подмешан: иначе весь корень стал бы integration и различия между модулями исчезли бы",
       "httpx AsyncClient с ASGI-транспортом неотличим от него же с настоящим URL"
     ],
-    "verdict": "§5 inventory failure подтверждён количественно: 6377 функций из 6390 без primary lane marker, 385 модулей из 388 без единого маркера. Часть 1 разметила 11 нод — 0.2 % объёма.",
+    "verdict": "§5 inventory failure подтверждён количественно: 6398 функций из 6411 без primary lane marker, 386 модулей из 389 без единого маркера. Размечено 13 функций.",
     "drift_note": "Абсолютные числа сдвигаются с каждым новым тестом. Поэтому в roadmap их больше нет, а здесь они годны только вместе с tree-хешами выше: совпали хеши — числа те же, разошлись — надо пересчитать. Устойчивое утверждение не зависит от прогона: размечено 13 функций, остальные без primary lane marker, и это не изменится, пока разметка не начата.",
     "measured_at": {
       "why_not_a_commit": "Коммит здесь бесполезен: числа меняются от содержимого tests/ и backend/tests/, а коммит меняется и от правки документов. Ревью дважды поймало расхождение именно поэтому. Замер привязан к tree-хешам ровно тех каталогов, которые инструмент читает, — они не сдвигаются от правки квитанции.",
-      "tests_tree_sha1": "2e0ee299b9a71a34d03bcb74499157e504e40631",
-      "backend_tree_sha1": "2ebde29520a9cfc3c522b411ebd7bb61124cb355",
-      "output_sha256": "9bf8122bbd555486bf49bbf3020bd0a5e3dc1a5bca876c6c0f82b217e48ca934",
-      "reproduce": "python scripts/ci_lane_inventory.py --json | sha256sum"
+      "tests_tree_sha1": "18b1bf685ac39f26c0ed13af398b921625c01785",
+      "backend_tests_tree_sha1": "7e19ce4f6e9164b2672e17889b87d88be728a9c1",
+      "output_sha256": "3c19f2b52be833482517abdafd12cbf243a2f7340491a2c5c745446c7349c33c",
+      "excluded_nonsemantic_output_fields": [
+        "root",
+        "duration_seconds"
+      ],
+      "reproduce": "python scripts/ci_lane_inventory.py --evidence-sha256"
     }
   },
   "defects_found_by_own_tests": {
@@ -323,6 +343,40 @@
           "summary": "Числа инвентаря в документах устаревали и были привязаны не к тому коммиту",
           "fix": "из roadmap убраны абсолютные числа — там осталось проверяемое утверждение «размечено 13, остальные без маркера». В квитанции замер привязан к TREE HASH и к SHA-256 машинного вывода инструмента, а не к коммиту: tree однозначно определяет содержимое, а digest позволяет повторить замер и сличить результат",
           "why": "абсолютное число неразмеченных меняется с каждым новым тестом и устаревает быстрее документа; ревью дважды справедливо поймало расхождение"
+        }
+      ]
+    },
+    "round_3_local_review": {
+      "base_commit": "5dbcccc4",
+      "verdict": "REV-4 и REV-6 на base commit оставались закрыты частично; локальные правки ниже ещё требуют отдельного коммита",
+      "fixes": [
+        {
+          "id": "REV-7",
+          "blocking": true,
+          "summary": "Разделитель -- не завершал option parsing",
+          "reproduced": "app -- --port=8081 публиковал позиционный токен как --port=8081; то же происходило с --log-level=debug и -m=uvicorn",
+          "fix": "после точного токена -- все оставшиеся argv безусловно считаются позиционными и не публикуются"
+        },
+        {
+          "id": "REV-8",
+          "blocking": true,
+          "summary": "Синтаксическая форма имени флага и argv[0] выдавалась за предметный allowlist",
+          "reproduced": "opaque lowercase q7z4m2n8p5r3t6v9 публиковался как argv[0], как --q7z4m2n8p5r3t6v9 и внутри /srv/customers/<secret>/python",
+          "fix": "имена флагов переведены на конечный SAFE_FLAG_NAMES; argv[0] публикует только разрешённый basename, неизвестное заменяется на <executable>; hidden_flag_count сохраняет честную телеметрию; полный argv различается по SHA-256",
+          "cost": "полный путь executable больше не виден; неизвестное имя флага также скрыто"
+        },
+        {
+          "id": "REV-9",
+          "blocking": true,
+          "summary": "Evidence SHA-256 не воспроизводился",
+          "reproduced": "три запуска команды из receipt дали три разных SHA-256: JSON содержал duration_seconds и абсолютный root; backend_tree_sha1 при заявленном backend/tests фактически хэшировал весь backend/",
+          "fix": "добавлен --evidence-sha256 с каноническим JSON без двух несемантических полей; tree boundary исправлена на backend/tests; runbook и receipt больше не дублируют устаревающие абсолютные числа"
+        },
+        {
+          "id": "REV-10",
+          "blocking": false,
+          "summary": "Изоляция сверки и тест executable зависели от denylist/имени symlink",
+          "fix": "подпроцесс получает минимальный env allowlist; тест сравнивает всё окружение до/после; executable проверяется по фактическому sys.executable, а не литералу python3"
         }
       ]
     }

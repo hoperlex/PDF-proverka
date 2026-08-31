@@ -49,6 +49,7 @@ from ci_redaction import (  # noqa: E402
 )
 
 SENTINEL = "SHORT_PRIVATE_SENTINEL"
+OPAQUE_SENTINEL = "q7z4m2n8p5r3t6v9"
 
 #: Позиции, в которых секрет может оказаться в командной строке. Список
 #: перечисляет ПОЗИЦИИ, а не формы секрета: в этом и смысл allowlist — форма
@@ -100,9 +101,20 @@ def test_positional_arguments_are_counted_but_never_shown() -> None:
     assert summary["flags"] == ["--verbose"]
     assert "[2 позиционных]" in safe_cmdline(["app", "a", "b", "--verbose"])
 
+    # `--` завершает option parsing: даже точно похожие на
+    # разрешённые флаги токены после него остаются позиционными.
+    after_separator = summarize_argv(
+        ["app", "--", "--port=8081", "--log-level=debug", "-m=uvicorn"]
+    )
+    assert after_separator["flags"] == []
+    assert after_separator["positional_count"] == 3
+    rendered = safe_cmdline(["app", "--", "--port=8081"])
+    assert "--port" not in rendered
+    assert "8081" not in rendered
+
 
 def test_flag_names_are_published_but_values_are_not() -> None:
-    """Имя флага — структура и публикуется; его значение — данные и нет."""
+    """Точно allowlisted имя публикуется; произвольное значение — нет."""
     summary = summarize_argv(["app", "--payload", "тайна", "--dry-run"])
     assert summary["flags"] == ["--payload", "--dry-run"]
     assert "тайна" not in json.dumps(summary, ensure_ascii=False)
@@ -138,12 +150,21 @@ def test_allowlisted_flag_with_unsafe_value_loses_the_value() -> None:
     assert "secrets" not in json.dumps(summary, ensure_ascii=False)
 
 
-def test_home_directory_is_masked_in_the_executable_path() -> None:
-    """Путь к исполняемому файлу публикуется, но без имени пользователя."""
+def test_only_allowlisted_executable_basename_is_published() -> None:
+    """argv[0] не доверяем: путь и само имя могут быть секретом."""
     home = os.path.expanduser("~")
     summary = summarize_argv([f"{home}/venv/bin/python3", "--verbose"])
-    assert str(summary["executable"]).startswith("<home>/")
+    assert summary["executable"] == "python3"
     assert home not in str(summary["executable"])
+
+    cases = (
+        (OPAQUE_SENTINEL, "<executable>"),
+        (f"/srv/customers/{OPAQUE_SENTINEL}/python", "python"),
+    )
+    for argv0, expected in cases:
+        hidden = summarize_argv([argv0])
+        assert hidden["executable"] == expected
+        assert OPAQUE_SENTINEL not in safe_cmdline([argv0])
 
 
 def test_digest_identifies_the_command_without_revealing_it() -> None:
@@ -179,18 +200,26 @@ def test_empty_argv_is_handled() -> None:
     assert safe_cmdline([]) == f"argv:{summary['argv_sha256'][:16]}"
 
 
-def test_malformed_flag_is_treated_as_positional() -> None:
+def test_unallowlisted_or_malformed_flag_is_hidden() -> None:
     """То, что лишь похоже на флаг, не получает привилегий флага.
 
     «Начинается с дефиса» — ещё не имя флага. Пока форма имени была широкой,
     `app --SHORT_PRIVATE_SENTINEL` публиковал секрет как имя флага: имена ведь
-    публикуются. Форма сужена до конвенции, и такой токен считается
-    позиционным.
+    публикуются. Но и правильная форма не достаточна: lowercase opaque
+    секрет проходит синтаксис, но не точный allowlist. Оба случая считаются
+    скрытыми флагами, а не позиционными аргументами.
     """
-    for token in ("--" + SENTINEL * 5, f"--{SENTINEL}", f"-{SENTINEL}"):
+    for token in (
+        "--" + SENTINEL * 5,
+        f"--{SENTINEL}",
+        f"-{SENTINEL}",
+        f"--{OPAQUE_SENTINEL}",
+    ):
         summary = summarize_argv(["app", token])
         assert summary["flags"] == [], token
-        assert summary["positional_count"] == 1, token
+        assert summary["positional_count"] == 0, token
+        assert summary["hidden_flag_count"] == 1, token
+        assert OPAQUE_SENTINEL not in safe_cmdline(["app", token]), token
 
 
 def test_conventional_flag_names_are_still_published() -> None:
@@ -226,9 +255,9 @@ SHAPED_SECRETS: list[tuple[str, str]] = [
 _COMPARE_SCRIPT = """
 import json, os, sys
 sys.path.insert(0, sys.argv[1])
-before = sorted(k for k in os.environ if "OPENROUTER" in k or "API_KEY" in k)
+before = sorted(os.environ)
 from backend.app.core.action_log import _scrub
-after = sorted(k for k in os.environ if "OPENROUTER" in k or "API_KEY" in k)
+after = sorted(os.environ)
 secrets = json.loads(sys.argv[2])
 survived = [s for s in secrets if s in _scrub("app " + s + " --port=8081")]
 print("@@RESULT@@" + json.dumps({"before": before, "after": after, "survived": survived}))
@@ -244,11 +273,11 @@ def _run_repo_rule(secrets: list[str]) -> dict:
     затаскивала секрет в общий процесс pytest: тест про утечку устраивал
     утечку. Измерено в чистом подпроцессе: 0 переменных до импорта, 2 после.
     """
-    env = {
-        k: v for k, v in os.environ.items()
-        if "API" not in k and "OPENROUTER" not in k and "TOKEN" not in k
-    }
-    env["AUDIT_DISABLE_DOTENV"] = "1"
+    # Изоляция сама должна быть allowlist: фильтр по `API`/`TOKEN`
+    # оставлял `AWS_SECRET_ACCESS_KEY`, `PASSWORD` и новые формы
+    # учётных данных. Подпроцессу не нужна ни одна переменная
+    # родителя; включаем только явный запрет dotenv.
+    env = {"AUDIT_DISABLE_DOTENV": "1", "PYTHONIOENCODING": "utf-8"}
     done = subprocess.run(
         [sys.executable, "-c", _COMPARE_SCRIPT, str(_ROOT), json.dumps(secrets)],
         capture_output=True, text=True, timeout=120, env=env, cwd=str(_ROOT),
@@ -286,8 +315,12 @@ def test_comparison_does_not_contaminate_the_pytest_process() -> None:
     result = _run_repo_rule(["AKIAIOSFODNN7EXAMPLE"])
     parent_after = {k for k in os.environ if "OPENROUTER" in k or "API_KEY" in k}
 
-    assert result["before"] == [], (
-        f"подпроцесс стартовал с секретом в окружении: {result['before']}"
+    expected_child_env = {"AUDIT_DISABLE_DOTENV", "PYTHONIOENCODING", "LC_CTYPE"}
+    assert set(result["before"]) <= expected_child_env, (
+        f"подпроцесс стартовал с неразрешённым окружением: {result['before']}"
+    )
+    assert result["after"] == result["before"], (
+        f"импорт изменил окружение подпроцесса: {result['after']}"
     )
     assert parent_after == parent_before, (
         f"сверка добавила переменные в процесс pytest: {parent_after - parent_before}"

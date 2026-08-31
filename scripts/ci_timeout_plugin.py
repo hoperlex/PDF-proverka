@@ -131,7 +131,12 @@ def _scan_proc() -> tuple[dict[int, list[int]], dict[int, dict[str, object]]]:
             cmdline = render_argv_summary(summary)
         except OSError:
             cmdline = ""
-            summary = {"argc": 0, "positional_count": 0, "argv_sha256": ""}
+            summary = {
+                "argc": 0,
+                "positional_count": 0,
+                "hidden_flag_count": 0,
+                "argv_sha256": "",
+            }
         tree.setdefault(ppid, []).append(pid)
         info[pid] = {
             "pid": pid,
@@ -142,6 +147,7 @@ def _scan_proc() -> tuple[dict[int, list[int]], dict[int, dict[str, object]]]:
             # было сличить два процесса и понять, сколько сведений скрыто.
             "argc": summary["argc"],
             "positional_count": summary["positional_count"],
+            "hidden_flag_count": summary["hidden_flag_count"],
             "argv_sha256": summary["argv_sha256"],
         }
     return tree, info
