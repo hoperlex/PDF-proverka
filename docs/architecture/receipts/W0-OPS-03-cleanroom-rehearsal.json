@@ -16,8 +16,11 @@
   },
   "results": {
     "capability_probe": {
-      "unit": "exit 0", "contract": "exit 0", "integration": "exit 0",
-      "network": "exit 0", "chaos": "exit 0",
+      "unit": "exit 0",
+      "contract": "exit 0",
+      "integration": "exit 0",
+      "network": "exit 0",
+      "chaos": "exit 0",
       "significance": "ВПЕРВЫЕ в программе доказано наличие capabilities для network и chaos. Под root probe отказывал по USER_IS_ROOT и SECRET_DOTENV_ACTIVE, и §6 контракта до сих пор описывает sandbox, где socket создать нельзя. На валидном профиле все пять lanes проходят preflight."
     },
     "lanes": {
@@ -26,7 +29,7 @@
       "integration": "exit 5 — 0 отобрано, 7276 deselected",
       "network": "exit 0 — 12 отобрано, 11 passed, 1 skipped, 0 failed",
       "chaos": "exit 1 — 3 отобрано, 1 passed, 1 failed, 1 skipped",
-      "significance": "Три lane из пяти отбирают НОЛЬ тестов: маркеры не материализованы (§5). Lane-based приёмка G0 сегодня невозможна не из-за окружения, а из-за разметки. Это измеренное подтверждение F5/F6."
+      "significance": "Три lane из пяти не отобрали НИ ОДНОГО исполняемого теста: маркеры не материализованы (§5). Единица в поле `selected` — это collection-level skip одного экспериментального модуля, а не выполненный тест; runnable тестов ноль. Lane-based приёмка G0 сегодня невозможна не из-за окружения, а из-за разметки. Измеренное подтверждение F5/F6."
     },
     "legacy_aggregate": {
       "command": "python scripts/ci_regression_gate.py",
@@ -75,18 +78,20 @@
     },
     {
       "id": "CR-4",
-      "severity": "средняя",
-      "summary": "Chaos-тест падает на ВАЛИДНОМ профиле — это продуктовый сигнал, а не ограничение песочницы",
+      "severity": "средняя (вывод сужен по итогам ревью)",
+      "summary": "Chaos-тест падает после пройденного capability gate; продуктовым дефектом это ещё не доказано",
       "measured": "tests/test_process_chaos_12e::test_12e_gateway_sigkill_recovery_is_persistence_only — TypeError: 'NoneType' object is not subscriptable. Второй chaos-тест (graceful stop) проходит",
       "corrects_prior_evidence": "§6 контракта фиксирует, что оба chaos-теста падают PermissionError на создании socket и потому sandbox-результат нельзя заносить в baseline. На non-root профиле socket создаётся, lane запускается, и падение оказывается настоящим. Мою собственную оговорку в OPS03-F7 («прогон под root, продуктовым вердиктом не является») этот прогон снимает",
-      "owner": "владелец gateway/chaos-сценария; для контракта — W0-ARC-03 (перепроверить evidence §6)"
+      "owner": "перепроверка — W0-INT-01 на точном dependency receipt; §6 evidence — W0-ARC-03",
+      "correction": "Первая редакция называла падение продуктовым сигналом. Это было сказано слишком сильно: capability gate пройден, но окружение имеет PIP_FREEZE_DRIFT и неверные версии ядра зависимостей (CR-2). Корректная формулировка: реальное падение ПОСЛЕ capability gate, требуется повтор на точном dependency receipt. Прежний вывод «§6 ошибается про PermissionError» остаётся в силе — socket создаётся и lane запускается, — а вот причина самого падения не установлена."
     },
     {
       "id": "CR-5",
-      "severity": "низкая",
+      "severity": "высокая (блокер, повышено по итогам ревью)",
       "summary": "Платформа не совпадает с нормативом §3.1 по Node",
       "measured": "Node 18.19.1 и npm 9.2.0 против пинов 22.23.1 и 10.9.8",
-      "owner": "W0-INT-01"
+      "owner": "W0-INT-01",
+      "why_blocker": "Node 18.19.1 и npm 9.2.0 против пинов 22.23.1 и 10.9.8 — это не косметика: §11 требует, чтобы frontend gate завершился на clean-room runner, а на этой платформе он не запускался вовсе. Непроверенный гейт — не пройденный гейт."
     }
   ],
   "what_this_does_not_prove": [
@@ -97,10 +102,23 @@
   ],
   "reproduce": {
     "checkout": "git archive HEAD | tar -x -C <clean>/src",
-    "install": "python3 -m venv <clean>/venv && pip install -r requirements*.txt && pip install pytest==9.1.1 pytest-asyncio==1.4.0",
+    "install": "python3 -m venv <clean>/venv && pip install -r requirements.txt -r requirements-worker.txt -r requirements-worker-pipeline.txt -r requirements-worker-grpc.txt -r requirements-gateway.txt -r requirements-proto.txt && pip install pytest==9.1.1 pytest-asyncio==1.4.0",
     "env": "семь переменных §3.2 плюс TZ=UTC, LC_ALL=C.UTF-8, PYTHONHASHSEED=0",
     "probe": "python scripts/ci_runtime_probe.py --profile <lane> --json",
     "lanes": "python scripts/ci_test_lane.py --lane <lane> --use-lane-marker",
-    "aggregate": "python scripts/ci_regression_gate.py"
+    "aggregate": "python scripts/ci_regression_gate.py",
+    "install_note": "Каждый манифест передаётся отдельным `-r`. Прежняя запись `pip install -r requirements*.txt` была неверной: shell раскрывает шаблон, и `-r` применяется только к ПЕРВОМУ файлу, остальные попадают как имена пакетов. Сам прогон шёл циклом по файлам и был корректен — неверной была именно документированная команда повтора.",
+    "lock_dir": "AUDITMANAGER_DEPLOY_LOCK_DIR=<run-root>/locks — без неё три теста уходят в жёстко зашитый машинный путь (CR-3)"
+  },
+  "revision": "2 (2026-08-31, по итогам ревью репетиции)",
+  "blockers_for_acceptance": {
+    "count": 4,
+    "list": [
+      "CR-1",
+      "CR-2",
+      "CR-3",
+      "CR-5"
+    ],
+    "note": "CR-5 повышен из низкого в блокирующий: из-за несоответствия платформы frontend gate не проверялся, а §11 требует его прохождения на clean-room runner. CR-4 в список не входит — он требует повтора, а не исправления."
   }
 }

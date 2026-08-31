@@ -100,9 +100,9 @@
     "regression_gate": {
       "command": "python scripts/ci_regression_gate.py",
       "result": "падений 35, baseline 35, новых 0, exit 0",
-      "run_summary": "2 failed, 7068 passed, 174 skipped, 2 deselected, 33 errors за 337.94 s",
-      "after_review_round": 6,
-      "profile": "под root с активным .env — невалидный профиль по §6; валидный прогон снят отдельно, см. квитанцию clean-room репетиции"
+      "run_summary": "2 failed, 7069 passed, 174 skipped, 2 deselected, 33 errors за 337.40 s",
+      "after_review_round": 7,
+      "profile": "под root с активным .env — невалидный профиль §6; валидный прогон снят отдельной репетицией"
     },
     "review_round_3_independent_checks": {
       "all_ci_suites": "213 passed",
@@ -192,28 +192,28 @@
   ],
   "authorizes_next_cutover": false,
   "observe_only": "ни один новый инструмент не включён ни в один автоматический прогон; всё запускается руками до W0-INT-01",
-  "revision": "7 (2026-08-31, по шестому кругу ревью)",
+  "revision": "8 (2026-08-31, по седьмому кругу ревью)",
   "own_tests": {
-    "total": 178,
+    "total": 181,
     "measured_by": "python -m pytest <файл> --collect-only -q",
     "by_file": {
       "tests/test_ci_redaction.py": 30,
-      "tests/test_ci_timeout_plugin.py": 47,
-      "tests/test_ci_test_lane.py": 34,
+      "tests/test_ci_timeout_plugin.py": 48,
+      "tests/test_ci_test_lane.py": 36,
       "tests/test_ci_lane_inventory.py": 49,
       "tests/test_ci_provision_norms.py": 18
     },
     "frontend": {
       "frontend/tests/discussions_route_removal.test.js": 4
     },
-    "note": "Числа снимаются сбором на момент редакции, а не переписываются из прошлой. Ревью дважды ловило расхождение прозы с фактом именно из-за ручного переноса цифры."
+    "note": "Числа снимаются сбором в момент редакции. Ревью трижды ловило расхождение — каждый раз потому, что тесты добавлялись после снятия чисел. Правило: сначала правки, потом замер, потом коммит."
   },
   "lane_inventory_measurement": {
     "command": "python scripts/ci_lane_inventory.py",
     "duration_sec": 1.71,
     "modules": 389,
-    "test_functions": 6422,
-    "nodes_lower_bound": 6994,
+    "test_functions": 6425,
+    "nodes_lower_bound": 6997,
     "nodes_lower_bound_note": "оценка снизу: множитель parametrize считается только по литеральным спискам. Настоящий сбор pytest даёт больше (7082 в части 1) — расхождение объяснимо и указано инструментом.",
     "inferred_lanes": {
       "chaos": {
@@ -238,7 +238,7 @@
       }
     },
     "marked_functions": 13,
-    "unmarked_functions": 6409,
+    "unmarked_functions": 6412,
     "modules_without_any_marker": 386,
     "double_marked": 0,
     "marker_vs_behavior_conflicts": 4,
@@ -256,9 +256,9 @@
     "drift_note": "Абсолютные числа сдвигаются с каждым новым тестом. Поэтому в roadmap их больше нет, а здесь они годны только вместе с tree-хешами выше: совпали хеши — числа те же, разошлись — надо пересчитать. Устойчивое утверждение не зависит от прогона: размечено 13 функций, остальные без primary lane marker, и это не изменится, пока разметка не начата.",
     "measured_at": {
       "why_not_a_commit": "Коммит здесь бесполезен: числа меняются от содержимого tests/ и backend/tests/, а коммит меняется и от правки документов. Ревью дважды поймало расхождение именно поэтому. Замер привязан к tree-хешам ровно тех каталогов, которые инструмент читает, — они не сдвигаются от правки квитанции.",
-      "tests_tree_sha1": "e0da44e8bc2ec37bb8b37f2c7e7a53d6ea358629",
+      "tests_tree_sha1": "fbc08bfe8c6766e25d16a673bf5954b4a13d3d19",
       "backend_tests_tree_sha1": "7e19ce4f6e9164b2672e17889b87d88be728a9c1",
-      "output_sha256": "894f96f8a0e3219e101d6e77be06f0816e40abfa445e4e68c4c00f6382cdd0ec",
+      "output_sha256": "86e25778797459f5a91b448a4145ab42cf2376821f72279659f2c9b03da15544",
       "excluded_nonsemantic_output_fields": [
         "root",
         "duration_seconds"
@@ -483,6 +483,22 @@
           "side_effect": "тестовый helper больше не берёт путь журнала из receipt — он вычисляет его по тому же правилу, что и раннер"
         }
       ]
+    },
+    "round_7_local_review": {
+      "base_commit": "f2961cbc",
+      "verdict": "REV-16 закрыт; в REV-17 остался обход; квитанции требуют новой редакции",
+      "fixes": [
+        {
+          "id": "REV-18",
+          "blocking": true,
+          "summary": "Каноническое имя артефакта проверялось по префиксу, а не целиком",
+          "reproduced": "unit.q7z4m2n8p5r3t6v9.xml и network.q7z4m2n8p5r3t6v9.events.jsonl публиковались полным путём: name.split('.')[0] совпадал с именем lane",
+          "why_missed": "я объявил в докстроке проверку ТОЧНОГО имени, а реализовал проверку префикса. Проверка «начинается с разрешённого» — имитация allowlist: допустимых имён конечное число, и перечислять надо их",
+          "fix": "точный список из десяти имён: пять lanes × два вида артефакта. Вид входит в имя, поэтому отчёт не выдаёт себя за журнал",
+          "verified": "adversarial-тест на секретный суффикс, на секретное имя, на перепутанный вид артефакта и на все десять канонических имён"
+        }
+      ],
+      "evidence_refreshed": "числа тестов, tree-хеши и отпечаток инвентаря пересняты ПОСЛЕ всех правок этого круга — прежние устарели ровно потому, что снимались до"
     }
   },
   "cleanroom_rehearsal": {

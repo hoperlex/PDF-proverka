@@ -1238,3 +1238,36 @@ def test_publishable_path_accepts_only_the_exact_contract_layout():
         published = lane_mod._publishable_path(path, "junit")
         assert published == "<custom-junit>", published
         assert secret not in published
+
+
+def test_canonical_name_is_matched_exactly_not_by_prefix():
+    """Имя сверяется целиком: «начинается с разрешённого» — не allowlist.
+
+    Прежняя проверка брала `name.split(".")[0]` и потому пропускала любой
+    пользовательский суффикс: `unit.q7z4m2n8p5r3t6v9.xml` начинается с имени
+    lane и публиковался полным путём. Проверка по префиксу — имитация
+    allowlist: допустимых имён конечное число, и они перечисляются полностью.
+    """
+    secret = "q7z4m2n8p5r3t6v9"
+    hostile = [
+        (f"unit.{secret}.xml", "junit"),
+        (f"network.{secret}.events.jsonl", "events"),
+        (f"chaos.{secret}", "junit"),
+        (f"unit{secret}.xml", "junit"),
+        # Тип артефакта тоже часть имени: отчёт не выдаёт себя за журнал.
+        ("unit.events.jsonl", "junit"),
+        ("unit.xml", "events"),
+    ]
+    for name, kind in hostile:
+        published = lane_mod._publishable_path(lane_mod.REPORT_DIR / name, kind)
+        assert published == f"<custom-{kind}>", f"{name} [{kind}] -> {published}"
+        assert secret not in published
+
+    # Ровно десять канонических имён: пять lanes × два вида артефакта.
+    for lane in lane_mod.LANES:
+        assert lane_mod._publishable_path(
+            lane_mod.REPORT_DIR / f"{lane}.xml", "junit"
+        ) == f".ci/reports/{lane}.xml"
+        assert lane_mod._publishable_path(
+            lane_mod.REPORT_DIR / f"{lane}.events.jsonl", "events"
+        ) == f".ci/reports/{lane}.events.jsonl"

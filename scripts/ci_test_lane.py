@@ -612,6 +612,16 @@ def run_lane(args: argparse.Namespace) -> dict[str, Any]:
 #: содержит ничего пользовательского: `<lane>` берётся из закрытого списка.
 _CANONICAL_REPORT_DIR = REPORT_DIR
 
+#: ТОЧНЫЕ имена файлов, а не префиксы. Прежняя проверка брала `name.split(".")[0]`
+#: и потому пропускала пользовательский суффикс: `unit.q7z4m2n8p5r3t6v9.xml`
+#: начинается с имени lane и публиковался целиком. Проверка «начинается с
+#: разрешённого» — это не allowlist, а его имитация; допустимых имён конечное
+#: число, поэтому они перечислены полностью.
+_CANONICAL_NAMES: dict[str, frozenset[str]] = {
+    "junit": frozenset(f"{lane}.xml" for lane in LANES),
+    "events": frozenset(f"{lane}.events.jsonl" for lane in LANES),
+}
+
 
 def _publishable_path(path: Path, kind: str) -> str:
     """Путь артефакта в форме, пригодной для публикации.
@@ -625,13 +635,16 @@ def _publishable_path(path: Path, kind: str) -> str:
         превращалось в `q7z4m2n8p5r3t6v9.xml`, то есть секрет сохранялся
         целиком.
 
-    Поэтому полный путь публикуется ТОЛЬКО для точной канонической раскладки
-    `.ci/reports/<lane>.*` — её форму задаёт контракт, а `<lane>` берётся из
-    закрытого списка. Любой другой путь заменяется меткой вида
-    `<custom-junit>`: где лежит артефакт, знает тот, кто задал `--junit`, а
-    receipt для этого не нужен.
+    Поэтому полный путь публикуется ТОЛЬКО для точного канонического имени:
+    `.ci/reports/<lane>.xml` для отчёта и `.ci/reports/<lane>.events.jsonl` для
+    журнала, где `<lane>` — один из пяти. Сравнение идёт с полным именем, а не
+    с префиксом: `unit.q7z4m2n8p5r3t6v9.xml` тоже начинается с имени lane и при
+    проверке по префиксу публиковался целиком.
+
+    Любой другой путь заменяется меткой вида `<custom-junit>`: где лежит
+    артефакт, знает тот, кто задал `--junit`, а receipt для этого не нужен.
     """
-    if path.parent == _CANONICAL_REPORT_DIR and path.name.split(".")[0] in LANES:
+    if path.parent == _CANONICAL_REPORT_DIR and path.name in _CANONICAL_NAMES.get(kind, ()):
         return str(path.relative_to(ROOT))
     return f"<custom-{kind}>"
 
