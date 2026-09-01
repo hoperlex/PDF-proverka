@@ -28,6 +28,9 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: network — запускает настоящие дочерние процессы.
+pytestmark = pytest.mark.network
+
 ROOT = Path(__file__).resolve().parent.parent
 PROBE_PATH = ROOT / "scripts" / "ci_runtime_probe.py"
 CONTRACT_PATH = ROOT / "docs" / "architecture" / "QUALITY_RUNTIME_CONTRACT_V1.md"
@@ -499,3 +502,33 @@ def test_enforce_mode_makes_profile_checks_required():
     for row in report["checks"]:
         assert row["severity"] != probe.SEVERITY_ADVISORY, row["check"]
     assert report["mode"] == "enforce"
+
+
+def test_frozen_receipt_matches_document() -> None:
+    """§2 существует в двух местах — в контракте и в константах probe.
+
+    Пока это дубликат, он обязан быть проверяемым: расхождение таблицы и кода
+    означает, что один из них молча устарел, и тогда «receipt сошёлся» перестаёт
+    что-либо значить. Дополнительно каждая строка таблицы сверяется с файлом на
+    диске: receipt, отставший от worktree, — это не receipt.
+    """
+    import hashlib
+
+    doc = (ROOT / "docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md").read_text(
+        encoding="utf-8"
+    )
+    section = doc.split("## 2. Frozen input receipt", 1)[1].split("## 3.", 1)[0]
+    table = dict(re.findall(r"^\| `([^`]+)` \| `([0-9a-f]{64})` \|$", section, re.M))
+    assert table, "таблица §2 не разобралась — изменился формат"
+
+    for rel, digest in table.items():
+        path = ROOT / rel
+        assert path.is_file(), f"§2 перечисляет несуществующий вход {rel}"
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        assert actual == digest, f"{rel}: worktree {actual[:12]}… != §2 {digest[:12]}…"
+
+    enforced = {**probe.DEPENDENCY_RECEIPT, **probe.FRONTEND_RECEIPT}
+    unknown = set(enforced) - set(table)
+    assert not unknown, f"probe сверяет входы, которых нет в §2: {sorted(unknown)}"
+    for rel, digest in enforced.items():
+        assert table[rel] == digest, f"{rel}: §2 и probe разошлись"

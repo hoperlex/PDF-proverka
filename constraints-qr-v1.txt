@@ -1,0 +1,104 @@
+# Материализованный dependency lock профиля `qr-v1`
+# (contract `quality-runtime/v1`, docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md §4.1).
+#
+# ПОЧЕМУ ОТДЕЛЬНЫЙ КАТАЛОГ, А НЕ ОДИН constraints.txt В КОРНЕ.
+# Профилей окружения в репозитории заведомо больше одного: центр/CI живут на
+# tuple `qr-v1`, а requirements-worker-pipeline.txt осознанно держит ДРУГИЕ
+# пины под сторонний VPS (§4.1: «worker/gateway manifests не складываются слепо
+# с center requirements... test lock включает нужные пакеты в версиях qr-v1, не
+# меняя worker production profile»). Имя файла обязано называть профиль, иначе
+# следующий lock придётся вносить в тот же безымянный constraints.txt и молча
+# смешивать два несовместимых набора. Каталог оставляет для второго профиля
+# место, а `-c constraints-qr-v1.txt` в команде читается как утверждение о том,
+# КАКОЙ рецепт воспроизводится.
+#
+# ПОЧЕМУ ЗДЕСЬ ВЕРСИИ, А В МАНИФЕСТАХ — ТОЛЬКО ИМЕНА.
+# Разделение полномочий: requirements*.txt отвечают на вопрос «что нужно этому
+# развёртыванию», а этот файл — «какая ровно версия проверена». Из-за этого
+# верхние границы манифестов остаются осмысленными (они выражают знание о
+# несовместимости), а воспроизводимость не зависит от даты установки.
+#
+# СОДЕРЖИМОЕ. 62 строки ниже — дословно `Полный reference freeze` из §4.1,
+# порядок и написание имён сохранены. Проверка целостности:
+#   sed -e '/^#/d' -e '/^$/d' constraints-qr-v1.txt | sha256sum
+#   # 557e95885700a44013febcc6559fa8ee278923507b71df8adba761e1e247f99c
+# Это тот же SHA-256, который §4.1 требует от полного вывода `python -m pip
+# freeze` в собранном окружении: файл и рецепт совпадают побайтно, поэтому
+# расхождение видно без ручного сличения.
+#
+# КАК ПРИМЕНЯТЬ (clean-room/CI, §4.2 п.1):
+#   python -m pip install -c constraints-qr-v1.txt -r requirements-dev.txt
+#   python -m pip check
+#   python -m pip freeze | sha256sum
+#
+# ЧЕГО ЭТОТ ФАЙЛ НЕ ДЕЛАЕТ. Constraints не устанавливают ничего сами: пакет
+# попадает в окружение, только если его требует какой-нибудь манифест. Поэтому
+# lock не заменяет манифесты и не «чинит» пропущенную зависимость — он лишь
+# запрещает резолверу выбрать непроверенную версию.
+#
+# НЕ ПРИМЕНЯТЬ К requirements-worker-pipeline.txt: там прибиты fastapi 0.115.6,
+# starlette 0.41.3, pydantic 2.10.4, openai 2.31.0 — установка под этим lock
+# даст конфликт версий, и это правильное поведение, а не поломка. Профиль
+# воркерного конвейера переводится на qr-v1 отдельной задачей с прогоном на VPS.
+aiofiles==25.1.0
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.14.2
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.5.1
+click==8.4.2
+cryptography==46.0.7
+distro==1.9.0
+et_xmlfile==2.0.0
+fastapi==0.141.1
+google-auth==2.57.0
+google-genai==2.19.0
+grpcio==1.82.1
+grpcio-health-checking==1.82.1
+grpcio-tools==1.82.1
+h11==0.16.0
+httpcore==1.0.9
+httpcore2==2.12.0
+httptools==0.8.0
+httpx==0.28.1
+httpx2==2.12.0
+idna==3.19
+iniconfig==2.3.0
+jiter==0.16.0
+numpy==2.5.2
+openai==3.3.1
+opencv-python-headless==5.0.0.93
+openpyxl==3.1.5
+packaging==26.3
+passlib==1.7.4
+pillow==12.3.0
+pluggy==1.6.0
+protobuf==7.35.1
+psutil==7.2.2
+pyasn1==0.6.4
+pyasn1_modules==0.4.2
+pycparser==3.0
+pydantic==2.13.4
+pydantic_core==2.46.4
+Pygments==2.21.0
+PyMuPDF==1.27.2.2
+pytest==9.1.1
+pytest-asyncio==1.4.0
+python-dotenv==1.2.3
+python-multipart==0.0.32
+PyYAML==6.0.3
+requests==2.34.2
+setuptools==84.0.0
+sniffio==1.3.1
+starlette==1.6.0
+tenacity==9.1.4
+truststore==0.10.4
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+urllib3==2.7.0
+uvicorn==0.52.4
+uvloop==0.22.1
+watchfiles==1.2.0
+websockets==16.1.1
+wheel==0.48.0

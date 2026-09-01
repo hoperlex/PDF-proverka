@@ -1,137 +1,283 @@
-# CI: регресс-гейт по контракту окружения.
+# CI по контракту `quality-runtime/v1`.
 #
-# СТАТУС: observe-first — гейт пока НЕ блокирует merge (`continue-on-error`).
-# Условия перевода в enforce перечислены в конце файла: они конкретны и
-# проверяемы, а не «когда будет время».
+# СТАТУС: regression gate остаётся observe-first — `continue-on-error` НЕ снят.
+# Причина одна и она внешняя, см. раздел «Условия перевода в enforce» в конце
+# файла. Все остальные условия выполнены.
 #
-# Контракт окружения (docs/architecture/ci_environment_matrix.md) требует от
-# раннера ровно того, без чего прогон невоспроизводим:
-#   - фиксированные зависимости, установка БЕЗ `|| true`;
-#   - непривилегированный пользователь (решение C-4);
-#   - изоляция от машинных данных и от .env;
-#   - подвоз норм-корпуса (решение C-2);
-#   - chaos-тесты отдельным job (решение C-5).
+# Что даёт этот workflow сверх прежнего:
+#   - установка одной воспроизводимой командой с lock-профилем `qr-v1`;
+#   - capability probe ДО тестов: непригодное окружение отказывает сразу и
+#     называет причину, а не даёт «странные» падения через десять минут;
+#   - пять lane-job'ов по §5.1, каждый со своими бюджетами §7 и своим JUnit;
+#   - JSON receipt §8 на каждый прогон, все отчёты выгружаются артефактами;
+#   - provisioning norm corpus отдельным проверяемым шагом.
 #
-# Признак «мы в CI» — переменная CI, которую GitHub Actions выставляет сам.
-# Тесты, объявленные «обязательно в CI, необязательно локально», при её
-# наличии ЛОМАЮТ прогон вместо тихого skip: провалившийся provision обязан
-# быть виден, иначе он однажды отвалится молча.
+# Контракт окружения — docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md.
+# Эксплуатация — docs/ops/TEST_HARNESS_RUNBOOK.md.
+#
+# Владение файлом: `W0-INT-01` по ограниченному pre-G1 исключению
+# (ADR-0006 §4.2). После G1 файл возвращается к `W1-OPS-02`.
+
 name: tests
 
 on:
   push:
   pull_request:
 
+# §3.1: значения профиля задаются один раз и наследуются всеми job'ами.
+# Раньше их приходилось повторять в каждом шаге, и они успели разойтись.
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22.23.1"
+  AUDIT_DISABLE_DOTENV: "1"
+  PAID_API_ENABLED: "false"
+  PORTAL_AUTH_ENABLED: "false"
+  TZ: UTC
+  PYTHONHASHSEED: "0"
+
 jobs:
-  regression-gate:
-    runs-on: ubuntu-latest
+  # ───────────────────────────────────────────────────────────────────────────
+  # Пять lane-job'ов по §5.1. Каждый со своим бюджетом, своим JUnit и своим
+  # receipt. Разделены не ради красоты: §7 задаёт РАЗНЫЕ бюджеты на lane, а
+  # общий прогон свёл бы их к худшему.
+  # ───────────────────────────────────────────────────────────────────────────
+  lanes:
+    name: "lane ${{ matrix.lane }}"
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false        # один упавший lane не скрывает состояние прочих
+      matrix:
+        lane: [unit, contract, integration, network]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ env.PYTHON_VERSION }}
 
-      # Установка без `|| true`: молча пропущенная зависимость даёт падения,
-      # неотличимые от регрессий. Пусть лучше падёт шаг установки.
-      - name: Установить зависимости
+      # Установка ОДНОЙ командой с lock-профилем. Прежняя схема «шесть -r
+      # подряд плюс ad-hoc pip install pytest» не воспроизводила frozen
+      # receipt §4.1: часть версий приезжала из манифеста стороннего VPS.
+      # Без `|| true`: молча пропущенная зависимость даёт падения,
+      # неотличимые от регрессий.
+      - name: Установить зависимости профиля qr-v1
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-proto.txt   # grpcio-tools для контрактных тестов
-          pip install pytest
+          pip install -c constraints-qr-v1.txt -r requirements-dev.txt
 
-      # Решение C-2: нормативный контур проверяется в CI, а не пропускается.
-      # Корпус лежит вне git; отсутствие артефакта здесь — сломанный provision,
-      # и тесты норм обязаны упасть, а не скипнуться.
+      # Здесь только отпечаток в лог и связность набора. Сверку с §4.1
+      # делает probe внутри `ci_test_lane.py` (PIP_FREEZE_DRIFT); она не
+      # дублируется, чтобы рецепт оставался в одном месте.
+      - name: Отпечаток набора зависимостей и `pip check`
+        run: |
+          echo "pip freeze sha256: $(python -m pip freeze | sha256sum | cut -d' ' -f1)"
+          python -m pip check
+
+      - name: Provisioning norm corpus
+        run: python scripts/ci_provision_norms.py --check --json
+
+      # §3.1: uid != 0. Под root режимы 0o555 не действуют, и проверки
+      # неудаляемости запечатанного дерева проходят вхолостую.
+      - name: Проверить, что прогон не под root
+        run: test "$(id -u)" -ne 0 || { echo "::error::раннер под root — нарушение §3.1"; exit 1; }
+
+      # Раннер сам выполняет probe ДО pytest (§6, правило 1): отсутствие
+      # обязательной capability — setup failure, а не skip.
+      - name: "Lane ${{ matrix.lane }}"
+        env:
+          AUDIT_APP_DATA_DIR: ${{ runner.temp }}/run-root/app_data
+          AUDIT_PROJECTS_DIR: ${{ runner.temp }}/run-root/projects
+          AUDIT_OBJECTS_FILE: ${{ runner.temp }}/run-root/objects.json
+          AUDIT_ACTION_LOG_DIR: ${{ runner.temp }}/run-root/action_log
+          AUDITMANAGER_DEPLOY_LOCK_DIR: ${{ runner.temp }}/run-root/locks
+        run: python scripts/ci_test_lane.py --lane ${{ matrix.lane }} --use-lane-marker
+
+      # Отчёты выгружаются ВСЕГДА: при падении они нужнее всего. §8 требует
+      # свежий JUnit и JSON receipt на каждый прогон.
+      - name: Выгрузить отчёты lane
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-${{ matrix.lane }}-reports
+          path: .ci/reports/
+          if-no-files-found: warn
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Legacy aggregate против baseline. Остаётся до тех пор, пока lane-receipt'ы
+  # не станут единственным источником вердикта: он сравнивает с известным
+  # долгом, а lanes этого не делают.
+  # ───────────────────────────────────────────────────────────────────────────
+  regression-gate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Установить зависимости профиля qr-v1
+        run: |
+          python -m pip install --upgrade pip
+          pip install -c constraints-qr-v1.txt -r requirements-dev.txt
+
+      - name: Связность набора зависимостей (`pip check`)
+        run: python -m pip check
+
+      # Решение C-2: нормативный контур проверяется, а не пропускается.
+      # Корпус лежит вне git и обязан приезжать с checksum.
       #
-      # Контракт артефакта (выяснен по коду, а не по README):
-      #   вход  — norms/vault/*.md, по файлу на норму; MOC-*.md игнорируются
-      #           (build_status_index.py:177). Порядок величины — ~1250 записей
-      #           по norms_db.json;
-      #   вход  — norms/tools/overrides.yaml, ручные переопределения; приоритет
-      #           выше vault. Норма, которой нет ни там, ни там, в индекс не
-      #           попадает вовсе;
-      #   выход — norms/tools/status_index.json, производный. НЕ коммитить:
-      #           пересобирается по рецепту (P-12).
+      # TODO(владелец): подставить фактический источник norms/vault — release
+      # asset, приватный бакет или отдельный репозиторий. norms/tools/README.md
+      # прямо запрещает собирать корпус из norms_db.json, поэтому внутри
+      # репозитория его получить нельзя: это внешний вход.
       #
-      # Зависимость сборки индекса — только pyyaml. Полный setup из
-      # norms/tools/README.md (sentence-transformers, mcp, embeddings) нужен
-      # MCP-серверу норм, а НЕ этому шагу: тянуть его сюда — минуты сборки
-      # впустую.
-      #
-      # TODO(владелец): подставить фактический источник norms/vault —
-      # release asset, приватный бакет или отдельный репозиторий. Источник
-      # обязан отдавать checksum: артефакт без проверки целостности сделает
-      # нормативный контур недоказуемым ровно так же, как его отсутствие.
-      - name: Подвезти норм-корпус
+      # Пока источник не подключён, 33 из 35 записей baseline существуют
+      # только из-за его отсутствия — см. scripts/ci_known_failures.txt.
+      - name: Provisioning norm corpus
         run: |
           if [ -d norms/vault ]; then
-            pip install pyyaml
-            python norms/tools/build_status_index.py
+            python scripts/ci_provision_norms.py --build-index --enforce
           else
-            echo "::warning::источник артефакта norms/vault не подключён —"
-            echo "::warning::тесты норм упадут по решению C-2, это ожидаемо до настройки"
+            python scripts/ci_provision_norms.py --check --json
+            echo "::warning::norms/vault не подключён — тесты норм остаются в baseline (§3.3)"
           fi
 
-      # Решение C-4: набор обязан выполняться непривилегированным пользователем.
-      # Под root режимы 0o555 не действуют, и проверка неудаляемости
-      # запечатанного дерева проходит вхолостую, ничего не доказывая.
       - name: Проверить, что прогон не под root
-        run: |
-          test "$(id -u)" -ne 0 || { echo "::error::раннер под root — нарушение контракта C-4"; exit 1; }
+        run: test "$(id -u)" -ne 0 || { echo "::error::раннер под root — нарушение §3.1"; exit 1; }
 
+      - name: Capability preflight
+        run: python scripts/ci_runtime_probe.py --profile unit
+
+      # Гейт ограничен по времени (находка OPS03-F10): на машине с зависающим
+      # тестом он отказывает с диагнозом, а не висит до таймаута job'а.
       - name: Регресс-гейт (падает только на НОВЫХ падениях против baseline)
         continue-on-error: true
         env:
-          # Изоляция от машинного состояния: без неё в прогон течут значения
-          # из .env и платные вызовы.
-          #
-          # AUDIT_APP_DATA_DIR здесь НЕ выставляется намеренно. Каталог
-          # backend/app/data/ смешивает машинный runtime-стейт (stage_models.json,
-          # usage_data.json и пр., все в .gitignore) с ассетами репозитория
-          # (чек-листы дисциплин, model_prices.json), на которых стоят тесты.
-          # Пустой каталог обрушил бы вторые. Изоляцией владеет tests/conftest.py:
-          # он кладёт в песочницу копию каталога БЕЗ машинных файлов состояния.
-          AUDIT_DISABLE_DOTENV: "1"
-          PAID_API_ENABLED: "false"
+          CI_GATE_WALL_BUDGET_SEC: "1800"
+          AUDIT_PROJECTS_DIR: ${{ runner.temp }}/run-root/projects
+          AUDIT_OBJECTS_FILE: ${{ runner.temp }}/run-root/objects.json
+          AUDIT_ACTION_LOG_DIR: ${{ runner.temp }}/run-root/action_log
+          AUDITMANAGER_DEPLOY_LOCK_DIR: ${{ runner.temp }}/run-root/locks
         run: python scripts/ci_regression_gate.py
 
-  # Решение C-5: chaos-тесты поднимают реальные процессы и недетерминированы
-  # (четыре прогона дали 1/2/0/1 падений). В общем наборе они ломали бы любой
-  # baseline, поэтому исключены маркером и живут отдельным job.
+      - name: Выгрузить отчёт гейта
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-gate-report
+          path: .ci_last_report.xml
+          if-no-files-found: warn
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Frontend gate §10. Node пинится явно: полагаться на PATH раннера нельзя —
+  # ровно на этом clean-room репетиция получила node 18 вместо 22 (CR-5).
+  # ───────────────────────────────────────────────────────────────────────────
+  frontend:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci`, а не `npm install`: ci ставит РОВНО lockfile и падает при
+      # расхождении с package.json, install молча правит lockfile.
+      - name: Установить зависимости
+        run: npm ci
+
+      - name: Версии инструментов
+        run: |
+          echo "node $(node -v), npm $(npm -v)"
+          test "$(node -v)" = "v${{ env.NODE_VERSION }}" \
+            || { echo "::error::Node не соответствует пину §3.1"; exit 1; }
+
+      - name: Тесты
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Strict typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Решение C-5: chaos поднимает реальные процессы, убивает их сигналами и
+  # зависит от таймингов раннера. Отдельный observe-only job — его назначение
+  # видеть недетерминизм, а не блокировать merge.
+  # ───────────────────────────────────────────────────────────────────────────
   chaos:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Установить зависимости
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Установить зависимости профиля qr-v1
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest
-      - name: Chaos-тесты
+          pip install -c constraints-qr-v1.txt -r requirements-dev.txt
+
+      - name: Проверить, что прогон не под root
+        run: test "$(id -u)" -ne 0 || { echo "::error::раннер под root — нарушение §3.1"; exit 1; }
+
+      - name: Chaos lane
         env:
-          AUDIT_DISABLE_DOTENV: "1"
-          AUDIT_APP_DATA_DIR: ${{ runner.temp }}/app_data
-        run: python -m pytest tests/test_process_chaos_12e.py -m chaos -q
+          AUDIT_APP_DATA_DIR: ${{ runner.temp }}/run-root/app_data
+          AUDIT_PROJECTS_DIR: ${{ runner.temp }}/run-root/projects
+          AUDIT_OBJECTS_FILE: ${{ runner.temp }}/run-root/objects.json
+          AUDIT_ACTION_LOG_DIR: ${{ runner.temp }}/run-root/action_log
+          AUDITMANAGER_DEPLOY_LOCK_DIR: ${{ runner.temp }}/run-root/locks
+        run: python scripts/ci_test_lane.py --lane chaos --use-lane-marker
+
+      - name: Выгрузить отчёты chaos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-chaos-reports
+          path: .ci/reports/
+          if-no-files-found: warn
 
 # ─── Условия перевода гейта в enforce ────────────────────────────────────────
 #
-# 1. Источник артефакта norms/vault настроен, шаг «Подвезти норм-корпус»
-#    действительно его подвозит, тесты норм зелёные.
-# 2. Baseline пересобран ОДИН раз в этом окружении
-#    (`python scripts/ci_regression_gate.py --record`) и закоммичен с
-#    обоснованием. До этого baseline описывает чужую машину: он снят там, где
-#    были норм-корпус, данные проектов и провайдерские CLI.
-#    ВНИМАНИЕ: пересборка допустима только здесь и только один раз — baseline
-#    принадлежит профилю CI, а не машине разработчика. Расхождение из-за
-#    отсутствующего optional-датасета чинится тестом, а не перезаписью списка
-#    (см. докстринг scripts/ci_regression_gate.py).
-# 3. `continue-on-error: true` убран у шага «Регресс-гейт».
+# Выполнено:
+#   ✔ установка воспроизводима: один lock-профиль, `pip check` зелёный,
+#     `pip freeze` совпадает с frozen receipt §4.1;
+#   ✔ прогон не под root, изоляция состояния по §3.2 включая lock-каталог;
+#   ✔ capability probe выполняется ДО тестов;
+#   ✔ пять lanes с бюджетами §7, JUnit и JSON receipt §8, отчёты выгружаются;
+#   ✔ гейт ограничен по времени и не может висеть бесконечно;
+#   ✔ frontend gate с пиннингом Node и strict typecheck;
+#   ✔ у каждой записи baseline есть владелец, задача закрытия и срок.
 #
-# Job `chaos` остаётся неблокирующим до починки гонки: его назначение —
-# видеть недетерминизм, а не блокировать merge.
+# НЕ выполнено — единственное оставшееся условие:
+#   ✘ источник norms/vault не подключён. Пока его нет, 33 из 35 записей
+#     baseline существуют ТОЛЬКО из-за отсутствующего входа. Снять здесь
+#     `continue-on-error` значит закрепить «корпуса нет» как норму проекта:
+#     §6 правило 4 контракта объявляет корпус обязательным для enforce, а
+#     докстрока ci_regression_gate.py прямо предупреждает, что baseline
+#     принадлежит профилю CI, а не состоянию машины.
+#
+# Порядок включения, когда источник появится:
+#   1. подключить источник в шаг «Provisioning norm corpus» (он уже умеет
+#      --build-index --enforce и падает при несовпадении checksum);
+#   2. убедиться, что тесты норм зелёные и 33 записи ушли из baseline;
+#   3. пересобрать baseline ОДИН раз в этом окружении и закоммитить с
+#      обоснованием (`ci_regression_gate.py --record`; он сам откажет, пока
+#      корпус не provisioned);
+#   4. снять `continue-on-error: true` у шага «Регресс-гейт».
+#
+# Job `chaos` остаётся неблокирующим независимо от этого: его назначение —
+# видеть недетерминизм.

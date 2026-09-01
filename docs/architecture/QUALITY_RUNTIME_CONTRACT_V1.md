@@ -45,23 +45,38 @@
 ## 2. Frozen input receipt
 
 SHA-256 вычислен по байтам файлов текущего worktree. Базовый commit фиксирует
-provenance исходного кода; незакоммиченные изменения на момент receipt были
-только документационными и перечисленные входы не затрагивали. Любое изменение
-входа требует нового receipt до интеграции.
+provenance исходного кода. Любое изменение входа требует нового receipt до
+интеграции.
+
+**Переиздание от 2026-09-01 (`W0-INT-01`).** Прошлый receipt разошёлся по шести
+входам, и это не дрейф, а результат принятых работ: `requirements.txt` дополнен
+недостающими рантайм-зависимостями (CR-1/CR-2), `pytest.ini` получил регистрацию
+lane-маркеров §5, `ci.yml` переписан под пять полос, `ci_regression_gate.py` —
+под wall budget и cleanup группы процессов, `ci_known_failures.txt` — под
+владельцев и даты пересмотра, `tsconfig.distributed.json` — под `strict: true`.
+Добавлены два входа детерминированной среды: `requirements-dev.txt` и
+`constraints-qr-v1.txt` (materialized lock §4.1; имя — по глобу `constraints*.txt`
+из ADR-0006).
 
 | Вход | SHA-256 |
 | --- | --- |
-| `requirements.txt` | `37a01ae7604f0c90001917673e5a01938acaace42e7621d77a935c2c56a8090a` |
+| `requirements.txt` | `e517f305175010e974f5dcdb288135dd3ad59f5a8fd7b16f069f898ee9262df4` |
 | `requirements-proto.txt` | `037a6d4a3402c1ae756a1cd8143be63e2d3a5fb2daf32d01040a79145794f92a` |
-| `pytest.ini` | `74c42feeaa08fbd4600ec759bb0a633a49066fa742d59ce319bc627a731aa2ca` |
+| `requirements-dev.txt` | `935ce563a390983e2ce1d140010ea6446606098faf4c7adc0ca05f59a7614d5f` |
+| `constraints-qr-v1.txt` | `e701df30ffc0a942e08c77fc4458442d7f4fb3b4379560e47c437d4d4ab2dcbe` |
+| `pytest.ini` | `9978cc8e08dbc4f35602ee011a291171aaba2421ef2a6ab883c672e98c681d9e` |
 | `frontend/package-lock.json` | `c679604b25329bdbcf89f80017011a0c51c07e770e326865b093f63633097040` |
 | `frontend/package.json` | `65749f5180ea6fd1e2d99f35c103365f9188f7e2cabaef3db53e8f051eef2075` |
-| `frontend/tsconfig.distributed.json` | `ffbd41dbd28fa7157926be2da9750ef03f771b268b027bccbe9a963ba356267a` |
-| `.github/workflows/ci.yml` | `6b8db97e529c4cb5901c94ade51dc285d7d08c7a90238c31e9d7abf1087a9031` |
-| `scripts/ci_regression_gate.py` | `99425dea6d268532696954fcd2b9dffc333fb91ee09141bf9ebcc7801e975b7b` |
-| `scripts/ci_known_failures.txt` | `204056d5f3c2318400d8842674b78243ddba57dded7005c6d50d92e2366f6c66` |
+| `frontend/tsconfig.distributed.json` | `a3d3fb949642421af5563073f04658160534b04e78c3ebad895d4454eb487863` |
+| `.github/workflows/ci.yml` | `6554795680bcc0d1f603ead13e1a87bf77aeb7fe3d26d8118dc35a97304bbffb` |
+| `scripts/ci_regression_gate.py` | `42fc15209950558781481aaa25d84d6f11a1333acb78eb22644b3a8b50f6f529` |
+| `scripts/ci_known_failures.txt` | `4a69decf38d4f1a65c9b2d7cbca6468512b7d4ce46fcd4a07db24c47147e2fb2` |
 | `tests/conftest.py` | `395646bd3f738f1da345bb75f2627844f8e27d447991c04ce305b97d13594706` |
 | `backend/tests/conftest.py` | `8df70ba9cc4b1070574148b1b8cbd44cabe98c8316039c9f67f360858aac67e8` |
+
+Таблица и константы `scripts/ci_runtime_probe.py` — один и тот же факт в двух
+местах; их согласованность проверяет
+`tests/test_ci_runtime_probe.py::test_frozen_receipt_matches_document`.
 
 Baseline receipt: заголовок и фактический список согласованы, **35 entries**.
 Это legacy debt inventory, а не разрешение добавлять новые падения.

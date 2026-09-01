@@ -109,15 +109,29 @@ REQUIRED_ISOLATION_PATHS = (
 
 #: §2 Frozen input receipt — dependency-часть.
 DEPENDENCY_RECEIPT = {
-    "requirements.txt": "37a01ae7604f0c90001917673e5a01938acaace42e7621d77a935c2c56a8090a",
-    "requirements-proto.txt": "037a6d4a3402c1ae756a1cd8143be63e2d3a5fb2daf32d01040a79145794f92a",
+    "requirements.txt": (
+        "e517f305175010e974f5dcdb288135dd3ad59f5a8fd7b16f069f898ee9262df4"
+    ),
+    "requirements-proto.txt": (
+        "037a6d4a3402c1ae756a1cd8143be63e2d3a5fb2daf32d01040a79145794f92a"
+    ),
+    "requirements-dev.txt": (
+        "935ce563a390983e2ce1d140010ea6446606098faf4c7adc0ca05f59a7614d5f"
+    ),
+    "constraints-qr-v1.txt": (
+        "e701df30ffc0a942e08c77fc4458442d7f4fb3b4379560e47c437d4d4ab2dcbe"
+    ),
 }
 #: §2 Frozen input receipt — frontend-часть (+ §4.3 `npm ci` только по lock).
 FRONTEND_RECEIPT = {
-    "frontend/package-lock.json": "c679604b25329bdbcf89f80017011a0c51c07e770e326865b093f63633097040",
-    "frontend/package.json": "65749f5180ea6fd1e2d99f35c103365f9188f7e2cabaef3db53e8f051eef2075",
+    "frontend/package-lock.json": (
+        "c679604b25329bdbcf89f80017011a0c51c07e770e326865b093f63633097040"
+    ),
+    "frontend/package.json": (
+        "65749f5180ea6fd1e2d99f35c103365f9188f7e2cabaef3db53e8f051eef2075"
+    ),
     "frontend/tsconfig.distributed.json": (
-        "ffbd41dbd28fa7157926be2da9750ef03f771b268b027bccbe9a963ba356267a"
+        "a3d3fb949642421af5563073f04658160534b04e78c3ebad895d4454eb487863"
     ),
 }
 #: §4.1 SHA-256 полного `python -m pip freeze` с завершающим переводом строки.
