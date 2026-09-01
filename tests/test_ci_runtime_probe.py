@@ -532,3 +532,39 @@ def test_frozen_receipt_matches_document() -> None:
     assert not unknown, f"probe сверяет входы, которых нет в §2: {sorted(unknown)}"
     for rel, digest in enforced.items():
         assert table[rel] == digest, f"{rel}: §2 и probe разошлись"
+
+
+def test_isolation_contract_is_fully_enforced() -> None:
+    """§3.2 перечисляет обязательные переменные — probe обязан требовать КАЖДУЮ.
+
+    CR-3 показала, чем оборачивается расхождение: AUDITMANAGER_DEPLOY_LOCK_DIR
+    добавили в контракт и записали находку закрытой, но в REQUIRED_ISOLATION_PATHS
+    она не попала. Переменную можно было удалить целиком, а check_runtime_isolation
+    возвращал OK — запись о закрытии существовала, enforcement нет. Тест сверяет
+    блок §3.2 с обоими кортежами probe, чтобы следующая добавленная переменная не
+    осталась декоративной.
+    """
+    doc = (ROOT / "docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md").read_text(
+        encoding="utf-8"
+    )
+    block = doc.split("### 3.2. Isolated runtime state", 1)[1].split("```text", 1)[1]
+    block = block.split("```", 1)[0]
+    declared = dict(
+        line.split("=", 1) for line in block.strip().splitlines() if "=" in line
+    )
+    assert declared, "блок §3.2 не разобрался — изменился формат"
+
+    enforced = set(probe.REQUIRED_ISOLATION_FLAGS) | set(probe.REQUIRED_ISOLATION_PATHS)
+    missing = set(declared) - enforced
+    assert not missing, f"§3.2 требует, а probe не проверяет: {sorted(missing)}"
+
+    # Путь против флага различается по форме значения: <run-root>/… — это путь.
+    for name, value in declared.items():
+        if value.startswith("<run-root>"):
+            assert name in probe.REQUIRED_ISOLATION_PATHS, (
+                f"{name} — путь в run-root, но проверяется как флаг"
+            )
+        else:
+            assert name in probe.REQUIRED_ISOLATION_FLAGS, (
+                f"{name} — флаг со значением, но проверяется как путь"
+            )

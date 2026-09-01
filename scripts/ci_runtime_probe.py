@@ -105,6 +105,10 @@ REQUIRED_ISOLATION_PATHS = (
     "AUDIT_PROJECTS_DIR",
     "AUDIT_OBJECTS_FILE",
     "AUDIT_ACTION_LOG_DIR",
+    # CR-3: добавлена в §3.2 вместе с остальными, но в этот кортеж не попала —
+    # переменную можно было удалить целиком, и проверка возвращала OK. Пока
+    # запись о закрытии CR-3 существовала, а enforcement — нет.
+    "AUDITMANAGER_DEPLOY_LOCK_DIR",
 )
 
 #: §2 Frozen input receipt — dependency-часть.
