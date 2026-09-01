@@ -2,8 +2,308 @@
 /**
  * Vue composition controller and reusable view components for the distributed UI.
  */
-(function initDistributedFeature(root) {
+
+/**
+ * Глобальный объект страницы вместе со свойствами, которых нет в стандартном
+ * `globalThis`: модули подключаются тегами <script> и общаются между собой
+ * через window. Без такого объявления `root.Vue` для проверки типов —
+ * индексация объекта без index signature.
+ *
+ * Тип объявлен на верхнем уровне файла намеренно: аннотация параметра
+ * разрешается во внешней области видимости, а не внутри тела функции.
+ * Значения объявлены как unknown: их кладут туда вендорный Vue и соседние
+ * скрипты, у которых объявлений типов нет вовсе. Форму каждого задаёт одно
+ * приведение в месте использования, а не догадка в каждой строке.
+ *
+ * @typedef {typeof globalThis & {
+ *     Vue?: unknown,
+ *     DistributedData?: unknown,
+ *     DistributedPage?: unknown,
+ *     DistributedFeature?: unknown,
+ * }} DistributedFeatureRoot
+ */
+
+(function initDistributedFeature(/** @type {DistributedFeatureRoot} */ root) {
     'use strict';
+
+    /**
+     * Формы данных, которые контроллер получает от адаптера — реального или
+     * демонстрационного — и показывает на экране.
+     *
+     * Это не копия внутренних типов distributed-service.js: объявления JSDoc
+     * не переносятся между скриптами, подключёнными тегами <script>, да и
+     * зависеть от всей формы ответа экрану незачем — только от полей, которые
+     * он читает. Необязательное поле означает ровно то, что написано: сервер
+     * вправе его не прислать, и код это учитывает.
+     */
+
+    /** @typedef {'claude'|'codex'} ProviderKey */
+
+    /**
+     * @typedef {Object} QuotaWindowView
+     * @property {string} [windowId]
+     * @property {string} [label]
+     * @property {number|null} [remainingPercent]
+     * @property {string|null} [resetIn]
+     */
+
+    /**
+     * @typedef {Object} QuotaView
+     * @property {number|null} [percentageRemaining]
+     * @property {string} [status]
+     * @property {string} [reason]
+     * @property {number|null} [ageSec]
+     * @property {QuotaWindowView[]} [windows]
+     * @property {string} [sourceStability]
+     * @property {string|null} [resetAt]
+     * @property {string|null} [resetIn]
+     * @property {boolean} [isEstimated]
+     * @property {boolean} [stale]
+     */
+
+    /**
+     * @typedef {Object} EventOutboxView
+     * @property {string} [status]
+     * @property {number} [lastWrittenSeq]
+     * @property {number} [lastAckedSeq]
+     * @property {number} [pending]
+     * @property {number} [attempts]
+     * @property {string|null} [lastAckAt]
+     */
+
+    /**
+     * @typedef {Object} ReleasesView
+     * @property {string|null} [centerRelease]
+     * @property {string|null} [gatewayRelease]
+     * @property {string} [status]
+     * @property {string|null} [reason]
+     */
+
+    /**
+     * @typedef {Object} DiagnosticView
+     * @property {string} workerId
+     * @property {string|null} [instanceId]
+     * @property {string|null} [transport]
+     * @property {string|null} [grpcStream]
+     * @property {string|null} [connectionId]
+     * @property {string|null} [mtls]
+     * @property {string|null} [heartbeat]
+     * @property {string|null} [gatewayTarget]
+     * @property {string|null} [gatewayTargetNote]
+     * @property {string|null} [sourceHost]
+     * @property {string|null} [resultHost]
+     * @property {string|null} [nginx]
+     * @property {string|null} [agentStatus]
+     * @property {string|null} [executorStatus]
+     * @property {EventOutboxView} [eventOutbox]
+     * @property {string|null} [resultAck]
+     * @property {string|null} [workerVersion]
+     * @property {string|null} [workerRelease]
+     * @property {ReleasesView} [releases]
+     * @property {string|null} [runtimeVersion]
+     * @property {string|null} [uptime]
+     * @property {string|null} [certExpiry]
+     */
+
+    /**
+     * @typedef {Object} DiagnosticRowView
+     * @property {string} [workerName]
+     * @property {boolean} [online]
+     * @property {DiagnosticView} diagnostic
+     */
+
+    /**
+     * @typedef {Object} TaskView
+     * @property {string} id
+     * @property {string} stage
+     * @property {string|null} [workerId]
+     * @property {string} [project]
+     * @property {string} [packageName]
+     * @property {string} [mode]
+     * @property {string} [status]
+     * @property {number|null} [progress]
+     * @property {number|null} [progressPercent]
+     * @property {string} [progressKind]
+     * @property {string} [duration]
+     * @property {string} [lastActivity]
+     * @property {string|null} [completedAtIso]
+     * @property {string|null} [errorMessage]
+     * @property {string|null} [technicalCode]
+     * @property {{at: string, text: string}[]} [events]
+     * @property {Record<string, string>} [modelUsage]
+     */
+
+    /**
+     * @typedef {Object} WorkerView
+     * @property {string} id
+     * @property {string} name
+     * @property {string} status
+     * @property {{claude: QuotaView, codex: QuotaView}} quotas
+     * @property {{used: number, total: number, occupiedSlots?: number, totalSlots?: number, physicalFreeSlots?: number}} slots
+     * @property {{cpu?: number|null, ram?: number|null, gpu?: number|null, vramUsedGb?: number|null, vramTotalGb?: number|null, disk?: number|null}} resources
+     * @property {DiagnosticView} diagnostic
+     * @property {TaskView[]} [currentTasks]
+     * @property {boolean} [acceptsNewTasks]
+     * @property {boolean} [quotaDataStale]
+     * @property {boolean} [readOnly]
+     * @property {string|null} [lastHeartbeat]
+     */
+
+    /**
+     * @typedef {Object} QueueItemView
+     * @property {string} id
+     * @property {string|null} priority
+     * @property {number} [position]
+     * @property {string} [project]
+     * @property {string} [packageName]
+     * @property {string} [mode]
+     * @property {string|null} [suggestedWorkerId]
+     * @property {string|null} [expectedStart]
+     * @property {string} [status]
+     * @property {number|null} [pageCount]
+     * @property {number|null} [blockCount]
+     */
+
+    /**
+     * @typedef {Object} ProjectView
+     * @property {string} id
+     * @property {string} [project]
+     * @property {string} [packageName]
+     * @property {string} [mode]
+     * @property {string|null} [assignment]
+     * @property {string} [status]
+     * @property {string|null} [priority]
+     * @property {number|null} [pageCount]
+     * @property {number|null} [blockCount]
+     * @property {number|null} [packageSizeBytes]
+     */
+
+    /**
+     * Рекомендация «что запустить следующим». Проект и узел объявлены
+     * обнуляемыми не для страховки: реальный бэкенд отдаёт `projectId: null`
+     * и `workerId: null`, пока планировщик выключен.
+     *
+     * @typedef {Object} RecommendationView
+     * @property {string|null} projectId
+     * @property {string|null} workerId
+     * @property {string[]} [reasons]
+     * @property {number} [freeSlots]
+     * @property {number|null} [gpu]
+     * @property {number|null} [claude]
+     * @property {number|null} [codex]
+     */
+
+    /**
+     * @typedef {Object} AttentionView
+     * @property {string} [id]
+     * @property {string|null} [workerId]
+     * @property {string} [taskId]
+     * @property {string} [title]
+     * @property {string} [description]
+     * @property {string} [severity]
+     */
+
+    /**
+     * @typedef {Object} LimitRowView
+     * @property {string} workerName
+     * @property {QuotaView} claude
+     * @property {QuotaView} codex
+     * @property {string} [workerId]
+     * @property {boolean} [online]
+     * @property {boolean} [stale]
+     */
+
+    /** @typedef {{active: TaskView[], completed: TaskView[], errors: TaskView[]}} TasksView */
+
+    /**
+     * @typedef {Object} OverviewView
+     * @property {WorkerView[]} workers
+     * @property {ProjectView[]} projects
+     * @property {RecommendationView|null} recommendation
+     * @property {QueueItemView[]} queuePreview
+     * @property {AttentionView[]} attention
+     * @property {Record<string, number>} [kpis]
+     */
+
+    /**
+     * @typedef {Object} SnapshotView
+     * @property {OverviewView} overview
+     * @property {WorkerView[]} workers
+     * @property {QueueItemView[]} queue
+     * @property {TasksView} tasks
+     * @property {LimitRowView[]} limits
+     * @property {DiagnosticRowView[]} diagnostics
+     */
+
+    /**
+     * Контракт адаптера данных: что экран вправе у него спросить. Реализаций
+     * две — реальная и демонстрационная, — и обе живут в
+     * distributed-service.js.
+     *
+     * @typedef {Object} DistributedService
+     * @property {string} mode
+     * @property {boolean} [readOnly]
+     * @property {() => Promise<SnapshotView>} [getSnapshot]
+     * @property {() => Promise<OverviewView>} getOverview
+     * @property {() => Promise<WorkerView[]>} getWorkers
+     * @property {() => Promise<QueueItemView[]>} getQueue
+     * @property {() => Promise<TasksView>} getTasks
+     * @property {() => Promise<LimitRowView[]>} getProviderLimits
+     * @property {() => Promise<DiagnosticRowView[]>} getDiagnostics
+     * @property {(projectId: string, workerId: string) => Promise<ProjectView>} assignTask
+     * @property {(projectId: string, workerId: string|null) => Promise<ProjectView>} sendTask
+     * @property {(queueItemId: string, priority: string) => Promise<unknown>} changePriority
+     * @property {(queueItemId: string, direction: 'first'|'up'|'down'|'last') => Promise<QueueItemView[]>} moveQueueItem
+     * @property {(workerId: string, acceptsNewTasks: boolean) => Promise<WorkerView>} setWorkerIntake
+     * @property {(taskId: string) => Promise<TaskView>} retryTask
+     * @property {(taskId: string, workerId: string) => Promise<TaskView>} transferTask
+     * @property {() => string} getSafeDiagnosticsText
+     */
+
+    /**
+     * Ровно та часть window.DistributedData, которой пользуется контроллер:
+     * фабрика адаптера по умолчанию. Полный контракт объявлен в
+     * distributed-service.js.
+     *
+     * @typedef {{createDefaultService: () => DistributedService}} DistributedDataFactory
+     */
+
+    /**
+     * Vue приходит вендорным глобальным скриптом (vue.global.prod.js), пакета
+     * с объявлениями типов в зависимостях нет. Описана та часть API, которой
+     * пользуется контроллер, — этого достаточно, чтобы значения внутри ref
+     * оставались типизированными.
+     *
+     * @template T
+     * @typedef {{value: T}} VueRef
+     */
+
+    /**
+     * @typedef {Object} VueRuntimeApi
+     * @property {<T>(value: T) => VueRef<T>} ref
+     * @property {<T>(getter: () => T) => {readonly value: T}} computed
+     * @property {<T extends object>(target: T) => T} reactive
+     */
+
+    /**
+     * Состояние модального окна — размеченное объединение по полю `type`:
+     * каждый обработчик проверяет тип и дальше видит ровно свой набор полей.
+     *
+     * @typedef {{type: 'send', project: ProjectView, workerId: string|null}
+     *     | {type: 'why', recommendation?: RecommendationView|null}
+     *     | {type: 'alternative', project?: ProjectView|null, workerId?: string|null}
+     *     | {type: 'queue-why', item: QueueItemView, worker: WorkerView|null}
+     *     | {type: 'transfer', task: TaskView}} ModalState
+     */
+
+    /** @typedef {{message: string, tone: 'success'|'warning'|'error'}} ToastState */
+
+    /**
+     * Область видимости геттеров карточки квоты: props, которые Vue кладёт в
+     * `this` во время выполнения.
+     *
+     * @typedef {{label?: string, quota: QuotaView|null|undefined, stale?: boolean}} QuotaBarScope
+     */
 
     const TAB_DEFINITIONS = Object.freeze([
         { key: 'overview', label: 'Обзор', path: '/distributed' },
@@ -36,24 +336,78 @@
         no_safe_supported_source: 'Claude Code не сообщает остаток лимита без обращения к модели, а локальных данных об использовании на воркере пока нет.',
     });
 
-    /** @param {any} quota */
+    /**
+     * Ярлык по коду. Отдельная функция нужна потому, что коды приходят
+     * снаружи: для проверки типов это произвольная строка, а не заранее
+     * известный ключ словаря. Неизвестный код даёт undefined — чем его
+     * заменить, решает вызывающий.
+     *
+     * @param {Readonly<Record<string, string>>} labels
+     * @param {string|null|undefined} code
+     * @returns {string|undefined}
+     */
+    function labelFor(labels, code) {
+        return code == null ? undefined : labels[code];
+    }
+
+    /**
+     * Проверка «это число, с которым можно считать». Отдельная функция нужна
+     * проверке типов: `Number.isFinite` делает ровно это, но тип не сужает, и
+     * сравнение после неё считается сравнением с null.
+     *
+     * @param {unknown} value
+     * @returns {value is number}
+     */
+    function isFiniteNumber(value) {
+        return typeof value === 'number' && Number.isFinite(value);
+    }
+
+    /**
+     * Текст ошибки действия для показа пользователю. В catch тип по-настоящему
+     * неизвестен: туда попадает и Error, и что угодно ещё, брошенное
+     * адаптером, — поэтому поле message читается приведением к форме «объект с
+     * message», а не утверждением о классе исключения. Поведение сохранено
+     * дословно, включая крайний случай `throw null`.
+     *
+     * @param {unknown} error
+     * @returns {string}
+     */
+    function errorText(error) {
+        const carrier = /** @type {{message?: unknown}} */ (error);
+        return String(carrier.message || error);
+    }
+
+    /**
+     * Остаток провайдера числом. Приведение здесь одно и объяснимо: строки уже
+     * отобраны по `Number.isFinite`, но для проверки типов фильтр
+     * доказательством не является. Во время выполнения не меняет ничего.
+     *
+     * @param {LimitRowView} row
+     * @param {ProviderKey} provider
+     * @returns {number}
+     */
+    function remainingPercent(row, provider) {
+        return /** @type {number} */ (row[provider].percentageRemaining);
+    }
+
+    /** @param {QuotaView|null|undefined} quota */
     function quotaReasonText(quota) {
         const code = quota && quota.reason;
-        return (code && QUOTA_REASON_TEXT[code]) || '';
+        return (code && labelFor(QUOTA_REASON_TEXT, code)) || '';
     }
 
     /** Возраст НАБЛЮДЕНИЯ. Не «когда мы посмотрели», а «когда это было верно».
-     * @param {any} quota */
+     * @param {QuotaView|null|undefined} quota */
     function quotaAgeText(quota) {
         const age = quota && quota.ageSec;
-        if (!Number.isFinite(age)) return '';
+        if (!isFiniteNumber(age)) return '';
         if (age < 90) return 'данные только что';
         if (age < 5400) return `данные ${Math.round(age / 60)} мин назад`;
         if (age < 172800) return `данные ${Math.round(age / 3600)} ч назад`;
         return `данные ${Math.round(age / 86400)} сут назад`;
     }
 
-    /** @param {any} quota */
+    /** @param {QuotaView|null|undefined} quota @returns {QuotaWindowView[]} */
     function quotaWindows(quota) {
         return (quota && Array.isArray(quota.windows)) ? quota.windows : [];
     }
@@ -68,7 +422,7 @@
 
     /** @param {number|null|undefined} value */
     function usageTone(value) {
-        if (!Number.isFinite(value)) return 'unavailable';
+        if (!isFiniteNumber(value)) return 'unavailable';
         if (value >= 90) return 'danger';
         if (value >= 70) return 'warning';
         return 'normal';
@@ -88,7 +442,7 @@
         return `${year}-${month}-${day}`;
     }
 
-    /** @param {any[]} rows @param {string} period @param {string=} customFrom @param {string=} customTo @param {Date=} anchor */
+    /** @param {TaskView[]|null|undefined} rows @param {string} period @param {string=} customFrom @param {string=} customTo @param {Date=} anchor */
     function filterCompletedTasks(rows, period, customFrom, customTo, anchor = new Date()) {
         const toDate = new Date(anchor.getTime());
         const fromDate = new Date(anchor.getTime());
@@ -108,11 +462,14 @@
         });
     }
 
-    /** @param {{service?:any}=} options */
+    /** @param {{service?: DistributedService}=} options */
     function createManager(options = {}) {
-        const VueRuntime = root.Vue;
+        const VueRuntime = /** @type {VueRuntimeApi} */ (root.Vue);
         const { ref, computed, reactive } = VueRuntime;
-        const service = options.service || root.DistributedData.createDefaultService();
+        // Адаптер данных лежит на window: distributed-service.js подключён к
+        // странице раньше. Приведение стоит здесь, чтобы дальше работать с
+        // объявленным контрактом, а не с unknown.
+        const service = options.service || /** @type {DistributedDataFactory} */ (root.DistributedData).createDefaultService();
         const isDemo = service.mode === 'mock';
         const readOnly = Boolean(service.readOnly);
         const today = new Date();
@@ -125,37 +482,57 @@
         const loading = ref(false);
         const loaded = ref(false);
         const error = ref('');
+        /** @type {VueRef<OverviewView|null>} */
         const overview = ref(null);
+        /** @type {VueRef<WorkerView[]>} */
         const workers = ref([]);
+        /** @type {VueRef<QueueItemView[]>} */
         const queue = ref([]);
+        /** @type {VueRef<TasksView>} */
         const tasks = ref({ active: [], completed: [], errors: [] });
+        /** @type {VueRef<LimitRowView[]>} */
         const limits = ref([]);
+        /** @type {VueRef<DiagnosticRowView[]>} */
         const diagnostics = ref([]);
+        /** @type {VueRef<Record<string, string>>} */
         const assignmentByProject = ref({});
+        /** @type {VueRef<TaskView|null>} */
         const selectedTask = ref(null);
+        /** @type {VueRef<WorkerView|null>} */
         const selectedWorker = ref(null);
+        /** @type {VueRef<DiagnosticRowView|null>} */
         const selectedDiagnostic = ref(null);
+        /** @type {VueRef<ModalState|null>} */
         const modal = ref(null);
         const transferWorkerId = ref('worker-mow-03');
+        /** @type {VueRef<ToastState|null>} */
         const toast = ref(null);
         let toastTimer = 0;
 
+        // Обзор читается в локальную переменную не ради краткости: тогда из
+        // непустой рекомендации видно, что и сам обзор непуст, — иначе это
+        // знание остаётся только в голове у читателя.
         const recommendationProject = computed(() => {
-            const recommendation = overview.value && overview.value.recommendation;
-            return recommendation && overview.value.projects.find((project) => project.id === recommendation.projectId);
+            const current = overview.value;
+            const recommendation = current && current.recommendation;
+            return recommendation && current.projects.find((project) => project.id === recommendation.projectId);
         });
         const recommendationWorker = computed(() => {
-            const recommendation = overview.value && overview.value.recommendation;
-            return recommendation && overview.value.workers.find((worker) => worker.id === recommendation.workerId);
+            const current = overview.value;
+            const recommendation = current && current.recommendation;
+            return recommendation && current.workers.find((worker) => worker.id === recommendation.workerId);
         });
         const limitsSummary = computed(() => {
             const online = limits.value.filter((item) => item.online);
+            /** @param {ProviderKey} provider */
             const withValue = (provider) => online.filter((item) => Number.isFinite(item[provider] && item[provider].percentageRemaining));
+            /** @param {ProviderKey} provider */
             const average = (provider) => {
                 const rows = withValue(provider);
-                return rows.length ? Math.round(rows.reduce((sum, item) => sum + item[provider].percentageRemaining, 0) / rows.length) : null;
+                return rows.length ? Math.round(rows.reduce((sum, item) => sum + remainingPercent(item, provider), 0) / rows.length) : null;
             };
-            const best = (provider) => [...withValue(provider)].sort((a, b) => b[provider].percentageRemaining - a[provider].percentageRemaining)[0] || null;
+            /** @param {ProviderKey} provider */
+            const best = (provider) => [...withValue(provider)].sort((a, b) => remainingPercent(b, provider) - remainingPercent(a, provider))[0] || null;
             const resetEntries = online.flatMap((item) => [
                 { provider: 'Claude', resetAt: item.claude.resetAt, resetIn: item.claude.resetIn, workerName: item.workerName },
                 { provider: 'Codex', resetAt: item.codex.resetAt, resetIn: item.codex.resetIn, workerName: item.workerName },
@@ -192,12 +569,17 @@
                 tasks.value = tasksData;
                 limits.value = limitsData;
                 diagnostics.value = diagnosticsData;
+                /** @type {Record<string, string>} */
                 const assignments = {};
                 for (const project of overviewData.projects || []) assignments[project.id] = project.assignment || 'auto';
                 assignmentByProject.value = assignments;
                 loaded.value = true;
             } catch (loadError) {
-                error.value = String(loadError && loadError.message ? loadError.message : loadError);
+                // Загрузка терпимее действий: falsy-значение исключения здесь
+                // превращается в текст, а не роняет обработчик. Сохранено как
+                // было — этим ветка и отличается от errorText().
+                const carrier = /** @type {{message?: unknown}|null|undefined} */ (loadError);
+                error.value = String(carrier && carrier.message ? carrier.message : loadError);
             } finally {
                 loading.value = false;
             }
@@ -223,19 +605,19 @@
             toastTimer = root.setTimeout(() => { toast.value = null; }, 3600);
         }
 
-        /** @param {string} workerId */
+        /** @param {string|null|undefined} workerId @returns {WorkerView|null} */
         function workerById(workerId) { return workers.value.find((worker) => worker.id === workerId) || null; }
-        /** @param {string} workerId */
+        /** @param {string|null|undefined} workerId */
         function workerName(workerId) { const worker = workerById(workerId); return worker ? worker.name : 'Автоматически'; }
-        /** @param {string} mode */
-        function modeLabel(mode) { return MODE_LABELS[mode] || mode; }
-        /** @param {string} priority */
-        function priorityLabel(priority) { return PRIORITY_LABELS[priority] || priority; }
-        /** @param {string} stage */
-        function stageLabel(stage) { return STAGE_LABELS[stage] || stage; }
+        /** @param {string|null|undefined} mode */
+        function modeLabel(mode) { return labelFor(MODE_LABELS, mode) || mode; }
+        /** @param {string|null|undefined} priority */
+        function priorityLabel(priority) { return labelFor(PRIORITY_LABELS, priority) || priority; }
+        /** @param {string|null|undefined} stage */
+        function stageLabel(stage) { return labelFor(STAGE_LABELS, stage) || stage; }
         /** @param {number|null|undefined} value */
         function progressStyle(value) { return { width: `${Number.isFinite(value) ? Math.min(100, Math.max(0, Number(value))) : 0}%` }; }
-        /** @param {any} task */
+        /** @param {TaskView|null|undefined} task */
         function progressText(task) {
             if (!task || !Number.isFinite(task.progressPercent)) return 'Прогресс недоступен';
             return `${task.progressKind === 'estimated' ? '≈ ' : ''}${task.progressPercent}%`;
@@ -243,7 +625,7 @@
         /** @param {number|null|undefined} value @param {string=} suffix */
         function metricText(value, suffix = '%') { return Number.isFinite(value) ? `${value}${suffix}` : 'Нет телеметрии'; }
         /** «Ещё не опрашивали» — это не «недоступен» и не «нет лимита».
-         *  @param {any} quota */
+         *  @param {QuotaView|null|undefined} quota */
         function quotaText(quota) {
             if (quota && quota.status === 'not_observed') return 'Ещё не опрошен';
             return quota && Number.isFinite(quota.percentageRemaining) ? `${quota.percentageRemaining}%` : 'Остаток недоступен';
@@ -254,18 +636,21 @@
         };
         /** Состояние журнала событий словом. `null` пользователю не показываем:
          *  он читается либо как ноль, либо как поломка.
-         *  @param {any} diagnostic */
+         *  @param {DiagnosticView|null|undefined} diagnostic */
         function outboxStatusText(diagnostic) {
+            /** @type {EventOutboxView} */
             const outbox = diagnostic && diagnostic.eventOutbox || {};
-            return OUTBOX_STATUS_LABELS[outbox.status] || OUTBOX_STATUS_LABELS.unavailable;
+            return labelFor(OUTBOX_STATUS_LABELS, outbox.status) || OUTBOX_STATUS_LABELS.unavailable;
         }
-        /** @param {any} diagnostic */
+        /** @param {DiagnosticView|null|undefined} diagnostic */
         function outboxAvailable(diagnostic) {
+            /** @type {EventOutboxView} */
             const outbox = diagnostic && diagnostic.eventOutbox || {};
             return [outbox.lastAckedSeq, outbox.lastWrittenSeq, outbox.pending].every(Number.isFinite);
         }
-        /** @param {any} diagnostic */
+        /** @param {DiagnosticView|null|undefined} diagnostic */
         function outboxText(diagnostic) {
+            /** @type {EventOutboxView} */
             const outbox = diagnostic && diagnostic.eventOutbox || {};
             return outboxAvailable(diagnostic)
                 ? `${outboxStatusText(diagnostic)} · последняя попытка ${outbox.lastAckedSeq}/${outbox.lastWrittenSeq}, ожидает всего ${outbox.pending}`
@@ -280,12 +665,12 @@
                 notify(`${project.project} → ${project.packageName}: выбрано ${target}`);
                 return true;
             } catch (actionError) {
-                notify(String(actionError.message || actionError), 'error');
+                notify(errorText(actionError), 'error');
                 return false;
             }
         }
 
-        /** @param {any} project @param {string=} explicitWorkerId */
+        /** @param {ProjectView} project @param {string=} explicitWorkerId */
         function openSend(project, explicitWorkerId) {
             const selected = explicitWorkerId || assignmentByProject.value[project.id] || project.assignment || 'auto';
             const resolved = selected === 'auto' && overview.value && overview.value.recommendation && overview.value.recommendation.projectId === project.id
@@ -302,15 +687,19 @@
                 const target = workerId === 'auto' ? 'с автоматическим назначением' : `на VPS ${workerName(workerId)}`;
                 notify(`${result.project} → ${result.packageName} добавлен ${isDemo ? 'в демо-очередь' : 'в очередь'} ${target}`);
                 await refresh();
-            } catch (actionError) { notify(String(actionError.message || actionError), 'error'); }
+            } catch (actionError) { notify(errorText(actionError), 'error'); }
         }
 
         function openWhy() { modal.value = { type: 'why', recommendation: overview.value && overview.value.recommendation }; }
         function openAlternative() { modal.value = { type: 'alternative', project: recommendationProject.value, workerId: recommendationWorker.value && recommendationWorker.value.id }; }
         async function applyAlternative() {
             if (!modal.value || modal.value.type !== 'alternative') return;
-            const chosenWorkerId = modal.value.workerId;
-            const project = modal.value.project;
+            // Модалку «другой узел» открывает только карточка рекомендации:
+            // к этому моменту и проект, и узел уже выбраны. Приведение это
+            // фиксирует и сохраняет прежнее поведение — без узла код падал и
+            // раньше, молчаливой заглушки здесь не появляется.
+            const chosenWorkerId = /** @type {string} */ (modal.value.workerId);
+            const project = /** @type {ProjectView} */ (modal.value.project);
             const changed = await setAssignment(project.id, chosenWorkerId);
             if (!changed) return;
             if (overview.value && overview.value.recommendation) {
@@ -334,37 +723,37 @@
             modal.value = null;
         }
 
-        /** @param {any} item */
+        /** @param {QueueItemView} item */
         function openQueueWhy(item) {
             const worker = workerById(item.suggestedWorkerId);
             modal.value = { type: 'queue-why', item, worker };
         }
 
-        /** @param {any} item @param {'first'|'up'|'down'|'last'} direction */
+        /** @param {QueueItemView} item @param {'first'|'up'|'down'|'last'} direction */
         async function moveQueue(item, direction) {
             try {
                 queue.value = await service.moveQueueItem(item.id, direction);
                 notify(`${item.project} → ${item.packageName}: позиция в очереди изменена`);
                 if (overview.value) overview.value.queuePreview = queue.value.slice(0, 5);
-            } catch (actionError) { notify(String(actionError.message || actionError), 'error'); }
+            } catch (actionError) { notify(errorText(actionError), 'error'); }
         }
 
-        /** @param {any} item @param {string} priority */
+        /** @param {QueueItemView} item @param {string} priority */
         async function changePriority(item, priority) {
             try {
                 await service.changePriority(item.id, priority);
                 item.priority = priority;
                 notify(`${item.project} → ${item.packageName}: приоритет — ${priorityLabel(priority)}`);
-            } catch (actionError) { notify(String(actionError.message || actionError), 'error'); }
+            } catch (actionError) { notify(errorText(actionError), 'error'); }
         }
 
-        /** @param {any} task */
+        /** @param {TaskView|null|undefined} task */
         function openTask(task) {
             if (!task) return;
             const fullTask = [...tasks.value.active, ...tasks.value.completed, ...tasks.value.errors].find((item) => item.id === task.id);
             selectedTask.value = fullTask || task;
         }
-        /** @param {string} taskId */
+        /** @param {string} taskId @returns {TaskView|null} */
         function taskById(taskId) { return [...tasks.value.active, ...tasks.value.completed, ...tasks.value.errors].find((item) => item.id === taskId) || null; }
         /** @param {string} taskId */
         function openAttentionTask(taskId) { openTask(taskById(taskId)); }
@@ -372,9 +761,9 @@
         function retryAttentionTask(taskId) { const task = taskById(taskId); if (task) retryTask(task); }
         /** @param {string} taskId */
         function transferAttentionTask(taskId) { const task = taskById(taskId); if (task) openTransfer(task); }
-        /** @param {any} worker */
+        /** @param {WorkerView|null} worker */
         function openWorker(worker) { selectedWorker.value = worker; }
-        /** @param {any} row */
+        /** @param {DiagnosticRowView|null} row */
         function openDiagnostic(row) { selectedDiagnostic.value = row; }
         function openWorkerDiagnostic() {
             if (!selectedWorker.value) return;
@@ -384,28 +773,32 @@
             if (row) selectedDiagnostic.value = row;
         }
 
-        /** @param {any} worker @param {boolean} accepts */
+        /** @param {WorkerView} worker @param {boolean} accepts */
         async function toggleWorkerIntake(worker, accepts) {
             try {
                 const updated = await service.setWorkerIntake(worker.id, accepts);
                 worker.acceptsNewTasks = updated.acceptsNewTasks;
                 notify(`VPS ${worker.name}: ${accepts ? 'приём новых задач включён' : 'новые назначения приостановлены'}`, accepts ? 'success' : 'warning');
-            } catch (actionError) { notify(String(actionError.message || actionError), 'error'); }
+            } catch (actionError) { notify(errorText(actionError), 'error'); }
         }
 
-        /** @param {any} task */
+        /** @param {TaskView} task */
         async function retryTask(task) {
             try {
                 const updated = await service.retryTask(task.id);
                 notify(`${updated.project} → ${updated.packageName}: повтор запущен${isDemo ? ' в демо-режиме' : ''}`);
                 selectedTask.value = null;
                 await refresh();
-            } catch (actionError) { notify(String(actionError.message || actionError), 'error'); }
+            } catch (actionError) { notify(errorText(actionError), 'error'); }
         }
 
-        /** @param {any} task */
+        /** @param {TaskView} task */
         function openTransfer(task) {
-            transferWorkerId.value = workers.value.find((worker) => worker.status !== 'offline' && worker.id !== task.workerId)?.id || task.workerId;
+            // Запасной вариант — узел самой задачи, а он может быть не
+            // назначен: бэкенд шлёт workerId: null для задач в очереди.
+            // Приведение сохраняет прежнее поведение, крайний случай описан
+            // в отчёте по W0-INT-01.
+            transferWorkerId.value = /** @type {string} */ (workers.value.find((worker) => worker.status !== 'offline' && worker.id !== task.workerId)?.id || task.workerId);
             modal.value = { type: 'transfer', task };
         }
 
@@ -417,10 +810,10 @@
                 selectedTask.value = null;
                 notify(`${updated.project} → ${updated.packageName} переносится на VPS ${workerName(transferWorkerId.value)}${isDemo ? ' (демо)' : ''}`);
                 await refresh();
-            } catch (actionError) { notify(String(actionError.message || actionError), 'error'); }
+            } catch (actionError) { notify(errorText(actionError), 'error'); }
         }
 
-        /** @param {any} task @param {string} stage */
+        /** @param {TaskView} task @param {string} stage */
         function taskStageState(task, stage) {
             if (task.stage === 'error') return stage === 'auditing' ? 'error' : 'pending';
             const currentIndex = TASK_STAGE_ORDER.indexOf(task.stage);
@@ -430,7 +823,7 @@
             return 'pending';
         }
 
-        /** @param {any} task @param {string} stage */
+        /** @param {TaskView} task @param {string} stage */
         function taskStageText(task, stage) {
             const state = taskStageState(task, stage);
             if (state === 'done') return '✓';
@@ -455,11 +848,14 @@
             } catch (_) { notify('Не удалось скопировать диагностику', 'error'); }
         }
 
-        /** @param {any} diagnostic */
+        /** @param {DiagnosticView|null|undefined} diagnostic */
         function diagnosticRows(diagnostic) {
             if (!diagnostic) return [];
+            /** @type {EventOutboxView} */
             const outbox = diagnostic.eventOutbox || {};
+            /** @type {ReleasesView} */
             const releases = diagnostic.releases || {};
+            /** @param {unknown} value */
             const show = (value) => value === null || value === undefined || value === '' ? 'Нет данных' : value;
             return [
                 ['worker_id', show(diagnostic.workerId)], ['instance_id', show(diagnostic.instanceId)], ['transport', show(diagnostic.transport)], ['grpc_stream', show(diagnostic.grpcStream)], ['connection_id', show(diagnostic.connectionId)], ['mTLS', show(diagnostic.mtls)], ['heartbeat', show(diagnostic.heartbeat)],
@@ -499,6 +895,7 @@
         });
     }
 
+    /** @param {{component: (name: string, definition: unknown) => unknown}} app */
     function registerComponents(app) {
         app.component('distributed-dispatcher-page', root.DistributedPage);
         app.component('distributed-quota-bar', {
@@ -507,6 +904,11 @@
                 // Окна лимита приходят отсортированными «самое ограничивающее
                 // первым», и главное число карточки относится именно к нему.
                 //
+                // `@this` в каждом геттере — не украшение: внутри литерала
+                // опций `this` для типизатора равен самому литералу, где
+                // никакого `quota` нет. Vue подставляет туда props в рантайме,
+                // и тип области видимости назван здесь ровно поэтому.
+                //
                 // Соседние computed читают `quotaWindows(this.quota)` заново, а
                 // не `this.windows`: внутри литерала опций `this` — обычный
                 // объект, и `this.windows` для типизатора равно самой функции,
@@ -514,15 +916,22 @@
                 // '() => any'`). Vue-обёртка над геттерами существует только в
                 // рантайме, tsc её не видит. Повторный вызов дешёв — это
                 // проверка типа и чтение поля.
+                /** @this {QuotaBarScope} */
                 windows() { return quotaWindows(this.quota); },
+                /** @this {QuotaBarScope} */
                 primaryWindow() { return quotaWindows(this.quota)[0] || null; },
+                /** @this {QuotaBarScope} */
                 otherWindows() { return quotaWindows(this.quota).slice(1); },
+                /** @this {QuotaBarScope} */
                 reasonText() { return quotaReasonText(this.quota); },
+                /** @this {QuotaBarScope} */
                 ageText() { return quotaAgeText(this.quota); },
+                /** @this {QuotaBarScope} */
                 undocumented() { return this.quota && this.quota.sourceStability === 'undocumented'; },
                 // Доказанный отказ провайдера: авторизация исправна, работать
                 // нельзя. Показывается вместо процента — числа тут нет и быть
                 // не может, а «Остаток недоступен» увело бы к поиску квоты.
+                /** @this {QuotaBarScope} */
                 entitlementBlocked() { return this.quota && this.quota.status === 'entitlement_blocked'; },
             },
             template: `
@@ -560,10 +969,14 @@
             props: { worker: Object, detailed: Boolean },
             emits: ['detail', 'toggle-intake', 'task'],
             methods: {
-                modeLabel(mode) { return MODE_LABELS[mode] || mode; },
-                stageLabel(stage) { return STAGE_LABELS[stage] || stage; },
+                /** @param {string|null|undefined} mode */
+                modeLabel(mode) { return labelFor(MODE_LABELS, mode) || mode; },
+                /** @param {string|null|undefined} stage */
+                stageLabel(stage) { return labelFor(STAGE_LABELS, stage) || stage; },
                 usageTone,
+                /** @param {number|null|undefined} value @param {string=} suffix */
                 metricText(value, suffix = '%') { return Number.isFinite(value) ? value + suffix : 'Нет телеметрии'; },
+                /** @param {TaskView} task */
                 progressText(task) { return !Number.isFinite(task.progressPercent) ? 'Прогресс недоступен' : (task.progressKind === 'estimated' ? '≈ ' : '') + task.progressPercent + '%'; },
             },
             template: `

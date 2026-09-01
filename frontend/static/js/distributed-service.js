@@ -6,7 +6,25 @@
  * AuditManager backend. MockDistributedService remains available exclusively
  * for an explicitly selected demo/test mode.
  */
-(function initDistributedData(root) {
+
+/**
+ * Глобальный объект страницы вместе со свойствами, которых нет в стандартном
+ * `globalThis`: модули подключаются тегами <script> и общаются между собой
+ * через window. Без такого объявления `root.DistributedData` для проверки
+ * типов — индексация объекта без index signature.
+ *
+ * Тип объявлен на верхнем уровне файла намеренно: аннотация параметра
+ * разрешается во внешней области видимости, а не внутри тела функции.
+ * Свойства необязательные, потому что в момент вызова их на объекте
+ * действительно ещё нет — этот модуль их и создаёт.
+ *
+ * @typedef {typeof globalThis & {
+ *     DistributedData?: unknown,
+ *     __DISTRIBUTED_UI_CONFIG__?: unknown,
+ * }} DistributedServiceRoot
+ */
+
+(function initDistributedData(/** @type {DistributedServiceRoot} */ root) {
     'use strict';
 
     /** @typedef {'full_codex'|'hybrid'|'distributed_audit'} AuditMode */
@@ -160,7 +178,37 @@
      * @property {number} codex
      */
 
-    /** @param {unknown} value */
+    /**
+     * @typedef {Object} DemoDataset
+     * @property {WorkerNode[]} workers
+     * @property {AuditProject[]} projects
+     * @property {AuditQueueItem[]} queue
+     * @property {{active:AuditTask[],completed:AuditTask[],errors:AuditTask[]}} tasks
+     * @property {Array<Record<string,unknown>>} attention
+     * @property {NextTaskRecommendation} recommendation
+     */
+
+    /**
+     * Явный выбор режима. Значения приходят снаружи — из аргумента, конфига
+     * страницы или строки запроса, — поэтому объявлены как unknown: код
+     * сравнивает их с конкретными строками, а не полагается на тип источника.
+     *
+     * @typedef {{mode?: unknown, mock?: unknown, demo?: unknown}} ModeOptions
+     */
+
+    /** @typedef {ModeOptions & {scenario?: 'loaded'|'empty'|'error', latency?: number}} MockServiceOptions */
+
+    /** @typedef {ModeOptions & {fetch?: typeof fetch, baseUrl?: string}} RealServiceOptions */
+
+    /**
+     * Копия через JSON: адаптер отдаёт наружу данные, которые вызывающий код
+     * вправе менять, не задевая внутреннее состояние. Тип сохраняется —
+     * копия той же формы, что и оригинал.
+     *
+     * @template T
+     * @param {T} value
+     * @returns {T}
+     */
     function clone(value) {
         return JSON.parse(JSON.stringify(value));
     }
@@ -172,7 +220,7 @@
         return 'ok';
     }
 
-    /** @returns {{workers:WorkerNode[],projects:AuditProject[],queue:AuditQueueItem[],tasks:{active:AuditTask[],completed:AuditTask[],errors:AuditTask[]},attention:Array<Record<string,unknown>>,recommendation:NextTaskRecommendation}} */
+    /** @returns {DemoDataset} */
     function createDemoDataset() {
         /** @type {WorkerNode[]} */
         const workers = [
@@ -368,7 +416,7 @@
     }
 
     class MockDistributedService {
-        /** @param {{scenario?:'loaded'|'empty'|'error',latency?:number}=} options */
+        /** @param {MockServiceOptions=} options */
         constructor(options = {}) {
             this.mode = 'mock';
             this.readOnly = false;
@@ -505,11 +553,15 @@
 
     const MANAGEMENT_UNAVAILABLE = 'Управление распределёнными заданиями появится на следующем этапе. Данные не изменены.';
 
-    /** @param {unknown} value */
+    /**
+     * @param {unknown} value
+     * @returns {value is Record<string, unknown>}
+     */
     function isObject(value) { return Boolean(value) && typeof value === 'object' && !Array.isArray(value); }
 
-    /** @param {string} text */
+    /** @param {string} text @returns {Record<string,string>} */
     function parseQuery(text) {
+        /** @type {Record<string,string>} */
         const result = {};
         const raw = String(text || '').replace(/^[?#]/, '');
         for (const part of raw.split('&')) {
@@ -524,14 +576,17 @@
         return result;
     }
 
-    /** @param {Record<string,unknown>=} options */
+    /** @param {ModeOptions=} options @returns {'mock'|'real'} */
     function explicitMode(options = {}) {
         if (options.mode === 'mock' || options.mode === 'demo' || options.mock === true || options.demo === true) return 'mock';
         if (options.mode === 'real') return 'real';
+        /** @type {Record<string, unknown>} */
         const config = isObject(root.__DISTRIBUTED_UI_CONFIG__) ? root.__DISTRIBUTED_UI_CONFIG__ : {};
         if (config.mode === 'mock' || config.mode === 'demo' || config.mock === true || config.demo === true) return 'mock';
         if (config.mode === 'real') return 'real';
-        /** @type {any} */
+        // Вне браузера (тесты, vm-контекст) объекта location может не быть
+        // вовсе, поэтому берётся только то, что этот разбор читает.
+        /** @type {{search?: string, hash?: string}} */
         const location = root.location || {};
         const search = parseQuery(location.search || '');
         const hashText = String(location.hash || '');
@@ -542,16 +597,29 @@
     }
 
     class RealDistributedService {
-        /** @param {{fetch?:Function,baseUrl?:string}=} options */
+        /** @param {RealServiceOptions=} options */
         constructor(options = {}) {
             this.mode = 'real';
             this.readOnly = true;
             this.baseUrl = String(options.baseUrl || '/api/workers/distributed').replace(/\/$/, '');
             this.fetchImpl = options.fetch || (typeof root.fetch === 'function' ? root.fetch.bind(root) : null);
+            // Диагностика для UI непрозрачна: адаптер её не разбирает, а
+            // отдаёт текстом «как пришло». Форму задаёт бэкенд, поэтому здесь
+            // честнее unknown, чем выдуманная структура.
+            /** @type {unknown[]} */
             this.safeDiagnostics = [];
         }
 
-        /** @param {string} path @returns {Promise<Record<string,any>>} */
+        /**
+         * Один GET к API центра с разбором ответа.
+         *
+         * Тело приходит из сети, поэтому его поля объявлены как unknown:
+         * форму каждого ответа проверяет вызывающий метод — Array.isArray или
+         * isObject, — а не вера в то, что бэкенд прислал ожидаемое.
+         *
+         * @param {string} path
+         * @returns {Promise<Record<string, unknown>>}
+         */
         async get(path) {
             if (!this.fetchImpl) throw new Error('Браузерный API fetch недоступен');
             let response;
@@ -562,7 +630,11 @@
                     headers: { Accept: 'application/json' },
                 });
             } catch (error) {
-                throw new Error(`AuditManager API недоступен: ${error && error.message ? error.message : error}`);
+                // В catch тип по-настоящему неизвестен: сюда попадает и Error,
+                // и что угодно ещё, брошенное реализацией fetch. Читаем поле
+                // message, не притворяясь, что знаем класс исключения.
+                const carrier = /** @type {{message?: unknown}|null|undefined} */ (error);
+                throw new Error(`AuditManager API недоступен: ${carrier && carrier.message ? carrier.message : error}`);
             }
             let body = null;
             try { body = await response.json(); } catch (_) { body = null; }
@@ -627,7 +699,7 @@
         getSafeDiagnosticsText() { return JSON.stringify(this.safeDiagnostics, null, 2); }
     }
 
-    /** @param {Record<string,unknown>=} options */
+    /** @param {MockServiceOptions & RealServiceOptions=} options */
     function createDefaultService(options = {}) {
         return explicitMode(options) === 'mock'
             ? new MockDistributedService(options)
@@ -635,7 +707,9 @@
     }
 
     root.DistributedData = Object.freeze({
+        /** @param {MockServiceOptions=} options */
         createMockService: (options) => new MockDistributedService(options),
+        /** @param {RealServiceOptions=} options */
         createRealService: (options) => new RealDistributedService(options),
         createDefaultService,
         explicitMode,
