@@ -4,7 +4,7 @@
   "wave": "0.0.02",
   "captured_at": "2026-09-01",
   "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6 по docs/architecture. Эта расписка фиксирует выполнение задачи, а не прохождение чекпоинта.",
-  "revision": "1",
+  "revision": "2 (2026-09-01, по ревью коммита 6c8ab009)",
   "scope": "Собрать подготовленные результаты ENG/WEB/OPS в воспроизводимый clean-room CI и вынести вердикт по переводу регресс-гейта из observe в enforce.",
   "step_1_architectural_admission": {
     "adr_accepted": [
@@ -260,7 +260,8 @@
       ],
       "what_is_enforced_now": "блокируют шаги окружения (установка по constraints, pip check, provisioning, uid != 0) и весь frontend gate; падения тестов в полосах наблюдаются",
       "chaos_stays_observe_only": true,
-      "recommendation": "ждать источник norms/vault и отдельно разобрать три теста network; порядок включения записан в конце .github/workflows/ci.yml"
+      "recommendation": "ждать источник norms/vault и отдельно разобрать три теста network; порядок включения записан в конце .github/workflows/ci.yml",
+      "blockers_unchanged_after_review": true
     }
   },
   "own_defects_found_and_fixed": [
@@ -310,5 +311,79 @@
       "not_fixed_here": "перевод конвейера на qr-v1 меняет продакшен-профиль стороннего VPS и требует прогона на самом VPS"
     }
   ],
-  "authorizes_next_cutover": false
+  "authorizes_next_cutover": false,
+  "review_fixes": {
+    "REV-25": {
+      "claim": "CI маскирует setup failure",
+      "reproduced": true,
+      "what_was_wrong": [
+        "`continue-on-error: true` стоял на всём шаге Lane и глушил четыре кода непригодного прогона: 2 (probe не пропустил lane), 3 (бюджет §7), 4 (негодный JUnit), 5 (пустая выборка)",
+        "`--enforce` не передавался, поэтому §6.2 оставляла точные пины, изоляцию §3.2 и dependency receipt advisory для unit/contract",
+        "PYTHON_VERSION был \"3.12\" — диапазон, а не пин; контракт требует 3.12.3",
+        "LC_ALL=C.UTF-8 не задавался вовсе, хотя REQUIRED_LOCALE_ENV его требует",
+        "python-job'ы не пинили Node/npm, а check_profile_pins в --enforce требует их независимо от полосы"
+      ],
+      "fix": "шаг разбирает код возврата: наблюдается только 1 (упали тесты), остальные красят job; --enforce передаётся в lanes и chaos; пины §3.1 заданы точно; setup-node добавлен во все три python-job'а",
+      "proven": "под root без профильного окружения раннер даёт код 2 и pytest не запускается; логика различения проверена на всех шести кодах",
+      "commit": "6f85954e"
+    },
+    "REV-26": {
+      "claim": "CR-3 объявлена закрытой, но probe её не проверяет",
+      "reproduced": "при полностью удалённой AUDITMANAGER_DEPLOY_LOCK_DIR check_runtime_isolation возвращал OK",
+      "fix": "переменная добавлена в REQUIRED_ISOLATION_PATHS; та же проверка теперь даёт ISOLATION_PATH_UNSET",
+      "root_cause_closed": "заведён test_isolation_contract_is_fully_enforced — разбирает блок §3.2 из контракта и требует, чтобы каждая объявленная переменная проверялась probe и с правильной стороны (путь против флага)",
+      "proven_on_revert": true,
+      "commit": "959512ac"
+    },
+    "REV-27": {
+      "claim": "ADR-статусы противоречат друг другу",
+      "reproduced": true,
+      "fix": "заголовки ADR-0006 и ADR-0018 приведены к реестру, поле «Утверждено» называет кто, когда и на каком основании",
+      "gate_recorded": "добавлен раздел «Что приёмка ADR НЕ разрешает»: приёмка — одно из ТРЁХ условий шага `contract` (ещё нужны ратификация ADR-0002 и закрытие D-1). ADR-0002 остаётся proposed, значит шаг `contract` НЕ начат и конвейер стоит на `baseline`. D-1 закрывается самой приёмкой в пользу src-layout — так записано в §4.7 ADR-0006",
+      "root_cause_closed": "заведён tests/test_adr_index_consistency.py: статус документа против реестра, каждый accepted обязан называть утвердившего, реестр и каталог adr/ обязаны покрывать друг друга",
+      "proven_on_revert": true,
+      "commit": "98d1630c"
+    },
+    "REV-28": {
+      "claim": "versioned contract изменён без новой версии",
+      "reproduced": true,
+      "fix": "версия поднята до 1.1.0 в заголовке контракта и в CONTRACT_VERSION обоих скриптов",
+      "why_minor_not_major": "§12 относит к несовместимым только ослабление lane/capability, перевод failure в skip, смену смысла baseline и смену framework либо удаление proof. Ни одного нет: изменения профиль ужесточают",
+      "why_minor_not_patch": "добавлен обязательный элемент §3.2, а не только обновлены версии",
+      "root_cause_closed": "заведён §12.1 «Журнал версий» с обоснованием каждой записи и test_contract_version_is_single_valued, сверяющий три места плюс согласованность мажора с contract id",
+      "proven_on_revert": true,
+      "commit": "c4dcec60"
+    },
+    "REV-29": {
+      "claim": "lane-разметка формально полна, но семантически не разобрана",
+      "reproduced_exactly": "335 конфликтов, 105 модулей на ручной разбор, 100 функций unit при integration/network побочках (75 + 25)",
+      "root_cause": "инструмент раздавал КАЖДОЙ ноде все признаки фикстур, helper-ов и уровня модуля. Проверено на test_prompt_without_section_does_not_become_eom: он не запрашивает ни одной фикстуры и зовёт две чистые функции, а получал unit → integration по уликам чужой фикстуры",
+      "second_defect": "MIXED_MARKERS (90 из 105) противоречил докстроке самого инструмента, которая называет смешение полос в модуле законным",
+      "tool_fixed": "признак адресуется определению; нода тянет только достижимое — своё тело, запрошенные фикстуры (транзитивно, autouse всем), вызванные helper-ы, импорт модуля лишь при реальном упоминании имени. В conflicts теперь улики самой ноды. MIXED_MARKERS удалён. TOOL_VERSION = 3",
+      "numbers": {
+        "conflicts_total": {
+          "before": 335,
+          "after": 1676
+        },
+        "understated_dangerous": {
+          "before": 236,
+          "after": 1
+        },
+        "overstated_safe": {
+          "before": 99,
+          "after": 1675
+        },
+        "modules_manual_review": {
+          "before": 105,
+          "after": 40
+        }
+      },
+      "why_total_grew": "прежний инструмент маскировал перетяжелённую разметку чужими уликами: тест под blanket pytestmark выглядел согласованным, потому что ему приписывали поведение соседей. Опасное направление упало с 236 до 1",
+      "the_single_understated_is_false": "test_ad_worker_opens_no_inbound_port: слово uvicorn лежит в списке ЗАПРЕЩЁННЫХ имён, которые тест ищет в чужом AST. Проверено чтением кода мной",
+      "no_chaos_overstatement": "проверено отдельно: ни один перетяжелённый маркер не равен chaos — это была единственная возможность молча потерять покрытие, потому что chaos исключён из прогона по умолчанию",
+      "invariant_held": "0 без маркера, 0 с двумя, сумма по полосам 6459 = 6459; распределение по полосам не сдвинулось (network +15 — это новые тесты инструмента)",
+      "disposition_document": "docs/architecture/LANE_DISPOSITION_W0-INT-01.md",
+      "verdict": "разметка полос НЕ является блокером enforce: опасное направление пусто. 1675 перетяжелённых зафиксированы как долг с владельцем и сроком, а не исправлены массовой правкой — 1449 из них идут в направлении «→ unit», самого слабого вывода инструмента, который не разбирает production-код"
+    }
+  }
 }
