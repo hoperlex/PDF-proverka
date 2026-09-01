@@ -86,6 +86,7 @@ async def test_pipeline_runs_real_stages_and_persists_snapshot(monkeypatch, tmp_
     assert len(list((section_dir / "history").glob("*.snapshot.json"))) == 1
 
 
+
 @pytest.mark.asyncio
 async def test_recalculation_keeps_serving_previous_persisted_snapshot(monkeypatch):
     previous = {"meta": {"section": "EOM", "generated_at": "old"}, "signals": []}
@@ -100,11 +101,7 @@ async def test_recalculation_keeps_serving_previous_persisted_snapshot(monkeypat
     assert state["serving_previous_snapshot"] is True
     assert pipeline.get_latest_snapshot("EOM", object_id="object-1") == previous
 
-    for _ in range(20):
-        await asyncio.sleep(0)
-        state = pipeline.get_pipeline_state("EOM", object_id="object-1")
-        if state["status"] == "ready_for_review":
-            break
+    state = await _wait_until_settled("EOM", "object-1")
     assert state["serving_previous_snapshot"] is False
     assert pipeline.get_latest_snapshot("EOM", object_id="object-1") == _snapshot()
 
@@ -116,11 +113,7 @@ async def test_graphics_stage_builds_plan_without_starting_model(monkeypatch):
     monkeypatch.setattr(pipeline, "synthesize_section_optimization_data", lambda normalized: _snapshot())
 
     pipeline.start_pipeline("EOM", object_id="object-1")
-    for _ in range(20):
-        await asyncio.sleep(0)
-        state = pipeline.get_pipeline_state("EOM", object_id="object-1")
-        if state["status"] == "ready_for_review":
-            break
+    await _wait_until_settled("EOM", "object-1")
 
     state = pipeline.request_graphics_plan("EOM", object_id="object-1")
     graphics = next(stage for stage in state["stages"] if stage["key"] == "graphics")
