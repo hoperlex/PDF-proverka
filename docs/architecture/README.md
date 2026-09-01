@@ -29,6 +29,9 @@
    внесённых первым ужесточением.
 13. [Разбор ревью R3](REVIEW_DISPOSITION_2026-08-27_R3.md) — пересчёт W0,
    contract review-batch и уточнение измеримости/security provisioning.
+14. [План version-среза 0.0.03](WAVE_0_0_03_PLAN.md) — закрытие двух оставшихся
+   blocker'ов `W0-INT-01`, порядок перехода observe-first → enforce и граница
+   между закрытием integration task и общим Gate G0.
 
 ## Презентации
 
