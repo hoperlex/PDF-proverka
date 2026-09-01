@@ -341,6 +341,29 @@ integration task волны.
 | `frontend/package.json`, `frontend/package-lock.json`, `frontend/tsconfig*.json` | W1-WEB-02 | зависимости и typecheck действующего фронтенда |
 | `frontend/static/js/app.js`, `frontend/index.html`, `backend/app/pipeline/manager.py` | задача волны, назначенная ENG или WEB | legacy-хотспоты; две задачи на один хотспот не запускаются |
 
+#### Ограниченное pre-G1 владение `W0-INT-01`
+
+Таблица выше закрепляет `pytest.ini`, `.github/workflows/**` и
+frontend-манифесты за задачами волны 1. Но собрать clean-room CI и перевести
+regression gate в enforce нужно ДО G1 — это и есть `W0-INT-01`, и без правки
+ровно этих файлов задача невыполнима. Роадмап требовал согласовать
+исключение здесь, а не обходить его молча.
+
+Поправка внесена, пока ADR имеет статус `proposed`: после принятия изменение
+оформлялось бы новым ADR, а не правкой задним числом (§9 Bible).
+
+| Файл | Владелец до G1 | Владелец после G1 | Граница исключения |
+| --- | --- | --- | --- |
+| `pytest.ini` | `W0-INT-01` | `W1-INT-00` | только регистрация lane markers и выборка по умолчанию; секции нового контура не создаются |
+| `requirements*.txt`, `constraints*.txt` | `W0-INT-01` | `W1-INT-00` (`pyproject.toml`) | материализация frozen dependency receipt §4.1 quality/runtime contract |
+| `.github/workflows/**` | `W0-INT-01` | `W1-OPS-02` | подключение probe, бюджетов, JUnit/receipt и enforce действующего гейта; job'ы нового контура не добавляются |
+| `frontend/tsconfig*.json` | `W0-INT-01` | `W1-WEB-02` | включение `strict` действующего typecheck; состав `include` не расширяется |
+| `frontend/package.json`, `frontend/package-lock.json` | `W1-WEB-02` | `W1-WEB-02` | **исключение НЕ распространяется**: смена зависимостей фронтенда остаётся за владельцем |
+
+Исключение прекращается автоматически с открытием соответствующей задачи
+волны 1. Оно не даёт права менять состав зависимостей фронтенда и не
+разрешает создавать skeleton нового контура — это по-прежнему `W1-INT-00`.
+
 ### 4.3. Правила зависимостей
 
 Правила пронумерованы, чтобы конфигурация checker и запись исключения

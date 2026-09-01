@@ -96,7 +96,20 @@ AUDIT_APP_DATA_DIR=<run-root>/app_data
 AUDIT_PROJECTS_DIR=<run-root>/projects
 AUDIT_OBJECTS_FILE=<run-root>/objects.json
 AUDIT_ACTION_LOG_DIR=<run-root>/action_log
+AUDITMANAGER_DEPLOY_LOCK_DIR=<run-root>/locks
 ```
+
+`AUDITMANAGER_DEPLOY_LOCK_DIR` добавлена по итогам clean-room репетиции
+`W0-OPS-03` (находка CR-3). Без неё `scripts/deploy_lock.py` уходит в жёстко
+зашитый машинный путь `/home/coder/auditmanager/locks`, лежащий ВНЕ
+репозитория и вне run-root. Под root он на машине разработчика доступен, и
+падений не видно; непривилегированный пользователь получает `PermissionError`,
+а на чистом раннере каталога не существует вовсе. Измерено: с этой
+переменной те же 59 тестов проходят целиком.
+
+Правило шире одного случая: изоляция обязана покрывать КАЖДЫЙ путь, который
+код берёт по умолчанию вне run-root. Умолчание, указывающее на машину, — не
+конфигурация, а скрытая зависимость от неё.
 
 `app_data` не является просто пустым каталогом: provision копирует туда
 allowlist tracked read-only assets из `backend/app/data`, но не машинные

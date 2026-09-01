@@ -1,6 +1,6 @@
 # Реестр архитектурных решений
 
-**Редакция:** 2026-08-28.<br>
+**Редакция:** 2026-09-01.<br>
 **Владелец нумерации:** technical lead/architecture owner.
 
 Номер ADR не переиспользуется. Принятое решение сохраняется в истории; замена
@@ -15,13 +15,13 @@
 | [ADR-0003](adr/ADR-0003-contracts-and-data-ownership.md) | accepted | contract-first, PostgreSQL/S3 ownership, outbox | при contract major v2 или смене source of truth |
 | [ADR-0004](adr/ADR-0004-nextjs-frontend.md) | accepted | Next.js/React/TypeScript и поэтапная миграция маршрутов | после первого сложного PDF/findings route |
 | [ADR-0005](adr/ADR-0005-parallel-delivery.md) | accepted | контрактные волны и file ownership для параллельной разработки | после двух волн, по lead time/conflicts |
-| [ADR-0006](adr/ADR-0006-target-repository-layout.md) | proposed | целевая раскладка репозитория, зоны владения и правила импортов | `W0-ARC-01` после `W0-DEC-01`; до W1-OPS-02 и W1-WEB-01 |
+| [ADR-0006](adr/ADR-0006-target-repository-layout.md) | accepted | целевая раскладка репозитория, зоны владения и правила импортов | после первого перенесённого модуля или при смене composition root |
 | [ADR-0013](adr/ADR-0013-llm-reproducibility-and-cost.md) | proposed | prompt/norm/model routing versioning, replay и cost policy | `W0-ADR-04`, до analysis writer |
 | [ADR-0014](adr/ADR-0014-data-classification-retention-and-erasure.md) | proposed | data classes, retention matrix и erasure workflow | `W0-ADR-05`, до storage canary |
 | [ADR-0015](adr/ADR-0015-program-execution-model.md) | proposed | staffed team или human integrator + agents; WIP/forecast | `W0-DEC-01` |
 | [ADR-0016](adr/ADR-0016-workspace-isolation.md) | proposed | shared checkout или hybrid worktrees | `W0-DEC-02` после `W0-WS-01` |
 | [ADR-0017](adr/ADR-0017-frontend-route-strangler-and-fsd.md) | proposed | typed slice → generated client → FSD route strangler | `W0-ADR-09`, до W1-WEB-04 |
-| [ADR-0018](adr/ADR-0018-domain-contract-v1.md) | proposed | domain contract v1: идентификаторы, состояния и ошибки | `W0-ARC-02`; до W1-META-01, W1-STO-01 и W1-API-01 |
+| [ADR-0018](adr/ADR-0018-domain-contract-v1.md) | accepted | domain contract v1: идентификаторы, состояния и ошибки | при contract major v2 или смене source of truth |
 
 Нормативные приложения ADR-0018 — [глоссарий](GLOSSARY.md) и
 [domain contract v1](DOMAIN_CONTRACT_V1.md) вместе с машиночитаемой формой
@@ -42,6 +42,25 @@
 
 `plan contract` — тип документа, а не отдельный ADR-статус. Для ADR допустимы
 только статусы из §9 Bible.
+
+## Записи приёмки
+
+Статус ADR и готовность файлов задачи — разные вещи: до явной записи здесь
+готовый документ остаётся `proposed` и не разрешает необратимый шаг. Поэтому
+приёмка фиксируется отдельной строкой с датой и тем, кто её принял.
+
+| Дата | ADR | Из | В | Кто принял | Основание |
+| --- | --- | --- | --- | --- | --- |
+| 2026-09-01 | ADR-0006 | proposed | accepted | владелец программы (Древний), в задании на волну `W0-INT-01` | `W0-ARC-01` выполнена; target layout и зоны владения нужны как frozen input интеграции |
+| 2026-09-01 | ADR-0018 | proposed | accepted | владелец программы (Древний), в задании на волну `W0-INT-01` | `W0-ARC-02` выполнена; domain contract v1 вместе с глоссарием и `contracts/domain/v1/**` получает нормативную силу |
+
+Поправка об ограниченном pre-G1 владении `W0-INT-01` внесена в ADR-0006 ДО
+перевода в `accepted`: после принятия такое изменение оформлялось бы новым
+ADR, а не правкой задним числом (§9 Bible).
+
+Приёмка этих двух ADR **не** снимает `proposed` с остальных: ADR-0002, 0013,
+0014, 0015, 0016 и 0017 остаются в прежнем статусе, и ограничения, которые из
+них следуют, продолжают действовать.
 
 ## Внешние нормативные входы
 
