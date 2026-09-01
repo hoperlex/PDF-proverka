@@ -383,11 +383,13 @@ def inspect_report(path: Path, started_wall: float) -> tuple[str, dict[str, Any]
 # ---------------------------------------------------------------------------
 
 
-def run_probe(lane: str, enforce: bool) -> dict[str, Any]:
+def run_probe(lane: str, enforce: bool, ci: bool = False) -> dict[str, Any]:
     """§6: probe выполняется ДО pytest. Его JSON даёт половину полей receipt."""
     cmd = [sys.executable, str(SCRIPTS / "ci_runtime_probe.py"), "--profile", lane, "--json"]
     if enforce:
         cmd.append("--enforce")
+    elif ci:
+        cmd.append("--ci")
     try:
         done = subprocess.run(  # noqa: S603
             cmd, capture_output=True, text=True, timeout=300, cwd=str(ROOT)
@@ -489,7 +491,7 @@ def run_lane(args: argparse.Namespace) -> dict[str, Any]:
 
     probe: dict[str, Any] = {}
     if not args.skip_probe:
-        probe = run_probe(lane, args.enforce)
+        probe = run_probe(lane, args.enforce, args.ci)
         if probe.get("__probe_error__") or probe.get("exit_code"):
             return _finish(
                 lane=lane, junit=junit, events=events, receipt_path=receipt_path,
@@ -877,7 +879,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--junit", help="путь JUnit (по умолчанию .ci/reports/<lane>.xml)")
     parser.add_argument("--receipt", help="путь JSON receipt")
     parser.add_argument("--skip-probe", action="store_true", help="не запускать capability probe")
-    parser.add_argument("--enforce", action="store_true", help="probe в enforce-профиле")
+    parser.add_argument("--enforce", action="store_true", help="probe в enforce-профиле (§3 + corpus §3.3)")
+    parser.add_argument("--ci", action="store_true", help="probe в режиме CI-полосы (§6 правило 1): без послаблений §6.2, corpus пока optional")
     parser.add_argument("--json", action="store_true", help="печатать receipt на stdout")
     parser.add_argument("extra", nargs="*", help="дополнительные аргументы pytest после --")
     return parser

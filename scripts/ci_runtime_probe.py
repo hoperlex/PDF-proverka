@@ -1396,13 +1396,26 @@ CHECKS: tuple[CheckSpec, ...] = (
 )
 
 
-def severity_for(spec: CheckSpec, lane: str, enforce: bool) -> str:
+def severity_for(spec: CheckSpec, lane: str, enforce: bool, ci: bool = False) -> str:
     """Насколько обязательна проверка для данного lane и режима.
 
-    Lane capabilities — строго по таблице §5. Профильные проверки §3 обязательны
-    в enforce всегда; вне enforce послабление §6.2 действует ТОЛЬКО для
-    `unit`/`contract` (и только там, где контракт его допускает: `uid != 0`).
-    Отсутствие norm corpus локально контракт называет optional явно (§3.3).
+    Контракт различает ДВЕ вещи, которые легко спутать в один флаг.
+
+    Первая — «это CI-полоса, а не машина разработчика». §6 правило 1: в явном
+    lane job отсутствие обязательной capability есть setup failure, и никаких
+    послаблений там нет. Послабление §6.2 адресовано именно ЛОКАЛЬНОМУ прогону
+    `unit`/`contract` на restricted машине.
+
+    Вторая — «это enforce profile». К нему §3.3 и §6 правило 4 привязывают ровно
+    один дополнительный вход: norm corpus. «Нет artifact — setup failure».
+
+    Раньше обе оси кодировались одним `enforce`, и CI без него получал профильные
+    проверки advisory: точные пины, изоляцию §3.2 и dependency receipt можно было
+    нарушить, не покраснев. Основанием тому был комментарий «их materialization
+    принадлежит W0-INT-01» — задача выполнена, основание отпало.
+
+    Поэтому `ci=True` означает: послаблений §6.2 нет, профильные проверки §3
+    обязательны, но corpus остаётся optional до перехода в enforce.
     """
     if not spec.profile_check:
         if spec.check_id in LANE_CAPABILITIES[lane]:
@@ -1410,12 +1423,14 @@ def severity_for(spec: CheckSpec, lane: str, enforce: bool) -> str:
         return SEVERITY_NOT_APPLICABLE
     if spec.always_required or enforce:
         return SEVERITY_REQUIRED
+    if ci:
+        # Единственное исключение: §3.3 привязывает corpus именно к enforce CI.
+        return SEVERITY_ADVISORY if spec.check_id == "norm_artifact" else SEVERITY_REQUIRED
     if spec.check_id == "user_non_root":
         # §6.2: локально restricted машина разрешена только unit/contract.
         return SEVERITY_ADVISORY if lane in LOCAL_RELAXED_LANES else SEVERITY_REQUIRED
-    # profile_pins / runtime_isolation / norm_artifact / receipts вне enforce —
-    # информативны: их materialization принадлежит W0-INT-01, а §3.3 прямо
-    # называет локальный corpus optional.
+    # Локальный прогон: §3.3 прямо называет corpus optional, остальное
+    # информативно.
     return SEVERITY_ADVISORY
 
 
@@ -1430,6 +1445,9 @@ class ProbeContext:
     enforce: bool
     timeout: float
     environment: dict[str, Any]
+    #: §6 правило 1 — прогон в CI-полосе; послаблений §6.2 нет. Отдельно от
+    #: `enforce`, к которому §3.3 привязывает norm corpus.
+    ci: bool = False
 
     @property
     def inner_timeout(self) -> float:
@@ -1469,17 +1487,17 @@ def collect_environment() -> dict[str, Any]:
     }
 
 
-def run_probe(lane: str, *, enforce: bool = False, timeout: float = 10.0) -> dict[str, Any]:
+def run_probe(lane: str, *, enforce: bool = False, ci: bool = False, timeout: float = 10.0) -> dict[str, Any]:
     """Выполнить preflight для одного lane и вернуть машиночитаемый отчёт."""
     if lane not in LANES:  # pragma: no cover — argparse ловит раньше
         raise ValueError(f"неизвестный lane: {lane!r}")
     started = time.time()
     started_mono = time.monotonic()
-    ctx = ProbeContext(lane=lane, enforce=enforce, timeout=timeout, environment=collect_environment())
+    ctx = ProbeContext(lane=lane, enforce=enforce, ci=ci, timeout=timeout, environment=collect_environment())
 
     results: list[CheckResult] = []
     for spec in CHECKS:
-        severity = severity_for(spec, lane, enforce)
+        severity = severity_for(spec, lane, enforce, ci)
         if severity == SEVERITY_NOT_APPLICABLE:
             results.append(
                 CheckResult(
@@ -1650,7 +1668,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--enforce",
         action="store_true",
-        help="enforce clean-room profile (§3): профильные проверки обязательны",
+        help="enforce clean-room profile (§3 + §3.3 norm corpus): обязательно всё",
+    )
+    parser.add_argument(
+        "--ci",
+        action="store_true",
+        help=(
+            "прогон в CI-полосе (§6 правило 1): послаблений §6.2 нет, профильные "
+            "проверки §3 обязательны; corpus остаётся optional до --enforce"
+        ),
     )
     parser.add_argument(
         "--timeout",
@@ -1666,7 +1692,7 @@ def main(argv: list[str] | None = None) -> int:
     if not math.isfinite(args.timeout) or args.timeout <= 0:
         print("[probe] --timeout должен быть конечным положительным числом", file=sys.stderr)
         return EXIT_USAGE
-    report = run_probe(args.profile, enforce=args.enforce, timeout=args.timeout)
+    report = run_probe(args.profile, enforce=args.enforce, ci=args.ci, timeout=args.timeout)
     if args.as_json:
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=False))
     else:

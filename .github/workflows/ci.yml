@@ -114,7 +114,7 @@ jobs:
           AUDITMANAGER_DEPLOY_LOCK_DIR: ${{ runner.temp }}/run-root/locks
         run: |
           set +e
-          python scripts/ci_test_lane.py --lane ${{ matrix.lane }} --use-lane-marker --enforce
+          python scripts/ci_test_lane.py --lane ${{ matrix.lane }} --use-lane-marker --ci
           rc=$?
           set -e
           # 0 — чисто, 1 — тесты упали (наблюдаем, пока baseline не расчищен).
@@ -284,7 +284,7 @@ jobs:
           AUDIT_OBJECTS_FILE: ${{ runner.temp }}/run-root/objects.json
           AUDIT_ACTION_LOG_DIR: ${{ runner.temp }}/run-root/action_log
           AUDITMANAGER_DEPLOY_LOCK_DIR: ${{ runner.temp }}/run-root/locks
-        run: python scripts/ci_test_lane.py --lane chaos --use-lane-marker --enforce
+        run: python scripts/ci_test_lane.py --lane chaos --use-lane-marker --ci
 
       - name: Выгрузить отчёты chaos
         if: always()
@@ -300,7 +300,9 @@ jobs:
 #   ✔ установка воспроизводима: один lock-профиль, `pip check` зелёный,
 #     `pip freeze` совпадает с frozen receipt §4.1;
 #   ✔ прогон не под root, изоляция состояния по §3.2 включая lock-каталог;
-#   ✔ capability probe выполняется ДО тестов, в режиме --enforce, и его отказ
+#   ✔ capability probe выполняется ДО тестов в режиме --ci (§6 правило 1: в
+#     CI-полосе послаблений §6.2 нет, профильные проверки §3 обязательны),
+#     и его отказ
 #     КРАСИТ job: наблюдается только код 1 (упали тесты), а 2/3/4/5 —
 #     непригодный прогон — пробрасываются наружу;
 #   ✔ пины §3.1 заданы точно: Python 3.12.3 (не 3.12), Node/npm во ВСЕХ
@@ -338,7 +340,11 @@ jobs:
 #   4. разобрать три теста полосы `network` с владельцем распределённого
 #      контура: причина — взаимное влияние при концентрации, а не гонка
 #      ожидания (`_wait` там корректный, со сроком 90 с);
-#   5. снять `continue-on-error: true` у шага «Регресс-гейт» И у шага
+#   5. заменить `--ci` на `--enforce` у шагов Lane и Chaos: §3.3 и §6
+#      правило 4 привязывают обязательность norm corpus именно к enforce,
+#      поэтому раньше появления источника это дало бы NORM_ARTIFACT_MISSING
+#      на каждом прогоне — измерено в чистой комнате;
+#   6. снять `continue-on-error: true` у шага «Регресс-гейт» И у шага
 #      «Lane <lane>» в job `lanes` — они висят на одном условии.
 #
 # Job `chaos` остаётся неблокирующим независимо от этого: его назначение —

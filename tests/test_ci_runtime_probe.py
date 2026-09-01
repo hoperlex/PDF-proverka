@@ -605,3 +605,39 @@ def test_contract_version_is_single_valued() -> None:
 
     # Журнал §12.1 обязан знать текущую версию, иначе bump никем не обоснован.
     assert f"| `{version}` |" in doc, f"в журнале §12.1 нет записи о версии {version}"
+
+
+def test_ci_mode_requires_profile_but_not_corpus() -> None:
+    """§6 правило 1 и §3.3 — разные оси, и probe обязан их различать.
+
+    REV-25: раннер звался без --enforce, и профильные проверки §3 были advisory:
+    точные пины, изоляцию §3.2 и dependency receipt можно было нарушить, не
+    покраснев. Но включить --enforce нельзя — §3.3 привязывает к нему norm
+    corpus, которого пока нет, и каждая полоса падала бы с NORM_ARTIFACT_MISSING.
+    Режим --ci закрывает разрыв: послаблений §6.2 нет, corpus остаётся optional.
+    """
+    profile_checks = [s for s in probe.CHECKS if s.profile_check]
+    assert profile_checks, "профильные проверки не нашлись — изменился формат"
+
+    for lane in ("unit", "contract", "integration", "network", "chaos"):
+        for spec in profile_checks:
+            local = probe.severity_for(spec, lane, False, False)
+            ci = probe.severity_for(spec, lane, False, True)
+            enforce = probe.severity_for(spec, lane, True, False)
+
+            assert enforce == probe.SEVERITY_REQUIRED, (
+                f"{spec.check_id}/{lane}: в enforce обязано быть required"
+            )
+            if spec.check_id == "norm_artifact":
+                assert ci == probe.SEVERITY_ADVISORY, (
+                    "corpus привязан к enforce (§3.3), в --ci он обязан остаться optional"
+                )
+            else:
+                assert ci == probe.SEVERITY_REQUIRED, (
+                    f"{spec.check_id}/{lane}: в CI-полосе послаблений §6.2 нет"
+                )
+            # --ci не может быть СЛАБЕЕ локального режима ни в одной проверке.
+            if local == probe.SEVERITY_REQUIRED:
+                assert ci == probe.SEVERITY_REQUIRED, (
+                    f"{spec.check_id}/{lane}: --ci ослабил то, что обязательно локально"
+                )
