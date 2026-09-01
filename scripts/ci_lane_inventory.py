@@ -85,6 +85,34 @@ contract ⊃ unit), поэтому модуль всегда попадает в
 5. `unit` — §5: «только память; часы/random через fake». Ни одного решающего
    признака выше не найдено.
 
+Чья это улика (приписывание признака ноде)
+------------------------------------------
+§5 требует маркер ПО НОДЕ, поэтому и сверять маркер надо с поведением НОДЫ, а не
+файла. Признак достаётся ноде, только если она до него дотягивается:
+
+* признак из тела теста — его собственный;
+* признак из фикстуры — только тем нодам, которые эту фикстуру ЗАПРОСИЛИ:
+  параметром функции, `@pytest.mark.usefixtures` (в т.ч. на классе и в
+  `pytestmark`) или транзитивно, через фикстуру, запросившую другую фикстуру.
+  Autouse-фикстура достаётся всем нодам своей области видимости — так работает
+  pytest, и это правильно;
+* признак helper-а (в этом же файле или в импортированном модуле тестов) —
+  только тем, кто этот helper зовёт;
+* признак уровня модуля (`import httpx` в шапке, константа `PROTO = "…proto"`)
+  сам по себе НЕ решает ничего: импорт — это возможность, а не поведение.
+  Он достаётся ноде, только если введённое им имя реально упомянуто в её теле,
+  в её фикстуре или в вызванном ею helper-е.
+
+До W0-OPS-03 части 3 приписывание было другим: любой признак фикстуры, helper-а
+или шапки доставался ВСЕМ нодам файла. Проверяемый промах —
+`tests/test_distributed_workers_central_handoff.py::
+test_prompt_without_section_does_not_become_eom`: тест без единой фикстуры,
+зовущий два чистых вычисления, получал `unit → integration` с уликами фикстуры
+`center_env` (строка 68) и `httpx.ASGITransport` (строка 194).
+
+Сводка `lanes` по-прежнему считается ПО МОДУЛЮ (максимум по файлу) и отвечает на
+другой вопрос — «что в этом файле вообще есть».
+
 Слабые признаки (`supporting`) в решение НЕ входят никогда: литерал
 `127.0.0.1`/`localhost` (в `tests/test_distributed_workers_hardening.py` это
 разбираемая строка, а не адрес соединения), `pytest.mark.asyncio` и голый
@@ -107,12 +135,18 @@ contract ⊃ unit), поэтому модуль всегда попадает в
 
 Границы метода (не лечатся никаким статическим анализом)
 --------------------------------------------------------
-* Сводка по lanes считается ПО МОДУЛЮ (максимум по файлу), а конфликт с
-  маркером — ПО НОДЕ: признак из тела теста принадлежит только ему, признак из
-  фикстуры/helper-а/модульного уровня — всем нодам файла. Что именно решило
-  lane ноды, статически не видно там, где фикстура применяется выборочно:
-  такой признак приписывается всем нодам модуля, то есть вывод завышает lane, а
-  не занижает.
+* Приписывание признака ноде (раздел выше) — статическое, поэтому огрубляет в
+  ОБЕ стороны, и обе стороны названы честно:
+  — вверх: связь «нода → helper» ищется по УПОМИНАНИЮ имени, а не по факту
+    вызова на исполняемом пути; класс тянет признаки всех своих методов;
+  — вниз: фикстуры из `conftest.py` не разбираются вовсе (см. оговорку ниже),
+    поэтому нода, чей lane создаёт conftest-фикстура, выглядит легче, чем есть.
+    Верхняя оценка по корню: у 77 конфликтных нод из 1661 есть запрошенное имя,
+    которого нет среди фикстур модуля и среди builtin-фикстур pytest. Настоящих
+    среди них меньше — часть этих имён аргументы `parametrize`, а не фикстуры.
+* Нода без единого решающего признака получает `unit`. Это самое слабое
+  утверждение инструмента: production-код не разбирается (см. ниже), поэтому
+  «признаков не нашлось» и «побочных эффектов нет» — не одно и то же.
 * `tests/conftest.py` на импорте копирует `backend/app/data` в песочницу
   (`_seed_app_data_sandbox`), а autouse-фикстуры трогают ФС у КАЖДОГО теста.
   Эти эффекты не подмешиваются в per-module вывод — иначе весь корень стал бы
@@ -152,7 +186,11 @@ ROOT = Path(__file__).resolve().parent.parent
 
 CONTRACT_DOC = "docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md"
 CONTRACT_SECTION = "§5"
-TOOL_VERSION = "2"
+#: Версия семантики отчёта. Поднята до "3" в W0-OPS-03 части 3: признак
+#: приписывается КОНКРЕТНОЙ ноде (фикстура — только запросившим, импорт — только
+#: упомянувшим, helper — только зовущим), поэтому `--evidence-sha256` того же
+#: дерева отличается от отпечатка версии "2" законно, а не из-за дрейфа тестов.
+TOOL_VERSION = "3"
 
 #: §5: пять primary lanes. Порядок = порядок каскада вывода (тяжёлые первыми).
 PRIMARY_LANES: tuple[str, ...] = ("chaos", "network", "integration", "contract", "unit")
@@ -192,6 +230,14 @@ SPAWN_CALLS: frozenset[str] = frozenset(
         "os.spawnv",
         "os.posix_spawn",
     }
+)
+#: §5 разрешает `contract`-тесту «bounded local compiler process» и прямо выдаёт
+#: ему capability «process spawn если test явно компилирует contract». Признак
+#: берётся ТОЛЬКО из аргументов самого вызова: так устроен
+#: `tests/test_agent_stream_protocol_v1.py:132` — `[sys.executable, "-m",
+#: "grpc_tools.protoc", …]`.
+CONTRACT_COMPILER_RE = re.compile(
+    r"\bprotoc\b|grpc_tools|\bmypy\b|openapi-generator|datamodel-code", re.IGNORECASE
 )
 #: Настоящие сокеты. Методы `bind/connect/...` учитываются отдельно и только
 #: если модуль импортировал `socket`: голый `.connect(` — это ещё и `sqlite3`.
@@ -350,7 +396,6 @@ MANUAL_REASONS: dict[str, str] = {
     "DYNAMIC_DISPATCH": "рядом с признаками есть динамический импорт/getattr — цель вызова не видна",
     "NO_TEST_FUNCTIONS": "в модуле не найдено ни одной test-функции",
     "PARSE_ERROR": "модуль не разобрался, lane неизвестен",
-    "MIXED_MARKERS": "в модуле проставлено несколько разных primary lane markers",
     "PRODUCTION_SIDE_IO": (
         "lane решён импортом первопартийного класса-сервера: сокет открывает "
         "production-код, из теста он не виден — вывод стоит подтвердить глазами"
@@ -386,6 +431,17 @@ class Evidence:
     #: означает «общий для модуля»: тело фикстуры, helper, импорт, тело класса.
     #: Разделение нужно, потому что §5 требует маркер ПО НОДЕ, а не по файлу.
     owner: str | None = None
+    #: Ключ определения верхнего уровня, в теле которого признак найден:
+    #: `"имя_функции"`, `"Класс"` или `"Класс::метод"`. `None` — уровень модуля
+    #: (импорт, константа). Признак достаётся ноде, только если это определение
+    #: достижимо из ноды: сама нода, запрошенная ею фикстура (в т.ч. транзитивно
+    #: и autouse) или вызванный из них helper.
+    scope: str | None = None
+    #: Имена, которые вводит в модуль признак уровня модуля (`import httpx` →
+    #: `("httpx",)`, `PROTO = "x.proto"` → `("PROTO",)`). Импорт — это
+    #: ВОЗМОЖНОСТЬ, а не поведение: такой признак достаётся ноде, только если имя
+    #: реально упомянуто в её теле, фикстуре или helper-е.
+    binds: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -413,9 +469,14 @@ class TestNode:
     orthogonal: tuple[str, ...]
     param_factor: int
     param_dynamic: bool
-    #: Lane, выведенный ДЛЯ ЭТОЙ ноды: общие признаки модуля плюс признаки из
-    #: её собственного тела. Заполняется после разбора, в `analyse_module`.
+    #: Lane, выведенный ДЛЯ ЭТОЙ ноды: признаки её тела плюс признаки тех
+    #: фикстур и helper-ов, до которых нода реально дотягивается. Заполняется
+    #: после разбора, в `analyse_module`.
     inferred_lane: str = LANE_UNKNOWN
+    #: Ключ определения ноды (`"test_x"` или `"TestGroup::test_x"`).
+    scope_key: str = ""
+    #: Признаки, решившие lane ИМЕННО ЭТОЙ ноды (не всего файла).
+    decided_by: list[Evidence] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -431,6 +492,23 @@ class TestNode:
 
 
 @dataclass
+class Scope:
+    """Определение верхнего уровня: тест, фикстура, helper или класс.
+
+    Единица, к которой привязывается признак. `used` — все имена и атрибуты,
+    упомянутые внутри (по ним видно, какой helper зовут и какой импорт реально
+    используют); `requests` — запрошенные фикстуры (параметры функции и
+    `usefixtures`).
+    """
+
+    key: str
+    kind: str  # test | fixture | helper | class
+    lineno: int
+    used: set[str] = field(default_factory=set)
+    requests: set[str] = field(default_factory=set)
+
+
+@dataclass
 class ScanResult:
     """Сырой результат разбора одного файла (до вывода lane)."""
 
@@ -442,6 +520,52 @@ class ScanResult:
     patched_apis: set[str] = field(default_factory=set)
     dynamic_dispatch: bool = False
     parse_error: str | None = None
+    #: Определения верхнего уровня по ключу (см. `Scope`).
+    scopes: dict[str, Scope] = field(default_factory=dict)
+    #: Имя фикстуры → ключ её определения (учитывает `@pytest.fixture(name=...)`).
+    fixtures: dict[str, str] = field(default_factory=dict)
+    #: Ключи autouse-фикстур: они достаются КАЖДОЙ ноде своей области видимости.
+    autouse_fixtures: set[str] = field(default_factory=set)
+    #: `usefixtures` уровня модуля — тоже достаётся каждой ноде.
+    module_requests: set[str] = field(default_factory=set)
+    #: `from tests.helpers import *`: имена helper-а становятся видны напрямую,
+    #: адресно проследить их использование нельзя.
+    star_imports: set[str] = field(default_factory=set)
+
+
+def _compiler_argument(node: ast.Call) -> str | None:
+    """Токен компилятора контракта среди литеральных аргументов вызова."""
+    for argument in ast.walk(node):
+        if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+            found = CONTRACT_COMPILER_RE.search(argument.value)
+            if found:
+                return argument.value[:40]
+    return None
+
+
+def _contract_side_effects_are_allowed(node: TestNode) -> bool:
+    """§5 дословно разрешает `contract`-тесту «temp files и bounded local
+    compiler process».
+
+    Каскад ставит `contract` ВЫШЕ шага «только запись в ФС» именно поэтому.
+    Пока признак contract-артефакта доставался всем нодам файла, вопрос не
+    возникал; после перехода на приписывание по ноде тест, который пишет
+    временные файлы (или зовёт `grpc_tools.protoc`) и сам ничего из
+    `contracts/**` не трогает, стал выглядеть как `integration`/`network`.
+    Маркер `contract` он этим НЕ нарушает — §5 оба side effect разрешил и для
+    второго прямо выдал capability «process spawn если test явно компилирует
+    contract», поэтому расхождением это не считается.
+    """
+    if node.primary[:1] != ("contract",) or not node.decided_by:
+        return False
+    if node.inferred_lane == "integration":
+        return all(e.kind in FS_KINDS for e in node.decided_by)
+    if node.inferred_lane == "network":
+        return all(
+            e.kind == "process_spawn" and CONTRACT_COMPILER_RE.search(e.detail)
+            for e in node.decided_by
+        )
+    return False
 
 
 @dataclass
@@ -481,7 +605,14 @@ class ModuleReport:
         Сравнение идёт с lane САМОЙ НОДЫ, а не всего файла: один модуль
         законно смешивает lanes (в `tests/test_distributed_workers_executor.py`
         часть тестов убивает и поднимает исполнителя, часть — нет), и сверка с
-        максимумом по файлу выдавала бы конфликт там, где его нет.
+        максимумом по файлу выдавала бы конфликт там, где его нет. Именно
+        поэтому смешение полос в файле само по себе НЕ повод для ручного
+        разбора: риск живёт на уровне ноды и ловится здесь.
+
+        Направление расхождения (`direction` в отчёте) означает разное:
+        маркер легче поведения — тест поедет в лёгкой полосе и сломает её
+        бюджет §7; маркер тяжелее — тест едет дороже, чем нужно, чаще всего
+        из-за `pytestmark`, накрывшего файл целиком.
         """
         return [
             n
@@ -489,6 +620,7 @@ class ModuleReport:
             if len(set(n.primary)) == 1
             and n.inferred_lane != LANE_UNKNOWN
             and n.primary[0] != n.inferred_lane
+            and not _contract_side_effects_are_allowed(n)
         ]
 
     @property
@@ -583,6 +715,76 @@ def _parametrize_factor(decorator: ast.AST) -> tuple[int, bool]:
     return 1, True
 
 
+def _assign_targets(targets: Iterable[ast.AST]) -> set[str]:
+    """Имена, которым присваивается значение (включая распаковку кортежа)."""
+    names: set[str] = set()
+    for target in targets:
+        for sub in ast.walk(target):
+            if isinstance(sub, ast.Name):
+                names.add(sub.id)
+    return names
+
+
+def _usefixtures_names(decorators: Iterable[ast.AST]) -> set[str]:
+    """Имена из `@pytest.mark.usefixtures("a", "b")`.
+
+    §5 требует маркер по ноде, а `usefixtures` — второй (после параметра
+    функции) законный способ ноды запросить фикстуру, поэтому его признаки
+    достаются ей так же, как признаки параметра.
+    """
+    names: set[str] = set()
+    for decorator in decorators:
+        if not isinstance(decorator, ast.Call):
+            continue
+        if _marker_name(decorator) != "usefixtures":
+            continue
+        for argument in decorator.args:
+            if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+                names.add(argument.value)
+    return names
+
+
+def _parameter_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    """Параметры функции — то, что pytest подставит фикстурами."""
+    args = node.args
+    names = {
+        a.arg
+        for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)
+        if a.arg not in {"self", "cls"}
+    }
+    return names
+
+
+def _fixture_decorator(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> tuple[str | None, bool]:
+    """`(имя фикстуры, autouse)` или `(None, False)`, если это не фикстура.
+
+    Понимает `@pytest.fixture`, `@pytest.fixture(...)`, голый `@fixture` и
+    `@pytest_asyncio.fixture`, а также переименование `name=`.
+    """
+    for decorator in node.decorator_list:
+        call = decorator if isinstance(decorator, ast.Call) else None
+        target = call.func if call is not None else decorator
+        dotted = _dotted(target) or ""
+        tail = dotted.rsplit(".", 1)[-1]
+        if tail not in {"fixture", "yield_fixture"}:
+            continue
+        name = node.name
+        autouse = False
+        if call is not None:
+            for keyword in call.keywords:
+                if keyword.arg == "name" and isinstance(keyword.value, ast.Constant):
+                    if isinstance(keyword.value.value, str):
+                        name = keyword.value.value
+                elif keyword.arg == "autouse":
+                    autouse = bool(
+                        isinstance(keyword.value, ast.Constant) and keyword.value.value
+                    )
+        return name, autouse
+    return None, False
+
+
 class _ModuleScanner(ast.NodeVisitor):
     """Сбор признаков и маркеров одного файла.
 
@@ -604,11 +806,62 @@ class _ModuleScanner(ast.NodeVisitor):
         self.kill_sites: list[tuple[Evidence, str, int]] = []
         self.respawn_sites: list[tuple[str, int]] = []
         self._class_markers: list[list[str]] = []
+        self._class_requests: list[set[str]] = []
+        #: Путь определений (имя, "class"|"func") — из него строится ключ scope.
+        self._path: list[tuple[str, str]] = []
+        #: Имена, которым присваивается разбираемое сейчас выражение уровня
+        #: модуля: `PROTO = "contracts/x.proto"` привязывает признак к `PROTO`.
+        self._binds: tuple[str, ...] = ()
 
     # -- служебное ----------------------------------------------------------
     @property
     def _func_key(self) -> str:
         return "::".join(self._class_stack + self._func_stack) or "<module>"
+
+    @property
+    def _scope_key(self) -> str | None:
+        """Ключ ближайшего определения верхнего уровня.
+
+        Путь обрезается на ПЕРВОЙ функции: тело вложенной функции принадлежит
+        тому же определению, что и её родитель (`helper` внутри фикстуры —
+        часть фикстуры). `None` — уровень модуля.
+        """
+        parts: list[str] = []
+        for name, kind in self._path:
+            parts.append(name)
+            if kind == "func":
+                break
+        return "::".join(parts) if parts else None
+
+    def _ensure_scope(self, key: str, kind: str, lineno: int) -> Scope:
+        scope = self.result.scopes.get(key)
+        if scope is None:
+            scope = Scope(key=key, kind=kind, lineno=lineno)
+            self.result.scopes[key] = scope
+        elif kind != "helper" and scope.kind == "helper":
+            scope.kind = kind
+        return scope
+
+    def _note_symbol(self, name: str) -> None:
+        """Запомнить упоминание имени в текущем определении.
+
+        Так становится видно, какой helper нода зовёт и каким импортом она
+        реально пользуется (правила 2 и 3 приписывания улик).
+        """
+        key = self._scope_key
+        if key is None:
+            return
+        scope = self.result.scopes.get(key)
+        if scope is not None:
+            scope.used.add(name)
+
+    def visit_Name(self, node: ast.Name) -> None:
+        self._note_symbol(node.id)
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        self._note_symbol(node.attr)
+        self.generic_visit(node)
 
     @property
     def _in_teardown(self) -> bool:
@@ -623,14 +876,30 @@ class _ModuleScanner(ast.NodeVisitor):
         return False
 
     def _add(
-        self, lane: str, kind: str, node: ast.AST, detail: str, *, deciding: bool = True
+        self,
+        lane: str,
+        kind: str,
+        node: ast.AST,
+        detail: str,
+        *,
+        deciding: bool = True,
+        binds: tuple[str, ...] | None = None,
     ) -> Evidence:
         owner = self._func_stack[0] if self._func_stack else None
         if owner is not None and not owner.startswith("test"):
-            # Признак из фикстуры/helper-а достаётся всем нодам модуля.
+            # `owner` — только имя test-функции (совместимость поля в JSON);
+            # адресация признака идёт по `scope`.
             owner = None
+        scope = self._scope_key
         evidence = Evidence(
-            lane, kind, getattr(node, "lineno", 0), detail, deciding, owner=owner
+            lane,
+            kind,
+            getattr(node, "lineno", 0),
+            detail,
+            deciding,
+            owner=owner,
+            scope=scope,
+            binds=(binds if binds is not None else (() if scope else self._binds)),
         )
         self.result.evidence.append(evidence)
         return evidence
@@ -639,17 +908,28 @@ class _ModuleScanner(ast.NodeVisitor):
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
             self.result.imports.add(alias.name.split(".")[0])
-            self._note_import(alias.name, node)
+            bound = alias.asname or alias.name.split(".")[0]
+            self._note_symbol(bound)
+            self._note_import(alias.name, node, (bound,))
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         module = node.module or ""
         head = module.split(".")[0]
+        bound = tuple(
+            alias.asname or alias.name for alias in node.names if alias.name != "*"
+        )
+        for name in bound:
+            self._note_symbol(name)
         if head in FIRST_PARTY_PACKAGES:
             for alias in node.names:
                 if FIRST_PARTY_SERVER_RE.search(alias.name):
                     self._add(
-                        "network", "first_party_server", node, f"{module}.{alias.name}"
+                        "network",
+                        "first_party_server",
+                        node,
+                        f"{module}.{alias.name}",
+                        binds=(alias.asname or alias.name,),
                     )
         if node.level:
             # Относительный импорт внутри тестового пакета; уровень учитывается
@@ -657,15 +937,21 @@ class _ModuleScanner(ast.NodeVisitor):
             module = "." * node.level + module
         if module:
             self.result.imports.add(module.split(".")[0])
-            self._note_import(module, node)
+            if any(alias.name == "*" for alias in node.names):
+                self.result.star_imports.add(module)
+            self._note_import(module, node, bound)
         self.generic_visit(node)
 
-    def _note_import(self, module: str, node: ast.AST) -> None:
+    def _note_import(
+        self, module: str, node: ast.AST, binds: tuple[str, ...] = ()
+    ) -> None:
         head = module.split(".")[0]
         if head in CONTRACT_PACKAGES:
-            self._add("contract", "import_contracts", node, f"import {module}")
+            self._add(
+                "contract", "import_contracts", node, f"import {module}", binds=binds
+            )
         if head == "uvicorn" or UVICORN_RE.search(module):
-            self._add("network", "uvicorn", node, f"import {module}")
+            self._add("network", "uvicorn", node, f"import {module}", binds=binds)
         if module.startswith("tests") or module.startswith("backend.tests") or module.startswith("."):
             self.result.local_test_imports.add(module)
 
@@ -673,11 +959,30 @@ class _ModuleScanner(ast.NodeVisitor):
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         markers = [m for m in (_marker_name(d) for d in node.decorator_list) if m]
         markers.extend(self._class_pytestmark(node))
+        requests = _usefixtures_names(node.decorator_list)
+        requests |= self._class_pytestmark_fixtures(node)
         self._class_stack.append(node.name)
         self._class_markers.append(markers)
+        self._class_requests.append(requests)
+        self._path.append((node.name, "class"))
+        key = self._scope_key
+        if key is not None and not self._func_stack:
+            self._ensure_scope(key, "class", node.lineno).requests |= requests
         self.generic_visit(node)
+        self._path.pop()
+        self._class_requests.pop()
         self._class_markers.pop()
         self._class_stack.pop()
+
+    @staticmethod
+    def _class_pytestmark_fixtures(node: ast.ClassDef) -> set[str]:
+        found: set[str] = set()
+        for stmt in node.body:
+            if isinstance(stmt, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == "pytestmark" for t in stmt.targets
+            ):
+                found |= _usefixtures_names(list(_iter_marker_nodes(stmt.value)))
+        return found
 
     @staticmethod
     def _class_pytestmark(node: ast.ClassDef) -> list[str]:
@@ -699,9 +1004,27 @@ class _ModuleScanner(ast.NodeVisitor):
         self._handle_function(node)
 
     def _handle_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        nested = bool(self._func_stack)
         is_test = node.name.startswith("test") and (
-            not self._func_stack  # вложенные функции нодами не являются
+            not nested  # вложенные функции нодами не являются
         )
+        fixture_name, autouse = (None, False) if nested else _fixture_decorator(node)
+        self._path.append((node.name, "func"))
+        scope_key = self._scope_key or node.name
+        if not nested:
+            kind = "fixture" if fixture_name else ("test" if is_test else "helper")
+            scope = self._ensure_scope(scope_key, kind, node.lineno)
+            scope.requests |= _usefixtures_names(node.decorator_list)
+            for level in self._class_requests:
+                scope.requests |= level
+            if kind in {"test", "fixture"}:
+                # Параметры теста/фикстуры — это запрос фикстур. У helper-а
+                # параметры фикстурами не являются, поэтому их не берём.
+                scope.requests |= _parameter_names(node)
+            if fixture_name:
+                self.result.fixtures.setdefault(fixture_name, scope_key)
+                if autouse:
+                    self.result.autouse_fixtures.add(scope_key)
         if is_test:
             markers = [m for m in (_marker_name(d) for d in node.decorator_list) if m]
             for level in self._class_markers:
@@ -724,21 +1047,45 @@ class _ModuleScanner(ast.NodeVisitor):
                     orthogonal=orthogonal,
                     param_factor=factor,
                     param_dynamic=dynamic,
+                    scope_key=scope_key,
                 )
             )
         self._func_stack.append(node.name)
         self.generic_visit(node)
         self._func_stack.pop()
+        self._path.pop()
 
     def visit_Assign(self, node: ast.Assign) -> None:
-        if not self._func_stack and not self._class_stack:
+        module_level = not self._func_stack and not self._class_stack
+        if module_level:
             for target in node.targets:
                 if isinstance(target, ast.Name) and target.id == "pytestmark":
                     for element in _iter_marker_nodes(node.value):
                         name = _marker_name(element)
                         if name:
                             self.result.module_markers.append(name)
+                    self.result.module_requests |= _usefixtures_names(
+                        list(_iter_marker_nodes(node.value))
+                    )
+        if not module_level:
+            self.generic_visit(node)
+            return
+        # Константа уровня модуля привязывает свои признаки к своему имени:
+        # `PROTO = "contracts/x.proto"` — возможность, а не поведение, пока
+        # какая-нибудь нода не упомянет `PROTO`.
+        previous = self._binds
+        self._binds = tuple(_assign_targets(node.targets))
         self.generic_visit(node)
+        self._binds = previous
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if self._func_stack or self._class_stack:
+            self.generic_visit(node)
+            return
+        previous = self._binds
+        self._binds = tuple(_assign_targets([node.target]))
+        self.generic_visit(node)
+        self._binds = previous
 
     # -- поток управления ---------------------------------------------------
     def visit_Try(self, node: ast.Try) -> None:
@@ -785,7 +1132,13 @@ class _ModuleScanner(ast.NodeVisitor):
 
         # --- процессы -------------------------------------------------------
         if full in SPAWN_CALLS:
-            self._add("network", "process_spawn", node, full)
+            compiler = _compiler_argument(node)
+            self._add(
+                "network",
+                "process_spawn",
+                node,
+                f"{full}({compiler})" if compiler else full,
+            )
             self.respawn_sites.append((self._func_key, node.lineno))
         elif RESPAWN_NAME_RE.search(tail) or (
             tail == "start" and base[:1].isupper()
@@ -1080,6 +1433,73 @@ def infer_lane(evidence: list[Evidence]) -> tuple[str, list[Evidence]]:
     return "unit", []
 
 
+def _symbol_index(scopes: dict[str, Scope]) -> dict[str, set[str]]:
+    """Имя верхнего уровня → все его scope-ключи (класс тянет свои методы)."""
+    index: dict[str, set[str]] = {}
+    for key in scopes:
+        head = key.split("::")[0]
+        index.setdefault(head, set()).add(key)
+    return index
+
+
+def _ancestor_keys(key: str) -> list[str]:
+    """`"A::B::t"` → `["A", "A::B"]`: тело класса принадлежит его методам."""
+    parts = key.split("::")
+    return ["::".join(parts[:i]) for i in range(1, len(parts))]
+
+
+def _reachable_scopes(
+    start: Iterable[str],
+    scopes: dict[str, Scope],
+    fixtures: dict[str, str],
+    symbol_index: dict[str, set[str]],
+) -> set[str]:
+    """Определения, до которых нода реально дотягивается.
+
+    Ребро есть в трёх случаях, и только в них: нода/фикстура ЗАПРОСИЛА фикстуру
+    (параметром или `usefixtures`, транзитивно), определение УПОМЯНУЛО имя
+    другого определения (вызов helper-а), метод принадлежит классу. Признак,
+    найденный вне этого множества, ноде не приписывается.
+    """
+    seen: set[str] = set()
+    queue = [key for key in start if key]
+    while queue:
+        key = queue.pop()
+        if key in seen or key not in scopes:
+            continue
+        seen.add(key)
+        queue.extend(k for k in _ancestor_keys(key) if k not in seen)
+        scope = scopes[key]
+        for name in scope.requests:
+            target = fixtures.get(name)
+            if target is not None and target not in seen:
+                queue.append(target)
+        for symbol in scope.used:
+            for target in symbol_index.get(symbol, ()):
+                if target not in seen:
+                    queue.append(target)
+    return seen
+
+
+def _evidence_applies(evidence: Evidence, closure: set[str], used: set[str]) -> bool:
+    """Достаётся ли признак КОНКРЕТНОЙ ноде.
+
+    Три правила, ради которых инвентарь и переписан:
+      * признак из тела определения — если определение достижимо из ноды;
+      * признак из чужого helper-модуля — если нода (или её фикстура) упоминает
+        имя того определения, где он найден;
+      * признак уровня модуля (импорт, константа) — только если введённое им
+        имя реально упомянуто. Импорт — возможность, а не поведение.
+    """
+    if evidence.inherited_from:
+        if evidence.scope is not None:
+            return evidence.scope.split("::")[0] in used
+        return any(name in used for name in evidence.binds)
+    if evidence.scope is not None:
+        return evidence.scope in closure
+    return any(name in used for name in evidence.binds)
+
+
 def analyse_module(
     path: Path,
     root: Path,
@@ -1090,6 +1510,9 @@ def analyse_module(
     own = _scan_cached(path, cache)
     evidence = list(own.evidence)
     inherited: list[Evidence] = []
+    #: Имена, попавшие в модуль через `from helper import *`: адресно проследить
+    #: их использование нельзя, поэтому они считаются упомянутыми всегда.
+    implicit_symbols: set[str] = set()
     if not own.parse_error and depth > 0:
         seen: set[Path] = {path}
         queue: list[tuple[str, Path, int]] = []
@@ -1104,11 +1527,22 @@ def analyse_module(
             seen.add(helper)
             helper_scan = _scan_cached(helper, cache)
             label = helper.relative_to(root).as_posix() if _is_relative(helper, root) else str(helper)
+            if module in own.star_imports:
+                implicit_symbols |= {k.split("::")[0] for k in helper_scan.scopes}
             for item in helper_scan.evidence:
                 if not item.deciding:
                     continue
                 inherited.append(
-                    Evidence(item.lane, item.kind, item.lineno, item.detail, True, label)
+                    Evidence(
+                        item.lane,
+                        item.kind,
+                        item.lineno,
+                        item.detail,
+                        True,
+                        label,
+                        scope=item.scope,
+                        binds=item.binds,
+                    )
                 )
             if level > 1:
                 for nested in sorted(helper_scan.local_test_imports):
@@ -1118,13 +1552,27 @@ def analyse_module(
     evidence.extend(inherited)
 
     lane, decided_by = infer_lane(evidence)
-    # Признак, найденный в фикстуре, helper-е или на уровне модуля, достаётся
-    # всем нодам; признак из тела конкретного теста — только ей.
-    test_names = {node.name for node in own.nodes}
-    shared = [e for e in evidence if e.owner is None or e.owner not in test_names]
+    # Lane ноды выводится ТОЛЬКО из того, до чего нода дотягивается: её тело,
+    # запрошенные ею фикстуры (в т.ч. autouse и транзитивные), вызванные из них
+    # helper-ы. Импорт уровня модуля решает лишь тогда, когда введённое им имя
+    # действительно упомянуто. Сводка по модулю (`lane` выше) осталась
+    # максимумом по файлу: она отвечает на другой вопрос — «что в этом файле
+    # вообще есть».
+    symbol_index = _symbol_index(own.scopes)
+    always_on = set(own.autouse_fixtures)
+    for name in own.module_requests:
+        target = own.fixtures.get(name)
+        if target is not None:
+            always_on.add(target)
     for node in own.nodes:
-        node_evidence = shared + [e for e in evidence if e.owner == node.name]
-        node.inferred_lane = infer_lane(node_evidence)[0]
+        closure = _reachable_scopes(
+            {node.scope_key} | always_on, own.scopes, own.fixtures, symbol_index
+        )
+        used = set(implicit_symbols)
+        for key in closure:
+            used |= own.scopes[key].used
+        node_evidence = [e for e in evidence if _evidence_applies(e, closure, used)]
+        node.inferred_lane, node.decided_by = infer_lane(node_evidence)
 
     manual: list[str] = []
     if own.parse_error:
@@ -1133,6 +1581,7 @@ def analyse_module(
         decided_by = []
         for node in own.nodes:
             node.inferred_lane = LANE_UNKNOWN
+            node.decided_by = []
     else:
         if any(e.kind == "process_signal" and not e.deciding for e in own.evidence):
             manual.append("KILL_WITHOUT_RESTART")
@@ -1150,10 +1599,6 @@ def analyse_module(
             manual.append("DYNAMIC_DISPATCH")
         if not own.nodes:
             manual.append("NO_TEST_FUNCTIONS")
-        module_primary_set = {m for m in own.module_markers if m in PRIMARY_LANES}
-        node_primary_set = {m for n in own.nodes for m in n.primary}
-        if len(module_primary_set | node_primary_set) > 1:
-            manual.append("MIXED_MARKERS")
 
     relative = path.relative_to(root).as_posix() if _is_relative(path, root) else str(path)
     return ModuleReport(
@@ -1185,6 +1630,24 @@ def _scan_cached(path: Path, cache: dict[Path, ScanResult]) -> ScanResult:
 # ---------------------------------------------------------------------------
 # Отчёт
 # ---------------------------------------------------------------------------
+
+
+#: Направление расхождения «маркер ↔ поведение». Разница не косметическая:
+#: `understated` — поведение ТЯЖЕЛЕЕ маркера, тест поедет в лёгкую полосу и
+#: сломает её бюджет (§7); `overstated` — маркер тяжелее поведения, тест просто
+#: едет дороже, чем нужно, и чаще всего это следствие модульного `pytestmark`,
+#: покрывающего файл целиком.
+CONFLICT_UNDERSTATED = "understated"
+CONFLICT_OVERSTATED = "overstated"
+
+
+def _conflict_direction(marker: str, inferred: str) -> str:
+    order = {lane: index for index, lane in enumerate(PRIMARY_LANES)}
+    return (
+        CONFLICT_UNDERSTATED
+        if order.get(inferred, len(order)) < order.get(marker, len(order))
+        else CONFLICT_OVERSTATED
+    )
 
 
 def build_report(root: Path, paths: list[str] | None = None) -> dict[str, Any]:
@@ -1236,7 +1699,14 @@ def build_report(root: Path, paths: list[str] | None = None) -> dict[str, Any]:
                     "marker": node.primary[0],
                     "inferred": node.inferred_lane,
                     "module_inferred": report.inferred_lane,
-                    "evidence": [e.as_dict() for e in report.decided_by[:3]],
+                    "direction": _conflict_direction(node.primary[0], node.inferred_lane),
+                    "marker_from": (
+                        "module" if node.primary[0] in report.module_primary else "node"
+                    ),
+                    # Улики САМОЙ НОДЫ: раньше здесь стояли модульные, и список
+                    # конфликтов вводил в заблуждение даже там, где конфликт был
+                    # настоящий (улика указывала на чужую строку).
+                    "evidence": [e.as_dict() for e in node.decided_by[:3]],
                 }
             )
         for node in report.double_marked_nodes:
@@ -1267,6 +1737,12 @@ def build_report(root: Path, paths: list[str] | None = None) -> dict[str, Any]:
             "functions_with_primary_marker": total_functions - unmarked_functions,
             "double_marked_functions": len(double_marked),
             "marker_behaviour_conflicts": len(conflicts),
+            "marker_behaviour_conflicts_understated": sum(
+                1 for c in conflicts if c["direction"] == CONFLICT_UNDERSTATED
+            ),
+            "marker_behaviour_conflicts_overstated": sum(
+                1 for c in conflicts if c["direction"] == CONFLICT_OVERSTATED
+            ),
             "modules_needing_manual_review": sum(1 for r in reports if r.manual_review),
         },
         "lanes": lanes,
@@ -1356,6 +1832,8 @@ def render_human(report: dict[str, Any], samples: int) -> str:
     )
     lines.append(
         f"  конфликт маркер vs поведение  : {totals['marker_behaviour_conflicts']}"
+        f" (поведение тяжелее маркера: {totals['marker_behaviour_conflicts_understated']}"
+        f", маркер тяжелее поведения: {totals['marker_behaviour_conflicts_overstated']})"
     )
     lines.append(
         f"  нужна ручная классификация    : {totals['modules_needing_manual_review']} модулей"
@@ -1379,15 +1857,23 @@ def render_human(report: dict[str, Any], samples: int) -> str:
         )
 
     if report["conflicts"]:
+        # Сначала опасное направление: маркер легче поведения — такой тест
+        # поедет в лёгкой полосе и сломает её бюджет. Обратное направление
+        # (маркер тяжелее) стоит денег, но полосу не ломает.
+        ordered = sorted(
+            report["conflicts"], key=lambda c: c["direction"] != CONFLICT_UNDERSTATED
+        )
         lines.append("")
         lines.append(f"Конфликты «маркер vs поведение» (первые {samples}):")
-        for item in report["conflicts"][:samples]:
+        for item in ordered[:samples]:
             evidence = ", ".join(
                 f"{e['kind']}@{e['line']}" for e in item["evidence"]
-            ) or "—"
+            ) or "улик нет"
+            arrow = "поведение ТЯЖЕЛЕЕ" if item["direction"] == CONFLICT_UNDERSTATED else "маркер тяжелее"
             lines.append(
-                f"  {item['path']}::{item['function']}: маркер {item['marker']}, "
-                f"поведение {item['inferred']} ({evidence})"
+                f"  {item['path']}::{item['function']}: маркер {item['marker']}"
+                f" ({item['marker_from']}), поведение {item['inferred']}"
+                f" — {arrow} ({evidence})"
             )
     if report["double_marked"]:
         lines.append("")

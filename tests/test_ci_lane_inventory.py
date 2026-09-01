@@ -754,17 +754,31 @@ def test_module_without_test_functions_is_flagged(tmp_path):
     assert "NO_TEST_FUNCTIONS" in report.manual_review
 
 
-def test_mixed_primary_markers_in_one_module_are_flagged(tmp_path):
-    """Разные primary lanes в одном файле — повод посмотреть глазами."""
+def test_module_mixing_lanes_is_not_flagged_for_manual_review(tmp_path):
+    """Смешение полос в одном файле §5 разрешает — ручного разбора оно не требует.
+
+    Инструмент раньше противоречил сам себе: докстрока `conflicting_nodes`
+    называла смешение законным («часть тестов убивает и поднимает исполнителя,
+    часть — нет»), а `MIXED_MARKERS` требовал за него ручного разбора и давал
+    90 модулей из 105. Настоящий риск — расхождение маркера с поведением
+    КОНКРЕТНОЙ ноды, и он полностью покрыт `conflicting_nodes`.
+    """
     report = analyse(
         tmp_path,
-        "import pytest\n"
+        "import pytest, subprocess, sys\n"
         "@pytest.mark.unit\n"
         "def test_a():\n    assert True\n"
-        "@pytest.mark.integration\n"
-        "def test_b():\n    assert True\n",
+        "@pytest.mark.network\n"
+        "def test_b():\n"
+        "    assert subprocess.run([sys.executable, '-c', 'pass']).returncode == 0\n",
     )
-    assert "MIXED_MARKERS" in report.manual_review
+    assert report.manual_review == []
+    # Каждая нода при этом сверена со СВОИМ поведением, и обе сошлись.
+    assert report.conflicting_nodes == []
+    assert {n.name: n.inferred_lane for n in report.nodes} == {
+        "test_a": "unit",
+        "test_b": "network",
+    }
 
 
 def test_every_manual_review_code_has_human_text():
@@ -776,7 +790,6 @@ def test_every_manual_review_code_has_human_text():
         "DYNAMIC_DISPATCH",
         "NO_TEST_FUNCTIONS",
         "PARSE_ERROR",
-        "MIXED_MARKERS",
         "PRODUCTION_SIDE_IO",
     }
     assert used == set(inventory.MANUAL_REASONS)
@@ -790,3 +803,313 @@ def test_primary_lanes_match_contract_table():
     for lane in inventory.PRIMARY_LANES:
         assert f"`{lane}`" in section, lane
     assert "`slow` —" in section and "не lane" in section
+
+
+# ---------------------------------------------------------------------------
+# Приписывание улик: чья это улика — ноды, фикстуры, helper-а или модуля
+# ---------------------------------------------------------------------------
+# Раздел закрывает дефект, из-за которого ЛЮБОЙ признак файла (фикстура, helper,
+# импорт в шапке) доставался ВСЕМ нодам модуля. Доказанный пример промаха:
+# `tests/test_distributed_workers_central_handoff.py::
+# test_prompt_without_section_does_not_become_eom` — чисто вычислительный тест
+# без единой фикстуры получал `unit → integration` с уликами из фикстуры
+# `center_env` и `httpx.ASGITransport`, стоящих в сотнях строк от него.
+
+
+def test_fixture_evidence_reaches_only_the_nodes_that_request_it(tmp_path):
+    """Улика фикстуры принадлежит тем, кто эту фикстуру ЗАПРОСИЛ."""
+    report = analyse(
+        tmp_path,
+        "import httpx, pytest\n"
+        "from backend.app.main import app\n"
+        "@pytest.fixture()\n"
+        "def api():\n"
+        "    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app))\n"
+        "def test_uses_app(api):\n"
+        "    assert api is not None\n"
+        "def test_pure_arithmetic():\n"
+        "    assert 2 + 2 == 4\n",
+    )
+    assert {n.name: n.inferred_lane for n in report.nodes} == {
+        "test_uses_app": "integration",
+        "test_pure_arithmetic": "unit",
+    }
+    # Сводка по файлу осталась максимумом: в файле ASGI-приложение всё-таки есть.
+    assert report.inferred_lane == "integration"
+
+
+def test_transitive_fixture_evidence_follows_the_request_chain(tmp_path):
+    """Фикстура, запросившая другую фикстуру, тянет и её признаки."""
+    report = analyse(
+        tmp_path,
+        "import pytest\n"
+        "@pytest.fixture()\n"
+        "def workspace(tmp_path):\n"
+        "    (tmp_path / 'seed.json').write_text('{}')\n"
+        "    return tmp_path\n"
+        "@pytest.fixture()\n"
+        "def project(workspace):\n"
+        "    return workspace / 'seed.json'\n"
+        "def test_reads_project(project):\n"
+        "    assert project.name == 'seed.json'\n"
+        "def test_pure():\n"
+        "    assert True\n",
+    )
+    assert {n.name: n.inferred_lane for n in report.nodes} == {
+        "test_reads_project": "integration",
+        "test_pure": "unit",
+    }
+
+
+def test_usefixtures_marker_is_a_request_too(tmp_path):
+    """`@pytest.mark.usefixtures(...)` — второй законный способ запросить фикстуру."""
+    report = analyse(
+        tmp_path,
+        "import pytest, subprocess, sys\n"
+        "@pytest.fixture()\n"
+        "def daemon():\n"
+        "    subprocess.Popen([sys.executable, '-c', 'pass'])\n"
+        "@pytest.mark.usefixtures('daemon')\n"
+        "def test_with_daemon():\n"
+        "    assert True\n"
+        "def test_without_daemon():\n"
+        "    assert True\n",
+    )
+    assert {n.name: n.inferred_lane for n in report.nodes} == {
+        "test_with_daemon": "network",
+        "test_without_daemon": "unit",
+    }
+
+
+def test_class_level_usefixtures_reaches_only_that_class(tmp_path):
+    """`usefixtures` на классе — запрос от каждого его метода и только от них."""
+    report = analyse(
+        tmp_path,
+        "import pytest, subprocess, sys\n"
+        "@pytest.fixture()\n"
+        "def daemon():\n"
+        "    subprocess.Popen([sys.executable, '-c', 'pass'])\n"
+        "@pytest.mark.usefixtures('daemon')\n"
+        "class TestWithDaemon:\n"
+        "    def test_inside(self):\n"
+        "        assert True\n"
+        "def test_outside():\n"
+        "    assert True\n",
+    )
+    assert {n.name: n.inferred_lane for n in report.nodes} == {
+        "test_inside": "network",
+        "test_outside": "unit",
+    }
+
+
+def test_autouse_fixture_still_reaches_every_node(tmp_path):
+    """Autouse — единственная фикстура, которая законно достаётся всем."""
+    report = analyse(
+        tmp_path,
+        "import pytest\n"
+        "@pytest.fixture(autouse=True)\n"
+        "def sandbox(tmp_path):\n"
+        "    (tmp_path / 'a.txt').write_text('x')\n"
+        "def test_one():\n"
+        "    assert True\n"
+        "def test_two():\n"
+        "    assert True\n",
+    )
+    assert {n.inferred_lane for n in report.nodes} == {"integration"}
+
+
+def test_module_level_import_alone_does_not_decide_a_node(tmp_path):
+    """Импорт — ВОЗМОЖНОСТЬ, а не поведение: решает фактическое использование."""
+    report = analyse(
+        tmp_path,
+        "import uvicorn\n"
+        "def test_serves():\n"
+        "    uvicorn.run('app:app', port=8081)\n"
+        "def test_pure():\n"
+        "    assert True\n",
+    )
+    assert {n.name: n.inferred_lane for n in report.nodes} == {
+        "test_serves": "network",
+        "test_pure": "unit",
+    }
+    assert report.inferred_lane == "network"
+
+
+def test_module_constant_reaches_only_the_nodes_that_use_it(tmp_path):
+    """Константа уровня модуля — признак того, кто её упомянул."""
+    report = analyse(
+        tmp_path,
+        "from pathlib import Path\n"
+        "PROTO = Path('contracts/agent_stream/v1/common.proto')\n"
+        "def test_reads_proto():\n"
+        "    assert PROTO.suffix == '.proto'\n"
+        "def test_pure():\n"
+        "    assert True\n",
+    )
+    assert {n.name: n.inferred_lane for n in report.nodes} == {
+        "test_reads_proto": "contract",
+        "test_pure": "unit",
+    }
+
+
+def test_local_helper_evidence_reaches_only_its_callers(tmp_path):
+    """Признак helper-а достаётся ноде, только если она этот helper зовёт."""
+    report = analyse(
+        tmp_path,
+        "from pathlib import Path\n"
+        "def _seed(root):\n"
+        "    (root / 'seed.txt').write_text('x')\n"
+        "    return root\n"
+        "def test_calls_helper(tmp_path):\n"
+        "    assert _seed(tmp_path).exists()\n"
+        "def test_ignores_helper():\n"
+        "    assert True\n",
+    )
+    assert {n.name: n.inferred_lane for n in report.nodes} == {
+        "test_calls_helper": "integration",
+        "test_ignores_helper": "unit",
+    }
+
+
+def test_imported_helper_evidence_reaches_only_its_callers(tmp_path):
+    """То же правило для helper-а из соседнего модуля тестов."""
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir(parents=True, exist_ok=True)
+    (tests_dir / "__init__.py").write_text("", encoding="utf-8")
+    (tests_dir / "spawn_helper.py").write_text(
+        "import subprocess, sys\n"
+        "def launch_child():\n"
+        "    return subprocess.Popen([sys.executable, '-c', 'pass'])\n"
+        "def slugify(value):\n"
+        "    return value.strip().lower()\n",
+        encoding="utf-8",
+    )
+    report = analyse(
+        tmp_path,
+        "from tests.spawn_helper import launch_child, slugify\n"
+        "def test_spawns():\n"
+        "    assert launch_child() is not None\n"
+        "def test_only_slugifies():\n"
+        "    assert slugify(' A ') == 'a'\n",
+    )
+    assert {n.name: n.inferred_lane for n in report.nodes} == {
+        "test_spawns": "network",
+        "test_only_slugifies": "unit",
+    }
+
+
+def test_conflict_evidence_points_at_the_node_not_at_the_module(tmp_path):
+    """В списке конфликтов стоят улики САМОЙ ноды.
+
+    Раньше запись показывала `report.decided_by[:3]` — улики, решившие lane
+    ФАЙЛА. Человек читал «маркер unit, поведение integration (process_spawn)» и
+    шёл смотреть строку, к этому тесту отношения не имеющую.
+    """
+    write_module(
+        tmp_path,
+        "import pytest, subprocess, sys\n"
+        "@pytest.fixture()\n"
+        "def daemon():\n"
+        "    subprocess.Popen([sys.executable, '-c', 'pass'])\n"
+        "@pytest.mark.unit\n"
+        "def test_writes(tmp_path):\n"
+        "    (tmp_path / 'a.txt').write_text('x')\n"
+        "@pytest.mark.network\n"
+        "def test_spawns(daemon):\n"
+        "    assert True\n",
+    )
+    report = inventory.build_report(tmp_path)
+    conflicts = {c["function"]: c for c in report["conflicts"]}
+    # Нода с фикстурой-демоном свой маркер оправдала, конфликта у неё нет.
+    assert set(conflicts) == {"test_writes"}
+    assert {e["kind"] for e in conflicts["test_writes"]["evidence"]} == {"fs_write"}
+    assert all(e["line"] == 7 for e in conflicts["test_writes"]["evidence"])
+
+
+def test_conflict_direction_separates_dangerous_from_wasteful(tmp_path):
+    """Два направления расхождения означают разное и считаются отдельно.
+
+    Маркер ЛЕГЧЕ поведения — тест поедет в лёгкой полосе и сломает её бюджет
+    (§7). Маркер ТЯЖЕЛЕЕ поведения — тест едет дороже, чем нужно; чаще всего
+    это `pytestmark`, накрывший файл целиком, а не выбор автора теста.
+    """
+    write_module(
+        tmp_path,
+        "import pytest, subprocess, sys\n"
+        "@pytest.mark.unit\n"
+        "def test_light_marker():\n"
+        "    assert subprocess.run([sys.executable, '-c', 'pass']).returncode == 0\n"
+        "@pytest.mark.network\n"
+        "def test_heavy_marker():\n"
+        "    assert 2 + 2 == 4\n",
+    )
+    report = inventory.build_report(tmp_path)
+    assert {c["function"]: c["direction"] for c in report["conflicts"]} == {
+        "test_light_marker": "understated",
+        "test_heavy_marker": "overstated",
+    }
+    assert report["totals"]["marker_behaviour_conflicts_understated"] == 1
+    assert report["totals"]["marker_behaviour_conflicts_overstated"] == 1
+    assert {c["marker_from"] for c in report["conflicts"]} == {"node"}
+
+
+def test_contract_marker_with_temp_files_is_not_a_conflict(tmp_path):
+    """§5 дословно разрешает `contract`-тесту «temp files» — это не расхождение.
+
+    Пока признак `contracts/**` доставался всем нодам файла, вопрос не возникал.
+    После перехода на приписывание по ноде такой тест стал выглядеть как
+    `integration`, и весь `tests/test_worker_runtime_diagnostics_12i2.py`
+    (10 нод) поехал в «опасные» конфликты. Опасности там нет: §5 этот side
+    effect разрешил.
+    """
+    report = analyse(
+        tmp_path,
+        "import pytest\n"
+        "@pytest.mark.contract\n"
+        "def test_snapshot_roundtrip(tmp_path):\n"
+        "    (tmp_path / 'snapshot.txt').write_text('x')\n",
+    )
+    assert report.nodes[0].inferred_lane == "integration"
+    assert report.conflicting_nodes == []
+
+
+def test_contract_marker_with_a_live_service_is_still_a_conflict(tmp_path):
+    """Послабление узкое: §5 запрещает `contract`-тесту service/network."""
+    report = analyse(
+        tmp_path,
+        "import pytest, threading\n"
+        "@pytest.mark.contract\n"
+        "def test_with_worker():\n"
+        "    threading.Thread(target=lambda: None).start()\n",
+    )
+    assert [n.name for n in report.conflicting_nodes] == ["test_with_worker"]
+
+
+def test_contract_marker_compiling_a_contract_is_not_a_conflict(tmp_path):
+    """§5 выдаёт `contract` capability «process spawn если test явно компилирует».
+
+    Это `tests/test_agent_stream_protocol_v1.py:132` — `grpc_tools.protoc`
+    собирает descriptor set. Дочерний процесс тут разрешён контрактом.
+    """
+    report = analyse(
+        tmp_path,
+        "import pytest, subprocess, sys\n"
+        "@pytest.mark.contract\n"
+        "def test_proto_compiles(tmp_path):\n"
+        "    subprocess.run([sys.executable, '-m', 'grpc_tools.protoc',\n"
+        "                    f'--descriptor_set_out={tmp_path}/c.desc'])\n",
+    )
+    assert report.nodes[0].inferred_lane == "network"
+    assert report.conflicting_nodes == []
+
+
+def test_contract_marker_spawning_anything_else_is_still_a_conflict(tmp_path):
+    """Послабление именное: не всякий дочерний процесс — компилятор контракта."""
+    report = analyse(
+        tmp_path,
+        "import pytest, subprocess, sys\n"
+        "@pytest.mark.contract\n"
+        "def test_runs_server():\n"
+        "    subprocess.run([sys.executable, '-m', 'http.server'])\n",
+    )
+    assert [n.name for n in report.conflicting_nodes] == ["test_runs_server"]
