@@ -97,12 +97,21 @@ describe('distributed UI integration', () => {
     expect(tasks.completed.length).toBeGreaterThanOrEqual(2);
     expect(tasks.errors).toHaveLength(2);
     const anchor = new Date('2026-08-16T12:00:00+03:00');
+    const anchorNextDay = new Date('2026-08-17T12:00:00+03:00');
     expect(DistributedFeature.filterCompletedTasks(tasks.completed, 'today', undefined, undefined, anchor)).toHaveLength(2);
     expect(DistributedFeature.filterCompletedTasks(tasks.completed, '7d', undefined, undefined, anchor)).toHaveLength(4);
     expect(DistributedFeature.filterCompletedTasks(tasks.completed, 'custom', '2026-08-15', '2026-08-15')).toHaveLength(1);
+    // Граница местной полуночи: задача, завершённая сразу ПОСЛЕ неё, — сегодняшняя.
+    // Раньше здесь стоял литерал '2026-08-16T21:05:00+00:00', и он давал 00:05
+    // следующего дня только в поясах от UTC+3. На TZ=UTC, который пинит §3.1
+    // quality/runtime contract, это 16-е число против якоря 17-го — тест падал в
+    // чистой комнате и проходил на машине разработчика. Момент строится от самого
+    // якоря, поэтому «сразу после местной полуночи» верно в любом поясе.
+    const justAfterLocalMidnight = new Date(anchorNextDay.getTime());
+    justAfterLocalMidnight.setHours(0, 5, 0, 0);
     expect(DistributedFeature.filterCompletedTasks(
-      [{ completedAtIso: '2026-08-16T21:05:00+00:00' }],
-      'today', undefined, undefined, new Date('2026-08-17T12:00:00+03:00'),
+      [{ completedAtIso: justAfterLocalMidnight.toISOString() }],
+      'today', undefined, undefined, anchorNextDay,
     )).toHaveLength(1);
     for (const label of ['Активные', 'Завершённые', 'Ошибки', 'Подробности задачи', 'Техническая информация']) expect(pageSource).toContain(label);
   });
