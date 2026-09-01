@@ -27,12 +27,13 @@ on:
 # §3.1: значения профиля задаются один раз и наследуются всеми job'ами.
 # Раньше их приходилось повторять в каждом шаге, и они успели разойтись.
 env:
-  PYTHON_VERSION: "3.12"
+  PYTHON_VERSION: "3.12.3"
   NODE_VERSION: "22.23.1"
   AUDIT_DISABLE_DOTENV: "1"
   PAID_API_ENABLED: "false"
   PORTAL_AUTH_ENABLED: "false"
   TZ: UTC
+  LC_ALL: "C.UTF-8"
   PYTHONHASHSEED: "0"
 
 jobs:
@@ -54,6 +55,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+      # §3.1 — один профиль на весь прогон. check_profile_pins в --enforce
+      # требует пины Node/npm ДАЖЕ в python-полосах: контракт описывает машину
+      # целиком, а не только её питоновскую половину.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       # Установка ОДНОЙ командой с lock-профилем. Прежняя схема «шесть -r
       # подряд плюс ad-hoc pip install pytest» не воспроизводила frozen
@@ -93,15 +100,29 @@ jobs:
       # Блокирующими остаются шаги ВЫШЕ: установка по constraints, pip check,
       # provisioning, проверка uid != 0. Отказ инфраструктуры — не наблюдение,
       # и пропускать его нельзя ни при каком состоянии baseline.
+      # НЕ `continue-on-error` на весь шаг: он глушил и код 2 (probe не пропустил
+      # lane — отсутствует loopback/process capability), и код 4 (испорченный
+      # JUnit), и код 5 (пустая выборка). Наблюдать полагается ТОЛЬКО падения
+      # тестов; непригодный прогон обязан быть красным, иначе «зелёный CI»
+      # начинает означать «мы ничего не проверили».
       - name: "Lane ${{ matrix.lane }}"
-        continue-on-error: true
         env:
           AUDIT_APP_DATA_DIR: ${{ runner.temp }}/run-root/app_data
           AUDIT_PROJECTS_DIR: ${{ runner.temp }}/run-root/projects
           AUDIT_OBJECTS_FILE: ${{ runner.temp }}/run-root/objects.json
           AUDIT_ACTION_LOG_DIR: ${{ runner.temp }}/run-root/action_log
           AUDITMANAGER_DEPLOY_LOCK_DIR: ${{ runner.temp }}/run-root/locks
-        run: python scripts/ci_test_lane.py --lane ${{ matrix.lane }} --use-lane-marker
+        run: |
+          set +e
+          python scripts/ci_test_lane.py --lane ${{ matrix.lane }} --use-lane-marker --enforce
+          rc=$?
+          set -e
+          # 0 — чисто, 1 — тесты упали (наблюдаем, пока baseline не расчищен).
+          # 2 setup failure, 3 бюджет §7, 4 негодный отчёт, 5 пустая выборка —
+          # всё это прогон, из которого нельзя делать выводов.
+          if [ "$rc" -le 1 ]; then exit 0; fi
+          echo "::error::ci_test_lane вернул $rc — прогон непригоден (не падение теста)"
+          exit "$rc"
 
       # Отчёты выгружаются ВСЕГДА: при падении они нужнее всего. §8 требует
       # свежий JUnit и JSON receipt на каждый прогон.
@@ -126,6 +147,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+      # §3.1 — один профиль на весь прогон. check_profile_pins в --enforce
+      # требует пины Node/npm ДАЖЕ в python-полосах: контракт описывает машину
+      # целиком, а не только её питоновскую половину.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Установить зависимости профиля qr-v1
         run: |
@@ -235,6 +262,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+      # §3.1 — один профиль на весь прогон. check_profile_pins в --enforce
+      # требует пины Node/npm ДАЖЕ в python-полосах: контракт описывает машину
+      # целиком, а не только её питоновскую половину.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Установить зависимости профиля qr-v1
         run: |
@@ -251,7 +284,7 @@ jobs:
           AUDIT_OBJECTS_FILE: ${{ runner.temp }}/run-root/objects.json
           AUDIT_ACTION_LOG_DIR: ${{ runner.temp }}/run-root/action_log
           AUDITMANAGER_DEPLOY_LOCK_DIR: ${{ runner.temp }}/run-root/locks
-        run: python scripts/ci_test_lane.py --lane chaos --use-lane-marker
+        run: python scripts/ci_test_lane.py --lane chaos --use-lane-marker --enforce
 
       - name: Выгрузить отчёты chaos
         if: always()
@@ -267,7 +300,12 @@ jobs:
 #   ✔ установка воспроизводима: один lock-профиль, `pip check` зелёный,
 #     `pip freeze` совпадает с frozen receipt §4.1;
 #   ✔ прогон не под root, изоляция состояния по §3.2 включая lock-каталог;
-#   ✔ capability probe выполняется ДО тестов;
+#   ✔ capability probe выполняется ДО тестов, в режиме --enforce, и его отказ
+#     КРАСИТ job: наблюдается только код 1 (упали тесты), а 2/3/4/5 —
+#     непригодный прогон — пробрасываются наружу;
+#   ✔ пины §3.1 заданы точно: Python 3.12.3 (не 3.12), Node/npm во ВСЕХ
+#     job'ах (check_profile_pins требует их и в python-полосах), TZ, LC_ALL,
+#     PYTHONHASHSEED;
 #   ✔ пять lanes с бюджетами §7, JUnit и JSON receipt §8, отчёты выгружаются;
 #   ✔ гейт ограничен по времени и не может висеть бесконечно;
 #   ✔ frontend gate с пиннингом Node и strict typecheck;
