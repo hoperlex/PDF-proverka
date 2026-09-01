@@ -74,7 +74,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # ---------------------------------------------------------------------------
 
 CONTRACT_ID = "quality-runtime/v1"
-CONTRACT_VERSION = "1.0.0"
+CONTRACT_VERSION = "1.1.0"
 CONTRACT_DOC = "docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md"
 CONTRACT_BASE_COMMIT = "de2ccea1fc1fa4fd81f6dbace61593735cf46379"
 #: Версия самого probe. Меняется вместе с набором проверок/кодов причин.

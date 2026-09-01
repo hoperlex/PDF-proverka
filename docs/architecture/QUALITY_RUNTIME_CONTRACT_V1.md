@@ -1,7 +1,7 @@
 # Quality/runtime contract v1
 
 **Contract ID:** `quality-runtime/v1`<br>
-**Версия:** `1.0.0`<br>
+**Версия:** `1.1.0`<br>
 **Статус:** frozen implementation input<br>
 **Owning task:** `W0-ARC-03`<br>
 **Владельцы:** ARC — семантика контракта; OPS — materialization и CI receipt<br>
@@ -499,6 +499,17 @@ integration owner одним change с этим документом, lock и CI
 Новый долгоживущий cross-context tool/topology требует ADR до реализации.
 Обновление совместимых версий существующего toolchain с полным receipt отдельного
 ADR не требует.
+
+### 12.1. Журнал версий
+
+| Версия | Дата | Что изменилось | Почему совместимо |
+| --- | --- | --- | --- |
+| `1.0.0` | 2026-08-28 | первичная фиксация контракта (`W0-ARC-03`) | — |
+| `1.1.0` | 2026-09-01 | переиздан frozen input receipt §2 (13 входов вместо 11, добавлены `requirements-dev.txt` и `constraints-qr-v1.txt`); в §3.2 добавлена обязательная `AUDITMANAGER_DEPLOY_LOCK_DIR`; материализован lock §4.1; CI wiring переписан под пять полос с probe в `--enforce` | §12 относит к несовместимым только ослабление lane/capability, перевод failure в skip, смену смысла baseline, смену framework и удаление proof. Здесь нет ни одного: значения lane, fail/skip policy, required capabilities и строгость gates сохранены, а изменения ужесточают профиль и обновляют receipt. Это ровно тот случай, который §12 описывает как `1.y.z` — «одним change с этим документом, lock и CI wiring». Минорный, а не patch, потому что добавлен обязательный элемент §3.2, а не только версии. |
+
+Версия обязана совпадать в трёх местах: этот заголовок, `CONTRACT_VERSION` в
+`scripts/ci_runtime_probe.py` и в `scripts/ci_test_lane.py`. Совпадение
+проверяет `tests/test_ci_runtime_probe.py::test_contract_version_is_single_valued`.
 
 Rollback W0-ARC-03 — только возврат документационных ссылок. После потребления
 контракта rollback implementation выполняется целиком через `W0-INT-01`; частично

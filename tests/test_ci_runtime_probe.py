@@ -568,3 +568,40 @@ def test_isolation_contract_is_fully_enforced() -> None:
             assert name in probe.REQUIRED_ISOLATION_FLAGS, (
                 f"{name} — флаг со значением, но проверяется как путь"
             )
+
+
+def test_contract_version_is_single_valued() -> None:
+    """Версия контракта живёт в трёх местах и обязана совпадать во всех.
+
+    REV-28: dependency receipt, обязательная переменная §3.2, workflow и probe
+    изменились, а версия осталась 1.0.0 — вопреки политике §12, которая требует
+    `1.y.z` на совместимое изменение. Расхождение между документом и константами
+    ничем не проверялось, поэтому версия могла отстать молча.
+    """
+    import importlib.util as _ilu
+
+    doc = (ROOT / "docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md").read_text(
+        encoding="utf-8"
+    )
+    declared = re.search(r"^\*\*Версия:\*\* `(\d+\.\d+\.\d+)`", doc, re.M)
+    assert declared, "в заголовке контракта нет строки «**Версия:**»"
+    version = declared.group(1)
+
+    assert probe.CONTRACT_VERSION == version, (
+        f"ci_runtime_probe: {probe.CONTRACT_VERSION!r} != контракт {version!r}"
+    )
+
+    spec = _ilu.spec_from_file_location("_lane_mod", ROOT / "scripts/ci_test_lane.py")
+    lane_mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(lane_mod)
+    assert lane_mod.CONTRACT_VERSION == version, (
+        f"ci_test_lane: {lane_mod.CONTRACT_VERSION!r} != контракт {version!r}"
+    )
+
+    # Мажор в версии обязан совпадать с contract id: v1 и 2.x.y — разные вещи.
+    assert probe.CONTRACT_ID.endswith("/v" + version.split(".")[0]), (
+        f"contract id {probe.CONTRACT_ID!r} не согласован с версией {version!r}"
+    )
+
+    # Журнал §12.1 обязан знать текущую версию, иначе bump никем не обоснован.
+    assert f"| `{version}` |" in doc, f"в журнале §12.1 нет записи о версии {version}"

@@ -56,7 +56,7 @@ from ci_redaction import safe_cmdline  # noqa: E402
 from ci_timeout_plugin import EXIT_TIMEOUT  # noqa: E402
 
 CONTRACT_ID = "quality-runtime/v1"
-CONTRACT_VERSION = "1.0.0"
+CONTRACT_VERSION = "1.1.0"
 HARNESS_VERSION = "1.0.0"
 
 REPORT_DIR = ROOT / ".ci" / "reports"
