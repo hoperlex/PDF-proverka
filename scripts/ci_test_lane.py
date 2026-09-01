@@ -796,6 +796,9 @@ def _finish(
         "contract_version": CONTRACT_VERSION,
         "harness_version": HARNESS_VERSION,
         "source_commit": probe.get("source_commit"),
+        # §8 требует provenance; источник записывается рядом со значением,
+        # потому что env-переменная — более слабое доказательство, чем git.
+        "source_commit_origin": probe.get("source_commit_origin"),
         "lane": lane,
         "command": command,
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started_wall)),

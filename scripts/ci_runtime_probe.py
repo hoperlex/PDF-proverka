@@ -257,6 +257,7 @@ REASON_CODES: dict[str, str] = {
     "PLATFORM_NODE_VERSION_MISMATCH": "версия Node отличается от пина §3.1",
     "PLATFORM_NPM_VERSION_MISMATCH": "версия npm отличается от пина §3.1",
     "PLATFORM_NODE_UNAVAILABLE": "Node/npm недоступны для проверки пина §3.1",
+    "SOURCE_COMMIT_UNKNOWN": "провенанс прогона не определён — §8 требует source_commit",
     "LOCALE_PROFILE_MISMATCH": "TZ/LC_ALL/PYTHONHASHSEED не по §3.1",
     "USER_IS_ROOT": "прогон под root (uid=0), а §3.1 требует uid != 0",
     # temp
@@ -1320,6 +1321,64 @@ class CheckSpec:
     always_required: bool = False
 
 
+#: Явный источник provenance для деревьев без `.git`. Clean-room создаётся через
+#: `git archive`, и `git rev-parse` там не работает по построению.
+SOURCE_COMMIT_ENV = "QR_SOURCE_COMMIT"
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _git_commit() -> str | None:
+    try:
+        done = subprocess.run(  # noqa: S603
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=str(ROOT),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout.strip() or None if done.returncode == 0 else None
+
+
+def source_commit() -> tuple[str | None, str]:
+    """§8 требует `source_commit` как обязательное поле receipt.
+
+    Clean-room разворачивается из `git archive`, где `.git` нет по построению,
+    поэтому `git rev-parse` возвращал None и ВСЕ сохранённые receipt выходили с
+    `source_commit: null`. Приёмочная расписка без provenance не отвечает на
+    вопрос «что именно проверено», то есть §8 не выполнен.
+
+    Источник возвращается вместе со значением: env-переменная — более слабое
+    доказательство, чем сам git, и подменять одно другим молча нельзя.
+    """
+    from_git = _git_commit()
+    if from_git:
+        return from_git, "git"
+    for name in (SOURCE_COMMIT_ENV, "GITHUB_SHA"):
+        value = (os.environ.get(name) or "").strip().lower()
+        if _SHA_RE.match(value):
+            return value, name
+    return None, "unknown"
+
+
+def check_source_provenance(ctx: "ProbeContext") -> Outcome:
+    """§8: receipt без `source_commit` не является приёмочным свидетельством."""
+    value, origin = source_commit()
+    details = {"source_commit": value, "source_commit_origin": origin}
+    ctx.environment["source_commit"] = value
+    ctx.environment["source_commit_origin"] = origin
+    if value is None:
+        return Outcome(
+            False,
+            "SOURCE_COMMIT_UNKNOWN",
+            "provenance не определена: нет `.git` и не выставлен "
+            f"{SOURCE_COMMIT_ENV} или GITHUB_SHA (§8)",
+            details,
+        )
+    return Outcome(True, None, f"source_commit {value[:12]}… из {origin}", details)
+
+
 CHECKS: tuple[CheckSpec, ...] = (
     CheckSpec(CAP_BASE_PYTHON, "base Python / платформа", "§3.1, §5", check_platform),
     CheckSpec(
@@ -1393,6 +1452,13 @@ CHECKS: tuple[CheckSpec, ...] = (
         check_frontend_receipt,
         profile_check=True,
     ),
+    CheckSpec(
+        "source_provenance",
+        "provenance прогона (§8 source_commit)",
+        "§8",
+        check_source_provenance,
+        profile_check=True,
+    ),
 )
 
 
@@ -1455,18 +1521,6 @@ class ProbeContext:
         return self.timeout / 2.0
 
 
-def _git_commit() -> str | None:
-    try:
-        done = subprocess.run(  # noqa: S603
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=str(ROOT),
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return done.stdout.strip() or None if done.returncode == 0 else None
 
 
 def collect_environment() -> dict[str, Any]:
@@ -1546,6 +1600,9 @@ def run_probe(lane: str, *, enforce: bool = False, ci: bool = False, timeout: fl
     warned = [r for r in results if r.status == STATUS_WARN]
     exit_code = EXIT_SETUP_FAILURE if failed else EXIT_OK
     completed = time.time()
+    # Значение уже вычислено проверкой provenance; повторный вызов git не нужен.
+    _report_commit = ctx.environment.get("source_commit")
+    _report_origin = ctx.environment.get("source_commit_origin", "unknown")
 
     report = {
         "contract_id": CONTRACT_ID,
@@ -1553,11 +1610,12 @@ def run_probe(lane: str, *, enforce: bool = False, ci: bool = False, timeout: fl
         "contract_doc": CONTRACT_DOC,
         "contract_base_commit": CONTRACT_BASE_COMMIT,
         "probe_version": PROBE_VERSION,
-        "source_commit": _git_commit(),
+        "source_commit": _report_commit,
+        "source_commit_origin": _report_origin,
         "lane": lane,
-        "mode": "enforce" if enforce else "local",
+        "mode": "enforce" if enforce else ("ci" if ci else "local"),
         "command": f"python scripts/ci_runtime_probe.py --profile {lane}"
-        + (" --enforce" if enforce else ""),
+        + (" --enforce" if enforce else (" --ci" if ci else "")),
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started)),
         "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(completed)),
         "duration_seconds": round(time.monotonic() - started_mono, 3),

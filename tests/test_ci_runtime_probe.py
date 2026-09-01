@@ -641,3 +641,57 @@ def test_ci_mode_requires_profile_but_not_corpus() -> None:
                 assert ci == probe.SEVERITY_REQUIRED, (
                     f"{spec.check_id}/{lane}: --ci ослабил то, что обязательно локально"
                 )
+
+
+def test_source_commit_survives_a_tree_without_git(tmp_path, monkeypatch) -> None:
+    """§8 требует source_commit, а clean-room разворачивается из `git archive`.
+
+    Ревью нашло, что во всех 15 сохранённых receipt стояло `source_commit: null`:
+    в архиве нет `.git`, `git rev-parse` возвращал None, и приёмочная расписка не
+    отвечала на вопрос «что именно проверено». Провенанс теперь берётся из явной
+    переменной, но источник записывается рядом со значением — env слабее git, и
+    подменять одно другим молча нельзя.
+    """
+    real = "0" * 40
+    monkeypatch.setattr(probe, "_git_commit", lambda: None)
+
+    monkeypatch.delenv(probe.SOURCE_COMMIT_ENV, raising=False)
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    value, origin = probe.source_commit()
+    assert value is None and origin == "unknown"
+
+    monkeypatch.setenv(probe.SOURCE_COMMIT_ENV, real.upper())
+    assert probe.source_commit() == (real, probe.SOURCE_COMMIT_ENV)
+
+    # Мусор в переменной провенансом не является: подделать поле §8 нельзя.
+    monkeypatch.setenv(probe.SOURCE_COMMIT_ENV, "не-хэш")
+    assert probe.source_commit() == (None, "unknown")
+
+    monkeypatch.delenv(probe.SOURCE_COMMIT_ENV)
+    monkeypatch.setenv("GITHUB_SHA", real)
+    assert probe.source_commit() == (real, "GITHUB_SHA")
+
+
+def test_missing_provenance_is_a_setup_failure_in_ci() -> None:
+    """Без провенанса приёмочная расписка не выпускается (§8, fail-closed)."""
+    spec = next(s for s in probe.CHECKS if s.check_id == "source_provenance")
+    for lane in ("unit", "contract", "integration", "network", "chaos"):
+        assert probe.severity_for(spec, lane, False, True) == probe.SEVERITY_REQUIRED
+        assert probe.severity_for(spec, lane, True, False) == probe.SEVERITY_REQUIRED
+
+
+def test_report_records_the_mode_it_actually_ran_in() -> None:
+    """Режим и команда в receipt обязаны совпадать с тем, что исполнялось.
+
+    Ревью: `--ci` исполнялся правильно, но записывался как `mode=local`, а поле
+    `command` теряло флаг. Машинное evidence, расходящееся с прогоном, хуже
+    отсутствующего: по нему делают ложные выводы.
+    """
+    for kwargs, mode, flag in (
+        ({}, "local", ""),
+        ({"ci": True}, "ci", " --ci"),
+        ({"enforce": True}, "enforce", " --enforce"),
+    ):
+        report = probe.run_probe("unit", timeout=5.0, **kwargs)
+        assert report["mode"] == mode, f"{kwargs} → mode {report['mode']!r}"
+        assert report["command"].endswith(f"--profile unit{flag}"), report["command"]

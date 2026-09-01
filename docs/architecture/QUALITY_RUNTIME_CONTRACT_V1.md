@@ -68,7 +68,7 @@ lane-маркеров §5, `ci.yml` переписан под пять поло�
 | `frontend/package-lock.json` | `c679604b25329bdbcf89f80017011a0c51c07e770e326865b093f63633097040` |
 | `frontend/package.json` | `65749f5180ea6fd1e2d99f35c103365f9188f7e2cabaef3db53e8f051eef2075` |
 | `frontend/tsconfig.distributed.json` | `a3d3fb949642421af5563073f04658160534b04e78c3ebad895d4454eb487863` |
-| `.github/workflows/ci.yml` | `3193904535122cc54f9bff2cc956f585c44db2734fecaf170bf8be9f81e79058` |
+| `.github/workflows/ci.yml` | `30875c2f31eaf9fcd46b5075c6a1dca22574ef1eab7402f7558a8ae5b1537502` |
 | `scripts/ci_regression_gate.py` | `42fc15209950558781481aaa25d84d6f11a1333acb78eb22644b3a8b50f6f529` |
 | `scripts/ci_known_failures.txt` | `4a69decf38d4f1a65c9b2d7cbca6468512b7d4ce46fcd4a07db24c47147e2fb2` |
 | `tests/conftest.py` | `395646bd3f738f1da345bb75f2627844f8e27d447991c04ce305b97d13594706` |
@@ -505,7 +505,7 @@ ADR не требует.
 | Версия | Дата | Что изменилось | Почему совместимо |
 | --- | --- | --- | --- |
 | `1.0.0` | 2026-08-28 | первичная фиксация контракта (`W0-ARC-03`) | — |
-| `1.1.0` | 2026-09-01 | переиздан frozen input receipt §2 (13 входов вместо 11, добавлены `requirements-dev.txt` и `constraints-qr-v1.txt`); в §3.2 добавлена обязательная `AUDITMANAGER_DEPLOY_LOCK_DIR`; материализован lock §4.1; CI wiring переписан под пять полос с probe в `--enforce` | §12 относит к несовместимым только ослабление lane/capability, перевод failure в skip, смену смысла baseline, смену framework и удаление proof. Здесь нет ни одного: значения lane, fail/skip policy, required capabilities и строгость gates сохранены, а изменения ужесточают профиль и обновляют receipt. Это ровно тот случай, который §12 описывает как `1.y.z` — «одним change с этим документом, lock и CI wiring». Минорный, а не patch, потому что добавлен обязательный элемент §3.2, а не только версии. |
+| `1.1.0` | 2026-09-01 | переиздан frozen input receipt §2 (13 входов вместо 11, добавлены `requirements-dev.txt` и `constraints-qr-v1.txt`); в §3.2 добавлена обязательная `AUDITMANAGER_DEPLOY_LOCK_DIR`; материализован lock §4.1; CI wiring переписан под пять полос с probe в режиме `--ci` (§6 правило 1: в CI-полосе послаблений §6.2 нет; `--enforce` добавляет обязательный norm corpus §3.3 и включается вместе с его источником); в receipt добавлены `source_commit_origin` и режим прогона | §12 относит к несовместимым только ослабление lane/capability, перевод failure в skip, смену смысла baseline, смену framework и удаление proof. Здесь нет ни одного: значения lane, fail/skip policy, required capabilities и строгость gates сохранены, а изменения ужесточают профиль и обновляют receipt. Это ровно тот случай, который §12 описывает как `1.y.z` — «одним change с этим документом, lock и CI wiring». Минорный, а не patch, потому что добавлен обязательный элемент §3.2, а не только версии. |
 
 Версия обязана совпадать в трёх местах: этот заголовок, `CONTRACT_VERSION` в
 `scripts/ci_runtime_probe.py` и в `scripts/ci_test_lane.py`. Совпадение
