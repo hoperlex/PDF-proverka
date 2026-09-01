@@ -18,6 +18,7 @@ import inspect
 import os
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,10 @@ REPO = Path(__file__).resolve().parents[1]
 # ─── Находка 11: личный контекст владельца машины ───────────────────────────
 class TestPersonalContextNeutralized:
     """В ambient HOME — чужой, и всё, что в нём лежит, обязано быть отключено."""
+    # Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни
+    # сокетов.
+    pytestmark = pytest.mark.unit
+
 
     @pytest.mark.parametrize("flag", [
         "--safe-mode",              # CLAUDE.md, навыки, плагины, ХУКИ, MCP, агенты
@@ -68,6 +73,8 @@ class TestPersonalContextNeutralized:
 # ─── Урок инцидента: вариадические флаги ────────────────────────────────────
 class TestVariadicArgumentSafety:
     """`--tools ""` съедает соседний токен. Один раз это уже стоило запроса."""
+    pytestmark = pytest.mark.unit
+
 
     def test_variadic_flags_are_written_with_equals(self) -> None:
         argv = _probe_argv()
@@ -93,6 +100,7 @@ class TestVariadicArgumentSafety:
 class TestSubprocessStdinIsolation:
     """I-P8. Оба CLI читают промпт со stdin, если он не пуст."""
 
+    @pytest.mark.unit
     def test_run_uses_devnull_when_there_is_no_own_stdin(self) -> None:
         source = inspect.getsource(
             __import__("audit_worker.providers.base", fromlist=["x"]).ProviderAdapter.run
@@ -100,6 +108,7 @@ class TestSubprocessStdinIsolation:
         assert "subprocess.DEVNULL" in source
         assert "stdin_text is not None" in source
 
+    @pytest.mark.network
     def test_devnull_actually_prevents_inheriting_caller_stdin(self, tmp_path: Path) -> None:
         """Поведенческая проверка, а не чтение исходника.
 
@@ -110,14 +119,17 @@ class TestSubprocessStdinIsolation:
         script = tmp_path / "reader.py"
         script.write_text("import sys; sys.stdout.write(sys.stdin.read())")
         result = subprocess.run(
-            ["python", str(script)], input="СЕКРЕТНЫЙ ВВОД ВЫЗЫВАЮЩЕГО",
+            [sys.executable, str(script)], input="СЕКРЕТНЫЙ ВВОД ВЫЗЫВАЮЩЕГО",
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=False,
         )
         assert "СЕКРЕТНЫЙ" in result.stdout          # контроль: канал работает
         result = subprocess.run(
-            ["python", str(script)], stdin=subprocess.DEVNULL,
+            [sys.executable, str(script)], stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=False,
         )
+        # returncode проверяется вместе со stdout: пустой вывод упавшего
+        # интерпретатора неотличим от пустого вывода из-за DEVNULL.
+        assert result.returncode == 0
         assert result.stdout == ""
 
 
@@ -130,11 +142,13 @@ class TestProbeGrant:
         os.chmod(path, mode)
         return path
 
+    @pytest.mark.integration
     def test_absent_file_means_refusal(self, tmp_path: Path) -> None:
         with pytest.raises(probe_grant.ProbeGrantError) as exc:
             probe_grant.consume(tmp_path, "claude")
         assert "отсутствует" in str(exc.value)
 
+    @pytest.mark.integration
     def test_single_use_budget_is_consumed_before_the_call(self, tmp_path: Path) -> None:
         self._grant(tmp_path, "claude=1\ncodex=1\n")
         assert probe_grant.consume(tmp_path, "claude") == 0
@@ -144,12 +158,14 @@ class TestProbeGrant:
         # Сосед не пострадал: бюджет попровайдерный.
         assert probe_grant.read_state(tmp_path, "codex").remaining == 1
 
+    @pytest.mark.integration
     def test_consumption_survives_a_crash_after_it(self, tmp_path: Path) -> None:
         """Списание durable: перечитанное с диска состояние уже уменьшено."""
         self._grant(tmp_path, "codex=1\n")
         probe_grant.consume(tmp_path, "codex")
         assert probe_grant.read_state(tmp_path, "codex").remaining == 0
 
+    @pytest.mark.integration
     def test_world_readable_grant_is_rejected(self, tmp_path: Path) -> None:
         self._grant(tmp_path, "claude=1\n", mode=0o644)
         state = probe_grant.read_state(tmp_path, "claude")
@@ -157,6 +173,7 @@ class TestProbeGrant:
         with pytest.raises(probe_grant.ProbeGrantError):
             probe_grant.consume(tmp_path, "claude")
 
+    @pytest.mark.integration
     def test_symlink_is_rejected_even_with_narrow_target(self, tmp_path: Path) -> None:
         real = tmp_path / "real_grant"
         real.write_text("claude=5\n", encoding="utf-8")
@@ -167,11 +184,13 @@ class TestProbeGrant:
         state = probe_grant.read_state(tmp_path, "claude")
         assert state.error and "ссылка" in state.error
 
+    @pytest.mark.integration
     def test_malformed_line_is_an_error_not_a_silent_zero(self, tmp_path: Path) -> None:
         self._grant(tmp_path, "claude:1\n")
         state = probe_grant.read_state(tmp_path, "claude")
         assert state.error and "claude:1" in state.error
 
+    @pytest.mark.unit
     def test_env_variable_alone_no_longer_authorizes(self, tmp_path: Path) -> None:
         """Суть находки 9: переменная больше не является разрешением воркера."""
         source = inspect.getsource(
@@ -188,6 +207,7 @@ class TestProbeGrant:
         )
         assert "probe_grant.consume" in source
 
+    @pytest.mark.unit
     def test_grant_file_never_created_by_the_worker(self) -> None:
         """Воркер не выписывает разрешение сам — иначе оно ничего не значит."""
         source = Path(REPO / "audit_worker" / "providers" / "probe_grant.py").read_text()
@@ -202,6 +222,8 @@ class TestProbeGrant:
 
 class TestGrantVisibility:
     """Разрешение, которого не видно, невозможно вовремя отозвать."""
+    pytestmark = pytest.mark.unit
+
 
     def test_remaining_reaches_capability_for_the_center(self) -> None:
         source = inspect.getsource(
@@ -220,6 +242,8 @@ class TestGrantVisibility:
 
 
 class TestSmokeCannotSupplyBothPermissions:
+    pytestmark = pytest.mark.unit
+
     def test_stage11_smoke_no_longer_injects_the_env_permission(self) -> None:
         """Проверяется ДЕРЕВО РАЗБОРА, а не текст файла.
 
