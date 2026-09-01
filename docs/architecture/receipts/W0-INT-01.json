@@ -4,7 +4,7 @@
   "wave": "0.0.02",
   "captured_at": "2026-09-01",
   "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6 по docs/architecture. Эта расписка фиксирует выполнение задачи, а не прохождение чекпоинта.",
-  "revision": "3 (2026-09-01, по второму кругу ревью)",
+  "revision": "4 (2026-09-01, уточнения третьего круга ревью)",
   "scope": "Собрать подготовленные результаты ENG/WEB/OPS в воспроизводимый clean-room CI и вынести вердикт по переводу регресс-гейта из observe в enforce.",
   "step_1_architectural_admission": {
     "adr_accepted": [
@@ -471,13 +471,13 @@
       "disposition_document": "docs/architecture/LANE_DISPOSITION_W0-INT-01.md",
       "verdict": "разметка полос НЕ является блокером enforce: опасное направление пусто. 1675 перетяжелённых зафиксированы как долг с владельцем и сроком, а не исправлены массовой правкой — 1449 из них идут в направлении «→ unit», самого слабого вывода инструмента, который не разбирает production-код",
       "numbers_refreshed": {
-        "at": "текущее дерево, 2026-09-01",
-        "test_functions": 6463,
-        "conflicts": 1680,
+        "at": "HEAD 5bee272c плюс guard- и contract-тесты, 2026-09-01",
+        "test_functions": 6468,
+        "conflicts": 1681,
         "understated": 1,
-        "overstated": 1679,
+        "overstated": 1680,
         "manual_review_modules": 40,
-        "why_numbers_are_no_longer_the_claim": "снимок стареет на каждом коммите с тестами, и ревью поймало его устаревшим дважды. Заведён tests/test_lane_disposition_guard.py, который держит структурное утверждение: опасное направление пусто сверх поимённого списка, список исключений не переживает свою причину, ни один перетяжелённый маркер не равен chaos, инвариант §5 сходится",
+        "why_the_snapshot_kept_rotting": "иллюстративные числа стояли не только в таблице, но и в прозе — в заголовке раздела, в знаменателях и в оговорках. Ревью ловило их устаревшими трижды. Живые счётчики из прозы убраны: остался один датированный снимок, а обязательство держит tests/test_lane_disposition_guard.py",
         "caveat_strengthened": "disposition не доказывает семантическую корректность всех маркеров: инструмент читает только тесты, статически, не разбирает conftest.py и production-код",
         "commit": "fc935620"
       }
@@ -487,7 +487,7 @@
       "reproduced": true,
       "root_cause": "clean-room разворачивается через `git archive`, где `.git` нет по построению, а probe определял commit только через `git rev-parse`",
       "fix": "цепочка git → QR_SOURCE_COMMIT → GITHUB_SHA; рядом пишется source_commit_origin, потому что env — доказательство слабее git; значение, не похожее на sha1, провенансом не считается",
-      "fail_closed": "заведена проверка source_provenance, обязательная в --ci и --enforce: без провенанса расписка не выпускается, прогон падает setup failure",
+      "fail_closed": "заведена проверка source_provenance, обязательная в --ci и --enforce. Точная формулировка: не выпускается ПРИЁМОЧНАЯ расписка. Прогон завершается setup failure, pytest не запускается, и пишется ДИАГНОСТИЧЕСКАЯ расписка с exit_code=2, report_status=missing, command=(probe) и пометкой «probe не пропустил lane». Локально (без --ci/--enforce) provenance остаётся advisory — §6.2 адресован именно локальному прогону",
       "proven": "на дереве без .git: без переменной SOURCE_COMMIT_UNKNOWN и setup_failure; с мусором отказ; с валидным SHA origin=QR_SOURCE_COMMIT",
       "duplication_closed": "tests/test_ci_test_lane.py::test_receipt_contains_every_field_section_8_requires разбирает минимальный состав §8 прямо из контракта",
       "commits": [
@@ -522,5 +522,11 @@
     "w0_int_01_closed": false,
     "next_stage_authorized": false,
     "why": "§3.3 прямо говорит, что прогон без выбранного norm corpus не считается G0 receipt; корпус не подключён"
+  },
+  "working_tree_state": {
+    "tracked": "чисто",
+    "untracked": "docs/architecture/presentations/ — файлы владельца, я их не трогаю и не индексирую",
+    "branch": "dev",
+    "note": "формально `git status` не пуст; говорить «дерево чистое» без этой оговорки неточно"
   }
 }
