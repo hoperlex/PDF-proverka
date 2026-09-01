@@ -1,0 +1,314 @@
+{
+  "type": "task_receipt",
+  "task_id": "W0-INT-01",
+  "wave": "0.0.02",
+  "captured_at": "2026-09-01",
+  "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6 по docs/architecture. Эта расписка фиксирует выполнение задачи, а не прохождение чекпоинта.",
+  "revision": "1",
+  "scope": "Собрать подготовленные результаты ENG/WEB/OPS в воспроизводимый clean-room CI и вынести вердикт по переводу регресс-гейта из observe в enforce.",
+  "step_1_architectural_admission": {
+    "adr_accepted": [
+      "ADR-0006",
+      "ADR-0018"
+    ],
+    "how": "Отдельной записью приёмки с датой, основанием и тем, кто принял, а не тихой правкой поля status. Решение принадлежит владельцу программы и записано как его.",
+    "still_proposed": [
+      "ADR-0002",
+      "ADR-0013",
+      "ADR-0014",
+      "ADR-0015",
+      "ADR-0016",
+      "ADR-0017"
+    ],
+    "limited_ownership": "В ADR-0006 добавлен подраздел об ограниченном pre-G1 владении W0-INT-01 с пофайловой таблицей. frontend/package.json и frontend/package-lock.json из владения ИСКЛЮЧЕНЫ явно.",
+    "contract_3_2": "В §3.2 добавлен AUDITMANAGER_DEPLOY_LOCK_DIR=<run-root>/locks.",
+    "commit": "8f6a3d90"
+  },
+  "step_2_deterministic_environment": {
+    "manifests": "Заведён requirements-dev.txt (pytest, pytest-asyncio и тестовый профиль). В requirements.txt добавлены passlib, openpyxl, PyMuPDF, pillow — центр их использовал, но не объявлял.",
+    "lock_materialized": "constraints-qr-v1.txt",
+    "lock_naming_defect_found_and_fixed": {
+      "was": "constraints/qr-v1.txt",
+      "why_wrong": "probe ищет lock по списку кандидатов, и такого пути в нём нет: check_python_lock возвращал PYTHON_LOCK_NOT_MATERIALIZED. Шаг «материализовать lock» формально был сделан, фактически чистая комната упала бы на нём. Каталог constraints/ вдобавок противоречил ADR-0006, который закрепляет за W0-INT-01 глоб constraints*.txt в корне.",
+      "now": "constraints-qr-v1.txt — первый кандидат probe; кода менять не потребовалось"
+    },
+    "pip_check": "зелёный",
+    "pip_freeze_sha256": "557e95885700a44013febcc6559fa8ee278923507b71df8adba761e1e247f99c",
+    "pip_freeze_matches_contract_4_1": "побайтно",
+    "node": "22.23.1",
+    "npm": "10.9.8",
+    "commit": "5bf06685"
+  },
+  "step_2_frozen_receipt_reissue": {
+    "section": "§2 QUALITY_RUNTIME_CONTRACT_V1.md",
+    "inputs_before": 11,
+    "inputs_after": 13,
+    "drifted": [
+      "requirements.txt",
+      "pytest.ini",
+      "frontend/tsconfig.distributed.json",
+      ".github/workflows/ci.yml",
+      "scripts/ci_regression_gate.py",
+      "scripts/ci_known_failures.txt"
+    ],
+    "added": [
+      "requirements-dev.txt",
+      "constraints-qr-v1.txt"
+    ],
+    "reason_recorded_in_place": "Причина каждого расхождения записана в самом §2, чтобы переиздание нельзя было принять за подтягивание хэшей под факт.",
+    "duplication_closed": {
+      "problem": "Таблица §2 и константы ci_runtime_probe.py — один факт в двух местах, и ничто не мешало им разойтись: probe сверял бы устаревшие значения, а документ говорил бы другое.",
+      "test": "tests/test_ci_runtime_probe.py::test_frozen_receipt_matches_document",
+      "checks": "каждая строка таблицы сверяется с файлом на диске; всё, что enforce'ит probe, обязано присутствовать в §2 с тем же значением",
+      "proven_on_forgery": "порча одной строки таблицы валит тест с предъявлением обоих хэшей"
+    }
+  },
+  "step_3_integration": {
+    "lane_markers": {
+      "test_functions": 6439,
+      "without_primary_marker": 0,
+      "double_marked": 0,
+      "by_lane": {
+        "unit": 2176,
+        "integration": 3336,
+        "network": 736,
+        "contract": 185,
+        "chaos": 6
+      },
+      "sum_equals_total": true,
+      "slow_is_not_a_lane": "§5 называет slow ортогональным атрибутом; он остаётся дополнительным маркером поверх первичного",
+      "collection_unchanged": "полная коллекция прежняя; выборка по умолчанию уменьшилась ровно на 4 узла — те, что по §5 переехали network → chaos, а addopts исключает chaos",
+      "commit": "93e6457d"
+    },
+    "network_marker_registered_in_pytest_ini": true,
+    "sys_executable": {
+      "finding": "OPS03-F9",
+      "was": "литеральный python в subprocess.run",
+      "why_wrong": "в чистой комнате имя python не гарантировано; там, где есть только python3, проверка падает с FileNotFoundError и превращается в ошибку окружения",
+      "extra_defect_found": "второй вызов проверял stdout == \"\", а пустой вывод упавшего интерпретатора неотличим от пустого из-за DEVNULL — тест прошёл бы, ничего не проверив; добавлена сверка returncode",
+      "commit": "e7b28c3e"
+    },
+    "frontend_strict": {
+      "was": "strict: false — проверка запускалась, но пропускала ровно то, ради чего стояла",
+      "errors_at_switch_on": 69,
+      "closed_with": "30 @typedef",
+      "escapes": "ни одного any, @ts-ignore, @ts-expect-error, @ts-nocheck — проверено grep по обоим файлам",
+      "commit": "ea6a99fa"
+    }
+  },
+  "step_4_cleanroom_g0": {
+    "method": "свежий checkout `git archive HEAD` в отдельный каталог, отдельный venv, прогон от ciuser (uid 1001)",
+    "platform_3_1": {
+      "os": "Ubuntu 24.04.4 LTS",
+      "python": "3.12.3",
+      "uid": 1001,
+      "node": "22.23.1",
+      "npm": "10.9.8",
+      "tz": "UTC",
+      "lc_all": "C.UTF-8",
+      "pythonhashseed": "0"
+    },
+    "cr_5_closed": {
+      "was": "ciuser видел системный node 18.19.1 / npm 9.2.0, тогда как §3.1 пинит 22.23.1 / 10.9.8; сборка 22.23.1 лежала под /root/.nvm и была недоступна непривилегированному пользователю",
+      "verdict_refined": "дефект provisioning, а не несовместимость платформы",
+      "fix": "сборка выложена в /opt/node-v22.23.1 с правами на чтение всем; ciuser видит 22.23.1 / 10.9.8"
+    },
+    "cr_4_repeated_on_exact_receipt": {
+      "pip_check": "No broken requirements found",
+      "pip_freeze_sha256": "557e95885700a44013febcc6559fa8ee278923507b71df8adba761e1e247f99c",
+      "matches_contract_4_1": "побайтно"
+    },
+    "pass_1": {
+      "head": "674afba8",
+      "lanes": {
+        "unit": {
+          "tests": 2633,
+          "passed": 2495,
+          "failed": 4,
+          "errors": 0,
+          "skipped": 134
+        },
+        "contract": {
+          "tests": 246,
+          "passed": 245,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 1
+        },
+        "integration": {
+          "tests": 3594,
+          "passed": 3522,
+          "failed": 0,
+          "errors": 33,
+          "skipped": 39
+        },
+        "network": {
+          "tests": 826,
+          "passed": 819,
+          "failed": 1,
+          "errors": 0,
+          "skipped": 6
+        },
+        "chaos": {
+          "tests": 7,
+          "passed": 4,
+          "failed": 2,
+          "errors": 0,
+          "skipped": 1
+        }
+      },
+      "frontend": {
+        "npm_ci": "ok",
+        "test": "rc=1",
+        "lint": "rc=0",
+        "typecheck": "rc=0",
+        "build": "rc=0"
+      },
+      "integration_errors_explained": "33 ошибки в integration — ровно 33 записи baseline по неподключённому корпусу норм; совпадение точное",
+      "what_pass_1_found": [
+        "два падения test_section_optimization_pipeline_service вне baseline — оказались предсуществующей гонкой планировщика (измерено 6 из 12), исправлено",
+        "падение frontend-теста истории задач — оказалось зависимостью от часового пояса, детерминированной, исправлено",
+        "падение test_two_real_processes_overlap_and_third_waits в network — тест реальных процессов на загруженной машине; проверяется вторым проходом на тихой"
+      ]
+    },
+    "pass_2": {
+      "head": "fa1496d4",
+      "machine": "тихая — первый проход шёл параллельно с моими же замерами, второй нет",
+      "lanes": {
+        "unit": {
+          "tests": 2633,
+          "passed": 2497,
+          "failed": 2,
+          "errors": 0,
+          "skipped": 134,
+          "verdict": "оба падения — ровно записи baseline (test_versions_panel_still_exists, test_llm_reject_downgrades_accept); новых нет"
+        },
+        "contract": {
+          "tests": 246,
+          "passed": 245,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 1,
+          "verdict": "чисто"
+        },
+        "integration": {
+          "tests": 3594,
+          "passed": 3522,
+          "failed": 0,
+          "errors": 33,
+          "skipped": 39,
+          "verdict": "воспроизвела первый проход в точности; 33 ошибки — ровно 33 записи baseline по корпусу норм"
+        },
+        "network": {
+          "tests": 826,
+          "passed": 817,
+          "failed": 3,
+          "errors": 0,
+          "skipped": 6,
+          "verdict": "см. finding_network_lane_is_not_deterministic"
+        },
+        "chaos": {
+          "tests": 7,
+          "passed": 4,
+          "failed": 2,
+          "errors": 0,
+          "skipped": 1,
+          "verdict": "оба падения — тесты убийства и перезапуска настоящих процессов (test_killing_agent_does_not_stop_the_audit, test_agent_restart_keeps_two_processes_and_creates_no_duplicates); полоса неблокирующая по §5 и по ci.yml именно для этого"
+        }
+      },
+      "frontend": {
+        "npm_ci": "ok",
+        "test": "rc=0, 32 файла, 403 теста",
+        "lint": "rc=0",
+        "typecheck": "rc=0",
+        "build": "rc=0"
+      },
+      "confirmed_fixes": [
+        "гонка планировщика: unit дал 2 падения вместо 4, и оба — baseline",
+        "часовой пояс: фронтенд-набор зелёный целиком (был rc=1)"
+      ]
+    },
+    "finding_network_lane_is_not_deterministic": {
+      "severity": "высокая — второй независимый блокер enforce, помимо корпуса норм",
+      "observed": {
+        "pass_1": [
+          "test_two_real_processes_overlap_and_third_waits"
+        ],
+        "pass_2": [
+          "test_agent_restart_adopts_live_executor_higher_epoch_no_duplicate",
+          "test_two_executors_never_start_two_processes",
+          "test_two_real_processes_overlap_and_third_waits"
+        ]
+      },
+      "none_in_baseline": true,
+      "why_baseline_does_not_know_them": "baseline снимался с прогона ПО УМОЛЧАНИЮ (`-m \"not chaos\"`, всё вперемешку), где эти тесты проходили. Полоса `network` — новая выборка, и она ставит тесты настоящих процессов подряд.",
+      "measured": {
+        "three_together_after_wave": "2 из 3 упали (локально, изолированный run-root)",
+        "three_together_before_wave": "1 из 3 упал — тот же test_two_real_processes_overlap_and_third_waits",
+        "conclusion": "test_two_real_processes_overlap_and_third_waits падает и ДО волны — предсуществующий, не регрессия. Остальные два неустойчивы: проходят в одних сочетаниях и падают в других."
+      },
+      "not_a_load_artifact": "первый проход шёл на загруженной машине и дал 1 падение, второй на тихой — 3. Нагрузка гипотезу не объясняет.",
+      "not_fixed_here": "это не гонка ожидания вроде исправленной в конвейере раздела: _wait здесь корректный, со сроком 90 с. Причина — взаимное влияние тестов настоящих процессов при их концентрации в одной полосе, и разбираться с ней нужно по каждому тесту отдельно, с владельцем распределённого контура.",
+      "consequence_for_enforce": "полоса network не может быть блокирующей сегодня независимо от корпуса норм"
+    },
+    "verdict": {
+      "reproducible_cleanroom": true,
+      "regression_gate_to_enforce": false,
+      "blockers": [
+        "корпус норм не provisioned: 33 из 35 записей baseline существуют только из-за этого входа; §6 правило 4 объявляет корпус обязательным для enforce, а norms/tools/README.md запрещает собирать vault из norms_db.json — это внешний вход владельца",
+        "полоса network недетерминирована на тестах настоящих процессов, и её падений нет в baseline"
+      ],
+      "what_is_enforced_now": "блокируют шаги окружения (установка по constraints, pip check, provisioning, uid != 0) и весь frontend gate; падения тестов в полосах наблюдаются",
+      "chaos_stays_observe_only": true,
+      "recommendation": "ждать источник norms/vault и отдельно разобрать три теста network; порядок включения записан в конце .github/workflows/ci.yml"
+    }
+  },
+  "own_defects_found_and_fixed": [
+    {
+      "id": "INT01-D1",
+      "what": "materialized lock лежал по пути, которого нет в списке кандидатов probe",
+      "impact": "PYTHON_LOCK_NOT_MATERIALIZED — чистая комната упала бы на шаге, который считался выполненным",
+      "fixed_by": "переименование в constraints-qr-v1.txt (первый кандидат, и соответствует глобу ADR-0006)"
+    },
+    {
+      "id": "INT01-D2",
+      "what": "шаг CI назывался «Сверить dependency receipt», а в теле только печатал sha256 и звал pip check",
+      "impact": "расхождение прошло бы мимо шага, чьё имя обещает обратное",
+      "fixed_by": "шаги переименованы по факту; сверка не продублирована — она живёт в probe внутри ci_test_lane.py (PIP_FREEZE_DRIFT), и рецепт должен оставаться в одном месте"
+    },
+    {
+      "id": "INT01-D3",
+      "what": "обоснование полосы в шапке tests/test_ci_lane_inventory.py утверждало, что файл поднимает uvicorn",
+      "impact": "неверная причина у верного решения; слово uvicorn встречается в файле лишь как синтетический вход для самого инструмента",
+      "fixed_by": "обоснование переписано по факту (запуск инвентаря дочерним процессом); полоса network оставлена — §5 относит к ней process lifecycle"
+    }
+  ],
+  "notes_for_owner": [
+    {
+      "id": "N-1",
+      "subject": "lint не покрывает новый frontend-тест",
+      "detail": "Скрипт lint перечисляет файлы поимённо и не включает tests/discussions_route_removal.test.js.",
+      "not_fixed_here": "исправление требует правки frontend/package.json, прямо исключённого из ограниченного владения W0-INT-01 в ADR-0006"
+    },
+    {
+      "id": "N-2",
+      "subject": "tests/test_audit_routing_plan_network_e2e.py пишет в рабочее дерево",
+      "detail": "Пишет доказательные JSON в docs/distributed_audit_workers/11i/, а не в tmp_path.",
+      "measured": "проверено: файлы отслеживаются, нестабильных полей в них нет, после прогона git status по каталогу пуст — дерево остаётся чистым",
+      "verdict": "запах, не дефект; исправление удалило бы доказательные артефакты, которые задача 11i публикует намеренно"
+    },
+    {
+      "id": "N-3",
+      "subject": "спорные классификации на границе contract/integration",
+      "detail": "Проверены названные агентом файлы. В test_reliability_chaos_12e.py 24-поточный тест атомарности помечен integration, а contract стоит на проверках стабильного отображения ошибок через httpx.MockTransport — это provider-consumer совместимость по §5.",
+      "verdict": "классификация защитима; если владелец решит иначе, это правка маркера, а не переделка"
+    },
+    {
+      "id": "N-4",
+      "subject": "requirements-worker-pipeline.txt разошёлся с профилем центра (CR-6)",
+      "detail": "Его пины противоречат qr-v1; установка конвейера под constraints-qr-v1.txt даёт ResolutionImpossible.",
+      "not_fixed_here": "перевод конвейера на qr-v1 меняет продакшен-профиль стороннего VPS и требует прогона на самом VPS"
+    }
+  ],
+  "authorizes_next_cutover": false
+}
