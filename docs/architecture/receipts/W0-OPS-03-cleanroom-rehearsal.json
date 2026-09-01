@@ -45,7 +45,9 @@
       "summary": "Манифесты не объявляют pytest — clean-room не может запустить ни одного теста",
       "measured": "после установки всех шести requirements*.txt: `No module named pytest`. Отсутствуют РОВНО pytest и pytest-asyncio",
       "corrects_prior_evidence": "evidence 2026-08-28 называла шесть недостающих пакетов (passlib, pytest-asyncio, PyMuPDF, Pillow, openpyxl, grpcio-health-checking). На текущем дереве четыре из них приходят транзитивно; недостающих два, но среди них сам test runner, которого прежний список не называл",
-      "owner": "W0-INT-01 (root dependency files)"
+      "owner": "W0-INT-01 (root dependency files)",
+      "status": "закрыта W0-INT-01",
+      "fix": "заведён requirements-dev.txt — тестовый профиль с pytest и pytest-asyncio. В requirements.txt добавлены четыре пакета, которые центр использовал, но не объявлял (passlib, openpyxl, PyMuPDF, pillow): три из них импортируются лениво, поэтому их пропажа маскировалась под HTTP 500 в рантайме и pip check её не видел"
     },
     {
       "id": "CR-2",
@@ -64,7 +66,10 @@
         "совпали": "anyio 4.14.2, httpx 0.28.1, grpcio 1.82.1, protobuf 7.35.1, pytest 9.1.1"
       },
       "consequence": "backend/tests/test_http_contract_snapshot::test_snapshot_matches_live_surface падает: разошлись 27 эндпоинтов OpenAPI. Это системный сдвиг схемы от версии фреймворка, а не правка кода — ровно тот риск, ради которого frozen receipt и существует",
-      "owner": "W0-INT-01 (lock/constraints материализуют dependency receipt)"
+      "owner": "W0-INT-01 (lock/constraints материализуют dependency receipt)",
+      "status": "закрыта W0-INT-01",
+      "fix": "материализован lock constraints-qr-v1.txt из frozen receipt §4.1. Проверено независимо в чистом venv: pip check зелёный, pip freeze совпал с эталоном 557e9588… ПОБАЙТНО, снапшот HTTP-контракта — 4 passed, расхождение на 27 эндпоинтов исчезло",
+      "root_cause_refined": "fastapi 0.115.6 приходил НЕ из диапазона requirements.txt, а из жёсткого пина requirements-worker-pipeline.txt: причиной было слепое сложение шести манифестов, запрещённое §4.1, а не граница центра. Граница <0.142 версию 0.141.1 допускает — противоречие с рецептом оказалось кажущимся"
     },
     {
       "id": "CR-3",
@@ -94,6 +99,15 @@
       "owner": "W0-INT-01",
       "why_blocker": "Node 18.19.1 и npm 9.2.0 против пинов 22.23.1 и 10.9.8 — это не косметика: §11 требует, чтобы frontend gate завершился на clean-room runner, а на этой платформе он не запускался вовсе. Непроверенный гейт — не пройденный гейт.",
       "refined_2026_09_01": "Уточнено при интеграции: машина СООТВЕТСТВУЕТ пину — root видит node 22.23.1 и npm 10.9.8 через nvm. Непривилегированный пользователь получает системный node 18.19.1, потому что nvm живёт в /root/.nvm. То есть это дефект provisioning clean-room, а не платформы: профиль §3.1 обязан доставлять Node явно, а не полагаться на PATH запускающего."
+    },
+    {
+      "id": "CR-6",
+      "severity": "средняя",
+      "summary": "requirements-worker-pipeline.txt официально разошёлся с профилем центра",
+      "detail": "Файл жёстко пинит fastapi==0.115.6 и другие версии «по тому, что стоит на центре» — оговорка, которая с материализацией qr-v1 перестала быть верной. Установка конвейера с constraints-qr-v1.txt даёт ResolutionImpossible: это громкий отказ вместо прежнего молчаливого сползания центра на версии стороннего VPS.",
+      "why_it_matters": "Риск «работает на центре, падает на воркере», о котором предупреждает шапка самого файла, из гипотетического стал измеренным.",
+      "owner": "владелец конвейера воркера; требует прогона на самом VPS, а не здесь",
+      "not_fixed_here": "перевод конвейера на qr-v1 меняет production-профиль стороннего VPS — это не правка манифеста, а изменение чужого прода"
     }
   ],
   "what_this_does_not_prove": [
