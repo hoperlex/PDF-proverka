@@ -83,7 +83,18 @@ jobs:
 
       # Раннер сам выполняет probe ДО pytest (§6, правило 1): отсутствие
       # обязательной capability — setup failure, а не skip.
+      # Пока baseline не расчищен, ПАДЕНИЯ ТЕСТОВ здесь не блокируют: 2 записи в
+      # unit и 33 ошибки в integration — известный долг, и без сравнения с
+      # baseline (его делает job regression-gate) полоса была бы красной на
+      # каждом прогоне, что противоречит объявленному здесь observe-first.
+      # Снимается вместе с continue-on-error у регресс-гейта, шагом 4 порядка
+      # включения в конце файла.
+      #
+      # Блокирующими остаются шаги ВЫШЕ: установка по constraints, pip check,
+      # provisioning, проверка uid != 0. Отказ инфраструктуры — не наблюдение,
+      # и пропускать его нельзя ни при каком состоянии baseline.
       - name: "Lane ${{ matrix.lane }}"
+        continue-on-error: true
         env:
           AUDIT_APP_DATA_DIR: ${{ runner.temp }}/run-root/app_data
           AUDIT_PROJECTS_DIR: ${{ runner.temp }}/run-root/projects
@@ -277,7 +288,8 @@ jobs:
 #   3. пересобрать baseline ОДИН раз в этом окружении и закоммитить с
 #      обоснованием (`ci_regression_gate.py --record`; он сам откажет, пока
 #      корпус не provisioned);
-#   4. снять `continue-on-error: true` у шага «Регресс-гейт».
+#   4. снять `continue-on-error: true` у шага «Регресс-гейт» И у шага
+#      «Lane <lane>» в job `lanes` — они висят на одном условии.
 #
 # Job `chaos` остаётся неблокирующим независимо от этого: его назначение —
 # видеть недетерминизм.

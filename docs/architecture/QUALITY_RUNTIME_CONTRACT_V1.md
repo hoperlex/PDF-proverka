@@ -68,7 +68,7 @@ lane-маркеров §5, `ci.yml` переписан под пять поло�
 | `frontend/package-lock.json` | `c679604b25329bdbcf89f80017011a0c51c07e770e326865b093f63633097040` |
 | `frontend/package.json` | `65749f5180ea6fd1e2d99f35c103365f9188f7e2cabaef3db53e8f051eef2075` |
 | `frontend/tsconfig.distributed.json` | `a3d3fb949642421af5563073f04658160534b04e78c3ebad895d4454eb487863` |
-| `.github/workflows/ci.yml` | `6554795680bcc0d1f603ead13e1a87bf77aeb7fe3d26d8118dc35a97304bbffb` |
+| `.github/workflows/ci.yml` | `db39d83ba5ea4404487b4754d47d00b158a53075d6ce252beadb9d15ddc87c48` |
 | `scripts/ci_regression_gate.py` | `42fc15209950558781481aaa25d84d6f11a1333acb78eb22644b3a8b50f6f529` |
 | `scripts/ci_known_failures.txt` | `4a69decf38d4f1a65c9b2d7cbca6468512b7d4ce46fcd4a07db24c47147e2fb2` |
 | `tests/conftest.py` | `395646bd3f738f1da345bb75f2627844f8e27d447991c04ce305b97d13594706` |
