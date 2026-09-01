@@ -196,14 +196,14 @@
   ],
   "authorizes_next_cutover": false,
   "observe_only": "ни один новый инструмент не включён ни в один автоматический прогон; всё запускается руками до W0-INT-01",
-  "revision": "10 (2026-08-31, по девятому кругу ревью)",
+  "revision": "11 (2026-09-01, по десятому кругу ревью)",
   "own_tests": {
-    "total": 189,
+    "total": 200,
     "measured_by": "python -m pytest <файл> --collect-only -q, ПОСЛЕ всех правок круга",
     "by_file": {
       "tests/test_ci_redaction.py": 30,
       "tests/test_ci_timeout_plugin.py": 48,
-      "tests/test_ci_test_lane.py": 39,
+      "tests/test_ci_test_lane.py": 50,
       "tests/test_ci_lane_inventory.py": 49,
       "tests/test_ci_provision_norms.py": 18,
       "tests/test_ci_regression_gate_budget.py": 5
@@ -217,8 +217,8 @@
     "command": "python scripts/ci_lane_inventory.py",
     "duration_sec": 1.71,
     "modules": 390,
-    "test_functions": 6433,
-    "nodes_lower_bound": 7005,
+    "test_functions": 6436,
+    "nodes_lower_bound": 7010,
     "nodes_lower_bound_note": "оценка снизу: множитель parametrize считается только по литеральным спискам. Настоящий сбор pytest даёт больше (7082 в части 1) — расхождение объяснимо и указано инструментом.",
     "inferred_lanes": {
       "chaos": {
@@ -243,7 +243,7 @@
       }
     },
     "marked_functions": 13,
-    "unmarked_functions": 6420,
+    "unmarked_functions": 6423,
     "modules_without_any_marker": 387,
     "double_marked": 0,
     "marker_vs_behavior_conflicts": 4,
@@ -261,9 +261,9 @@
     "drift_note": "Абсолютные числа сдвигаются с каждым новым тестом. Поэтому в roadmap их больше нет, а здесь они годны только вместе с tree-хешами выше: совпали хеши — числа те же, разошлись — надо пересчитать. Устойчивое утверждение не зависит от прогона: размечено 13 функций, остальные без primary lane marker, и это не изменится, пока разметка не начата.",
     "measured_at": {
       "why_not_a_commit": "Коммит здесь бесполезен: числа меняются от содержимого tests/ и backend/tests/, а коммит меняется и от правки документов. Ревью дважды поймало расхождение именно поэтому. Замер привязан к tree-хешам ровно тех каталогов, которые инструмент читает, — они не сдвигаются от правки квитанции.",
-      "tests_tree_sha1": "9574678ec541a1f234822d2d02067851912758e5",
+      "tests_tree_sha1": "4a38e604bae593b901444305c2a305c599a5b3ee",
       "backend_tests_tree_sha1": "7e19ce4f6e9164b2672e17889b87d88be728a9c1",
-      "output_sha256": "b52c5e0bbfeb73c902ff5e44dcc26e0563978fe035742ddc2ef0e14fa78c1de8",
+      "output_sha256": "7a6c5f0a5e780c16bcc2ac9c5e96a393048d463d51af4c104e3d80ae8f89c7c4",
       "excluded_nonsemantic_output_fields": [
         "root",
         "duration_seconds"
@@ -566,6 +566,29 @@
       "documentation": [
         "у OPS03-F10 снято поле not_fixed_here, противоречившее status: закрыта; вместо него историческая формулировка"
       ]
+    },
+    "round_10_local_review": {
+      "base_commit": "34346484",
+      "verdict": "REV-22 принят; в REV-21 остался alias-обход",
+      "fixes": [
+        {
+          "id": "REV-23",
+          "blocking": true,
+          "summary": "Абсолютные пути не нормализовались — псевдоним обходил guard",
+          "reproduced": ".ci/reports/../reports/network.xml указывает ровно на канонический артефакт чужого lane, но по строке с ним не совпадал: classify_canonical возвращал None, guard пропускал запись. Так же работал symlink-alias",
+          "why_missed": "_resolve() звал resolve() только для относительных путей: я считал абсолютный путь уже нормализованным. Сравнивать пути по НАПИСАНИЮ — та же ошибка, что сравнивать имена по префиксу: у одной сущности бесконечно много написаний, и перечислить их нельзя",
+          "fix": [
+            "resolve(strict=False) вызывается всегда; strict=False потому, что артефакт как раз создаётся",
+            "канонический каталог нормализуется тоже — сравнение имеет смысл, только если приведены обе стороны",
+            "публикуемая строка собирается из канонической формы, а не из фактического пути: relative_to на symlink'ах могла бы отказать"
+          ],
+          "verified": "четыре сквозные попытки (абсолютный .., относительный .., symlink на xml, symlink на receipt) дают код 1, контрольное содержимое обоих чужих файлов не изменилось. Параметризованные тесты на четыре формы псевдонима × два вида артефакта плюс symlink; при снятой нормализации краснеют семь тестов"
+        }
+      ],
+      "documentation": [
+        "комментарий у _SUFFIX_TO_KIND исправлен: он утверждал, что длинные суффиксы проверяются первыми, хотя порядок другой. Суффиксы не пересекаются, поэтому код работал — неверным было объяснение, а не поведение"
+      ],
+      "scope_note": "Полный regression gate не повторялся: ревью прямо указало, что после правки _resolve() достаточно adversarial-тестов, tests/test_ci_*.py и обновлённой квитанции. Предыдущий полный прогон на 34346484 — 7077 passed, новых 0."
     }
   },
   "cleanroom_rehearsal": {

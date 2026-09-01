@@ -1345,3 +1345,75 @@ def test_run_refuses_to_overwrite_another_lanes_canonical_artifact(harness: Harn
         assert foreign.read_text(encoding="utf-8") == marker
     finally:
         foreign.unlink(missing_ok=True)
+
+
+#: Написания, указывающие на ОДИН и тот же канонический артефакт чужого lane.
+#: Сравнивать пути по строке — та же ошибка, что сравнивать имена по префиксу:
+#: у одной сущности бесконечно много написаний, и перечислить их нельзя.
+_ALIAS_FORMS = [
+    ("абсолютный с ..", lambda d, name: d / ".." / d.name / name),
+    ("относительный с ..", lambda d, name: Path(".ci/reports") / ".." / "reports" / name),
+    ("двойной ..", lambda d, name: d / ".." / ".." / ".ci" / "reports" / name),
+    ("лишний слэш", lambda d, name: Path(str(d) + "//" + name)),
+]
+
+
+@pytest.mark.parametrize("label,build", _ALIAS_FORMS, ids=[c[0] for c in _ALIAS_FORMS])
+@pytest.mark.parametrize("kind,name", [("junit", "network.xml"),
+                                       ("receipt", "network.receipt.json")])
+def test_path_aliases_do_not_bypass_the_guard(label, build, kind, name):
+    """Псевдоним пути не делает чужой артефакт своим.
+
+    `_resolve()` прежде возвращал абсолютный путь как есть, и
+    `.ci/reports/../reports/network.xml` — указывающий ровно на канонический
+    артефакт чужого lane — по строке с ним не совпадал: guard пропускал
+    запись.
+    """
+    path = build(lane_mod.REPORT_DIR, name)
+    foreign = lane_mod.is_foreign_canonical(path, "unit", kind)
+    assert foreign is not None, f"{label}/{kind}: псевдоним обошёл guard ({path})"
+    assert foreign.startswith("network")
+    assert lane_mod._publishable_path(path, kind, "unit") == f"<custom-{kind}>"
+
+
+@pytest.mark.parametrize("kind,name", [("junit", "network.xml"),
+                                       ("receipt", "network.receipt.json")])
+def test_symlink_alias_does_not_bypass_the_guard(kind, name, tmp_path: Path):
+    """Symlink на чужой канонический артефакт распознаётся как чужой.
+
+    Ссылка — ещё одно написание того же файла. Без `resolve()` она выглядела
+    бы обычным пользовательским путём вне канонического каталога, и запись
+    прошла бы прямо в чужой артефакт.
+    """
+    target = lane_mod.REPORT_DIR / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    created = not target.exists()
+    if created:
+        target.write_text("контроль", encoding="utf-8")
+    link = tmp_path / f"alias-{name}"
+    link.symlink_to(target)
+    try:
+        foreign = lane_mod.is_foreign_canonical(link, "unit", kind)
+        assert foreign is not None, f"symlink обошёл guard: {link} -> {target}"
+        assert lane_mod._publishable_path(link, kind, "unit") == f"<custom-{kind}>"
+    finally:
+        if created:
+            target.unlink(missing_ok=True)
+
+
+def test_own_canonical_artifact_survives_normalisation():
+    """Нормализация не должна объявить свой же канонический путь чужим."""
+    for lane in lane_mod.LANES:
+        for kind, suffix in (("junit", ".xml"), ("receipt", ".receipt.json"),
+                             ("events", ".events.jsonl"), ("timeout", ".timeout.json")):
+            for path in (
+                lane_mod.REPORT_DIR / f"{lane}{suffix}",
+                lane_mod.REPORT_DIR / ".." / "reports" / f"{lane}{suffix}",
+                Path(".ci/reports") / f"{lane}{suffix}",
+            ):
+                assert lane_mod.is_foreign_canonical(path, lane, kind) is None, (
+                    f"{lane}/{kind}: свой артефакт объявлен чужим ({path})"
+                )
+                assert lane_mod._publishable_path(path, kind, lane) == (
+                    f".ci/reports/{lane}{suffix}"
+                )
