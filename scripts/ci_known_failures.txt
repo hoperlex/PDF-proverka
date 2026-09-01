@@ -2,10 +2,39 @@
 # Предсуществующие падения/ошибки на момент уборки 'нет CI'.
 # В основном устаревшие тесты / frontend-drift / ожидания старых флагов —
 # это НЕ регрессии прода. CI зелёный, если НЕТ новых падений сверх этого списка.
-# Пересоздать в свежем окружении: python scripts/ci_regression_gate.py --record
+# Baseline принадлежит профилю CI, а не машине разработчика: расхождение из-за
+# отсутствующего optional-датасета чинится тестом, а не перезаписью списка.
+#
+# ─── Владельцы и сроки (требование G0, W0-INT-01) ───────────────────────────
+#
+# Каждая запись обязана иметь владельца, задачу закрытия и срок пересмотра:
+# долг без владельца не сокращается, а зарастает. Ниже записи сгруппированы
+# по ПРИЧИНЕ, потому что у 33 из 35 причина одна.
+#
 # Кол-во: 35
 
-backend.tests.test_findings_review_critic_v2_llm_gate.TestMergeLLMDecisions::test_llm_reject_downgrades_accept
+# ── Группа 1: отсутствует norm corpus (33 записи) ───────────────────────────
+#
+# Причина: norms/vault не provisioned. §3.3 контракта объявляет корпус
+# обязательным для enforce CI, а его источник в .github/workflows/ci.yml до
+# сих пор помечен TODO(владелец): нужен release asset, приватный бакет или
+# отдельный репозиторий, отдающий checksum.
+#
+# norms/tools/README.md прямо запрещает собирать vault из norms_db.json:
+# «не используем norms_db.json как truth или seed». Значит внутри репозитория
+# корпус получить нельзя — это внешний вход, и его подключение принадлежит
+# владельцу программы.
+#
+# ВАЖНО для enforce: 33 из 35 записей baseline существуют только из-за этого
+# отсутствующего входа. Включить enforce до provisioning значит закрепить
+# «корпуса нет» как норму проекта — ровно то, о чём предупреждает докстрока
+# ci_regression_gate.py. После provisioning эти 33 записи обязаны исчезнуть, а
+# не быть перезаписанными.
+#
+#   владелец: владелец программы (источник артефакта)
+#   задача закрытия: W0-INT-01 после подключения источника
+#   пересмотр: при первом же успешном provisioning; до тех пор enforce не включается
+
 tests.test_norms_status_index_fallback::test_db_only_known_norm_is_known_unverified
 tests.test_norms_status_index_fallback::test_db_only_norm_not_authoritative_even_with_vault_present
 tests.test_norms_status_index_fallback::test_db_only_unknown_norm_is_missing
@@ -39,4 +68,28 @@ tests.test_norms_status_index_fallback::test_overrides_only_cancelled
 tests.test_norms_status_index_fallback::test_overrides_only_replaced
 tests.test_norms_status_index_fallback::test_overrides_only_unknown
 tests.test_norms_status_index_fallback::test_vault_norm_is_authoritative
+
+# ── Группа 2: устаревший characterization contract (1 запись) ───────────────
+#
+# tests/test_ui_project_rename.py:59 требует 'versions-panel' в index.html.
+# Панели там нет. Тот же класс, что семь падений, разобранных W0-WEB-02:
+# проверка пережила намеренное удаление элемента.
+#
+#   владелец: WEB
+#   задача закрытия: задача волны 1, назначенная WEB (disposition по образцу W0-WEB-02)
+#   пересмотр: 2026-10-01
+
 tests.test_ui_project_rename::test_versions_panel_still_exists
+
+# ── Группа 3: расхождение бизнес-ожидания (1 запись) ────────────────────────
+#
+# backend/tests/test_findings_review_critic_v2_llm_gate.py:508 ожидает 'reject',
+# получает 'borderline'. Это НЕ инфраструктура и не устаревший текст: разошлись
+# ожидание теста и фактическая политика понижения вердикта. Разбирать обязан
+# владелец политики critic v2, а не интегратор.
+#
+#   владелец: ENG (владелец findings critic v2)
+#   задача закрытия: задача волны 1, назначенная ENG
+#   пересмотр: 2026-10-01
+
+backend.tests.test_findings_review_critic_v2_llm_gate.TestMergeLLMDecisions::test_llm_reject_downgrades_accept
