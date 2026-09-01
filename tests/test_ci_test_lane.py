@@ -1417,3 +1417,78 @@ def test_own_canonical_artifact_survives_normalisation():
                 assert lane_mod._publishable_path(path, kind, lane) == (
                     f".ci/reports/{lane}{suffix}"
                 )
+
+
+def _reimport_lane_with_report_dir(report_dir: Path):
+    """Загрузить свежую копию модуля, чей `.ci/reports` — заданный каталог.
+
+    Константы вычисляются при импорте, поэтому подменять их у уже загруженного
+    модуля значило бы проверять не тот объект, что работает в проде. Здесь
+    создаётся настоящее дерево с настоящим symlink'ом и модуль импортируется
+    из него.
+    """
+    import importlib.util
+
+    root = report_dir.parent.parent          # <root>/.ci/reports → <root>
+    scripts = root / "scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+    for name in ("ci_test_lane.py", "ci_timeout_plugin.py", "ci_redaction.py"):
+        shutil.copy2(SCRIPTS / name, scripts / name)
+    spec = importlib.util.spec_from_file_location(
+        f"lane_symlink_{report_dir.parent.parent.name}", scripts / "ci_test_lane.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_symlinked_report_dir_inside_the_repo_does_not_publish_the_target(
+    tmp_path: Path,
+):
+    """`.ci/reports` — symlink на приватный каталог: путь target не публикуется.
+
+    Это была регрессия от нормализации: сравнение стало идти по физическому
+    каталогу, и публикуемая строка тоже собиралась из него. Если ссылка ведёт
+    в `<repo>/private/<customer>/reports`, идентификатор клиента уезжал в
+    receipt — возврат к P-13 с другой стороны.
+    """
+    secret = "CUSTOMER_SECRET_q7z4m2n8"
+    root = tmp_path / "repo"
+    (root / "private" / secret / "reports").mkdir(parents=True)
+    (root / ".ci").mkdir()
+    (root / ".ci" / "reports").symlink_to(root / "private" / secret / "reports")
+
+    module = _reimport_lane_with_report_dir(root / ".ci" / "reports")
+    published = module._publishable_path(
+        root / ".ci" / "reports" / "unit.xml", "junit", "unit"
+    )
+    assert published == ".ci/reports/unit.xml", published
+    assert secret not in published
+    assert "private" not in published
+    # Сравнение при этом продолжает работать: чужой lane распознаётся.
+    assert module.is_foreign_canonical(
+        root / ".ci" / "reports" / "network.xml", "unit", "junit"
+    ) is not None
+
+
+def test_symlinked_report_dir_outside_the_repo_does_not_raise(tmp_path: Path):
+    """Target вне репозитория не роняет публикацию.
+
+    Прежняя строка звала `relative_to(ROOT)` на физическом каталоге: ссылка
+    наружу давала ValueError, то есть receipt не собирался вовсе.
+    """
+    root = tmp_path / "repo_out"
+    outside = tmp_path / "elsewhere" / "CUSTOMER_SECRET_out" / "reports"
+    outside.mkdir(parents=True)
+    (root / ".ci").mkdir(parents=True)
+    (root / ".ci" / "reports").symlink_to(outside)
+
+    module = _reimport_lane_with_report_dir(root / ".ci" / "reports")
+    for kind, name in (("junit", "unit.xml"), ("receipt", "unit.receipt.json")):
+        published = module._publishable_path(
+            root / ".ci" / "reports" / name, kind, "unit"
+        )
+        assert published == f".ci/reports/{name}", published
+        assert "CUSTOMER_SECRET_out" not in published
+        assert "elsewhere" not in published

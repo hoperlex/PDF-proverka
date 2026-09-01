@@ -196,14 +196,14 @@
   ],
   "authorizes_next_cutover": false,
   "observe_only": "ни один новый инструмент не включён ни в один автоматический прогон; всё запускается руками до W0-INT-01",
-  "revision": "11 (2026-09-01, по десятому кругу ревью)",
+  "revision": "12 (2026-09-01, по одиннадцатому кругу ревью)",
   "own_tests": {
-    "total": 200,
+    "total": 202,
     "measured_by": "python -m pytest <файл> --collect-only -q, ПОСЛЕ всех правок круга",
     "by_file": {
       "tests/test_ci_redaction.py": 30,
       "tests/test_ci_timeout_plugin.py": 48,
-      "tests/test_ci_test_lane.py": 50,
+      "tests/test_ci_test_lane.py": 52,
       "tests/test_ci_lane_inventory.py": 49,
       "tests/test_ci_provision_norms.py": 18,
       "tests/test_ci_regression_gate_budget.py": 5
@@ -217,8 +217,8 @@
     "command": "python scripts/ci_lane_inventory.py",
     "duration_sec": 1.71,
     "modules": 390,
-    "test_functions": 6436,
-    "nodes_lower_bound": 7010,
+    "test_functions": 6438,
+    "nodes_lower_bound": 7012,
     "nodes_lower_bound_note": "оценка снизу: множитель parametrize считается только по литеральным спискам. Настоящий сбор pytest даёт больше (7082 в части 1) — расхождение объяснимо и указано инструментом.",
     "inferred_lanes": {
       "chaos": {
@@ -243,7 +243,7 @@
       }
     },
     "marked_functions": 13,
-    "unmarked_functions": 6423,
+    "unmarked_functions": 6425,
     "modules_without_any_marker": 387,
     "double_marked": 0,
     "marker_vs_behavior_conflicts": 4,
@@ -261,9 +261,9 @@
     "drift_note": "Абсолютные числа сдвигаются с каждым новым тестом. Поэтому в roadmap их больше нет, а здесь они годны только вместе с tree-хешами выше: совпали хеши — числа те же, разошлись — надо пересчитать. Устойчивое утверждение не зависит от прогона: размечено 13 функций, остальные без primary lane marker, и это не изменится, пока разметка не начата.",
     "measured_at": {
       "why_not_a_commit": "Коммит здесь бесполезен: числа меняются от содержимого tests/ и backend/tests/, а коммит меняется и от правки документов. Ревью дважды поймало расхождение именно поэтому. Замер привязан к tree-хешам ровно тех каталогов, которые инструмент читает, — они не сдвигаются от правки квитанции.",
-      "tests_tree_sha1": "4a38e604bae593b901444305c2a305c599a5b3ee",
+      "tests_tree_sha1": "2b73a998795d342f9f4d7859eef4072ab64c4f71",
       "backend_tests_tree_sha1": "7e19ce4f6e9164b2672e17889b87d88be728a9c1",
-      "output_sha256": "7a6c5f0a5e780c16bcc2ac9c5e96a393048d463d51af4c104e3d80ae8f89c7c4",
+      "output_sha256": "63cb15d3729c5ed5d519fc0cecdaff2799e5fcd50af9c79331877b1b3084157e",
       "excluded_nonsemantic_output_fields": [
         "root",
         "duration_seconds"
@@ -589,6 +589,26 @@
         "комментарий у _SUFFIX_TO_KIND исправлен: он утверждал, что длинные суффиксы проверяются первыми, хотя порядок другой. Суффиксы не пересекаются, поэтому код работал — неверным было объяснение, а не поведение"
       ],
       "scope_note": "Полный regression gate не повторялся: ревью прямо указало, что после правки _resolve() достаточно adversarial-тестов, tests/test_ci_*.py и обновлённой квитанции. Предыдущий полный прогон на 34346484 — 7077 passed, новых 0."
+    },
+    "round_11_local_review": {
+      "base_commit": "88307973",
+      "verdict": "alias-guard закрыт; нормализация каталога породила новый блокер публикации",
+      "fixes": [
+        {
+          "id": "REV-24",
+          "blocking": true,
+          "summary": "Публикуемая строка собиралась из физического symlink-target",
+          "regression_of": "REV-23 — нормализация каталога, введённая прошлым кругом",
+          "reproduced": {
+            "target_внутри_репозитория": "REPORT_DIR → <repo>/private/CUSTOMER_SECRET/reports даёт в receipt private/CUSTOMER_SECRET/reports/unit.xml — идентификатор клиента опубликован (возврат к P-13 с другой стороны)",
+            "target_вне_репозитория": "REPORT_DIR → /tmp/CUSTOMER_SECRET/reports даёт ValueError на relative_to: receipt не собирался вовсе"
+          },
+          "why_missed": "нормализовав каталог ради корректного СРАВНЕНИЯ, я тем же значением стал собирать строку для ПУБЛИКАЦИИ. У этих двух ролей разные требования: сравнению нужен физический путь, публикации — форма, заданная контрактом и одинаковая на любой машине",
+          "fix": "_CANONICAL_REPORT_DIR остаётся физическим и только для сравнения; публикация идёт через _CANONICAL_REPORT_LABEL = Path('.ci/reports') — метку из §5.1, не зависящую от того, что нашлось на диске",
+          "verified": "два теста с НАСТОЯЩИМ symlink-каталогом (модуль импортируется из дерева со ссылкой, а не подменяются константы уже загруженного): target в приватном каталоге не публикуется, target вне репозитория не роняет публикацию. При возврате прежней строки оба краснеют"
+        }
+      ],
+      "scope_note": "Полный regression gate не повторялся: ревью указало, что после отделения логической метки достаточно двух новых тестов, tests/test_ci_*.py и обновления evidence. Последний полный прогон — 34346484, 7077 passed, новых 0."
     }
   },
   "cleanroom_rehearsal": {
