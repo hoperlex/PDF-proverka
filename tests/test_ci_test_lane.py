@@ -1496,3 +1496,45 @@ def test_symlinked_report_dir_outside_the_repo_does_not_raise(tmp_path: Path):
         assert published == f".ci/reports/{name}", published
         assert "CUSTOMER_SECRET_out" not in published
         assert "elsewhere" not in published
+
+
+def test_receipt_contains_every_field_section_8_requires(tmp_path) -> None:
+    """§8 перечисляет минимальный состав receipt — код обязан его покрывать.
+
+    Ревью нашло, что `source_commit` во всех сохранённых расписках был null: поле
+    формально присутствовало, но приёмочным свидетельством расписка не была.
+    Состав §8 существовал только в документе, и разойтись с кодом ему ничто не
+    мешало. Список разбирается из самого контракта, а не переписывается сюда.
+    """
+    doc = (ROOT / "docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md").read_text(
+        encoding="utf-8"
+    )
+    block = doc.split("публикуется JSON receipt минимум с полями:", 1)[1]
+    block = block.split("```", 2)[1]
+    required = {
+        name.strip()
+        for line in block.strip().splitlines()
+        if not line.strip().startswith("text")
+        for name in line.split(",")
+        if name.strip() and name.strip() != "text"
+    }
+    assert len(required) >= 25, f"состав §8 не разобрался: {sorted(required)}"
+
+    receipt = lane_mod._finish(
+        lane="unit",
+        junit=tmp_path / "unit.xml",
+        events=tmp_path / "unit.events.jsonl",
+        receipt_path=tmp_path / "unit.receipt.json",
+        started_wall=time.time(),
+        started_mono=time.monotonic(),
+        probe={"source_commit": "0" * 40, "source_commit_origin": "git", "environment": {}},
+        exit_code=0,
+        command="python -m pytest",
+        per_test=30.0,
+        wall=600.0,
+        report_status="ok",
+        counts={"selected": 1, "passed": 1, "failed": 0, "errors": 0, "skipped": 0},
+        timed_out=None,
+    )
+    missing = required - set(receipt)
+    assert not missing, f"§8 требует полей, которых нет в receipt: {sorted(missing)}"
