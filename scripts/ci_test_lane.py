@@ -837,6 +837,9 @@ def _finish(
         "receipt": _publishable_path(receipt_path, "receipt", lane),
         "events": _publishable_path(events, "events", lane),
         "probe_ran": bool(probe),
+        # Строгость preflight — часть свидетельства: в режиме local
+        # профильные проверки §3 лишь информативны, в ci/enforce обязательны.
+        "probe_mode": probe.get("mode"),
         "probe_exit_code": probe.get("exit_code"),
         "note": note,
     }
