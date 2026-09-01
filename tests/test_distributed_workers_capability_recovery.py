@@ -7,6 +7,9 @@ import pytest
 
 from backend.app.services.distributed_workers import audit_job_service, job_service
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 RECOVERY_MARKER = "_capabilities_recovered_from_grpc_snapshot"
 

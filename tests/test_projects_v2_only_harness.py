@@ -8,6 +8,9 @@ import pytest
 from helpers.projects_v2_only import build_v2_only_store, add_v2_document
 from backend.app.services.storage import v2_primary_wiring as wiring
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_v2_only_no_legacy_required(tmp_path):
     store = build_v2_only_store(tmp_path)

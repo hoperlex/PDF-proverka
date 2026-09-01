@@ -18,6 +18,10 @@ sys.path.insert(0, str(_SCRIPTS))
 import v2lib                       # noqa: E402
 import rename_object_folders as rof  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 # ---------------------------------------------------------------------------
 # make_object_folder_name

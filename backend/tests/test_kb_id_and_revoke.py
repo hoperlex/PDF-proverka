@@ -9,6 +9,12 @@ import json
 
 import backend.app.services.knowledge_base.knowledge_base_service as kb
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def test_next_decision_num_is_max_plus_one_not_len():
     # Лог с пробелами (после revoke): len=2, но max=10 → next=11 (НЕ 3).

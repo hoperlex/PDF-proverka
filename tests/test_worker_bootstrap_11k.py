@@ -23,6 +23,10 @@ from backend.app.services.worker_bootstrap.models import (
 from backend.app.services.worker_bootstrap.remote import ActionRequired, RemoteFailure
 from backend.app.services.worker_bootstrap.security import HostKeyMismatch, redact
 
+# Lane §5 по нодам: единственный настоящий дочерний процесс (bash) — в
+# test_codex_status_uses_success_exit_code_when_message_is_on_stderr;
+# в остальных subprocess.run подменён, работа идёт по sqlite и tmp_path.
+
 
 TEST_REGISTRATION_SECRET = "wbt_TEST_REGISTRATION_TOKEN_VALUE_123456"
 TEST_OPENROUTER_SECRET = "sk-or-v1-TEST-OPENROUTER-DO-NOT-USE-123456789"
@@ -278,6 +282,7 @@ def manager_for(settings, tmp_path, scenario):
     ), instances
 
 
+@pytest.mark.integration
 def test_a_b_c_d_preflight_failures_are_before_mutation(settings, bundle, tmp_path):
     """A unsupported OS, B disk, C SSH, D host mismatch: deploy never starts."""
     for failure in (
@@ -296,6 +301,7 @@ def test_a_b_c_d_preflight_failures_are_before_mutation(settings, bundle, tmp_pa
         assert "deploy" not in scenario["calls"]
 
 
+@pytest.mark.integration
 def test_e_k_m_to_r_ak_to_an_bg_clean_install_and_repeat_is_idempotent(
     settings, bundle, tmp_path
 ):
@@ -330,6 +336,7 @@ def test_e_k_m_to_r_ak_to_an_bg_clean_install_and_repeat_is_idempotent(
     assert len(repositories.list_workers(settings=settings)) == 1
 
 
+@pytest.mark.integration
 def test_h_i_j_registration_token_ttl_scope_and_replay(settings, bundle):
     session = store.create_session(
         operation=BootstrapOperation.INSTALL,
@@ -365,6 +372,7 @@ def test_h_i_j_registration_token_ttl_scope_and_replay(settings, bundle):
         )
 
 
+@pytest.mark.integration
 def test_k_fresh_sessions_reuse_stable_installation_identity(settings, bundle):
     request = request_for(bundle)
     first = store.create_session(
@@ -385,6 +393,7 @@ def test_k_fresh_sessions_reuse_stable_installation_identity(settings, bundle):
     ]
 
 
+@pytest.mark.integration
 def test_l_center_url_requires_clean_https(bundle):
     with pytest.raises(ValidationError):
         request_for(bundle, center_url="http://center.example.test")
@@ -392,6 +401,7 @@ def test_l_center_url_requires_clean_https(bundle):
         request_for(bundle, center_url="https://user:password@center.example.test/?api_key=secret")
 
 
+@pytest.mark.integration
 def test_o_ay_unit_names_are_per_root(bundle):
     from backend.app.services.worker_bootstrap.remote import bootstrap_units_for_root
 
@@ -401,6 +411,7 @@ def test_o_ay_unit_names_are_per_root(bundle):
     assert not set(first) & set(second)
 
 
+@pytest.mark.integration
 def test_s_to_aa_ao_at_au_provider_action_resume_skips_install(
     settings, bundle, tmp_path
 ):
@@ -423,6 +434,7 @@ def test_s_to_aa_ao_at_au_provider_action_resume_skips_install(
     assert scenario["calls"].count("deploy") == 1
 
 
+@pytest.mark.integration
 def test_replace_temporary_center_url_resumes_same_session_without_reinstall(
     settings, bundle, tmp_path
 ):
@@ -462,6 +474,7 @@ def test_replace_temporary_center_url_resumes_same_session_without_reinstall(
     assert scenario["calls"].count("provider_status") == 2
 
 
+@pytest.mark.integration
 def test_t_y_pinned_cli_install_path(settings, bundle, tmp_path):
     scenario = {"provider_missing": ["claude", "codex"]}
     manager, _ = manager_for(settings, tmp_path, scenario)
@@ -479,6 +492,7 @@ def test_t_y_pinned_cli_install_path(settings, bundle, tmp_path):
     assert "install_cli:codex" in scenario["calls"]
 
 
+@pytest.mark.integration
 def test_aj_al_approved_policy_covers_exact_presets(settings, bundle, tmp_path):
     scenario = {}
     manager, _ = manager_for(settings, tmp_path, scenario)
@@ -498,6 +512,7 @@ def test_aj_al_approved_policy_covers_exact_presets(settings, bundle, tmp_path):
     assert {"claude", "codex", "openrouter"} <= set(policy)
 
 
+@pytest.mark.integration
 def test_ready_rejects_policy_hash_or_capability_mismatch(
     settings, bundle, tmp_path
 ):
@@ -520,6 +535,7 @@ def test_ready_rejects_policy_hash_or_capability_mismatch(
         assert result["error_code"] == expected
 
 
+@pytest.mark.integration
 def test_ab_to_ae_openrouter_local_action_and_no_center_secret(
     settings, bundle, tmp_path
 ):
@@ -538,6 +554,7 @@ def test_ab_to_ae_openrouter_local_action_and_no_center_secret(
     assert ready["state"] == "succeeded"
 
 
+@pytest.mark.integration
 def test_af_to_ai_ah_az_bb_bc_adversarial_secrets_absent_everywhere(
     settings, bundle, tmp_path
 ):
@@ -576,6 +593,7 @@ def test_af_to_ai_ah_az_bb_bc_adversarial_secrets_absent_everywhere(
     assert "[REDACTED]" in public
 
 
+@pytest.mark.integration
 def test_ap_aq_ar_as_ax_repair_update_uninstall_preserve_owned_data(
     settings, bundle, tmp_path
 ):
@@ -596,6 +614,7 @@ def test_ap_aq_ar_as_ax_repair_update_uninstall_preserve_owned_data(
     assert scenario["files"]["unrelated.service"] == "active"
 
 
+@pytest.mark.integration
 def test_f_g_old_revision_update_and_failed_update_rolls_back(settings, bundle, tmp_path):
     scenario = {"release": "old-release", "configure_failure": True}
     manager, _ = manager_for(settings, tmp_path, scenario)
@@ -609,6 +628,7 @@ def test_f_g_old_revision_update_and_failed_update_rolls_back(settings, bundle, 
     assert scenario["release"] == "release-11k"
 
 
+@pytest.mark.integration
 def test_av_aw_paths_fail_closed(bundle):
     for path in (
         "../../tmp/worker", "/", "/etc", "/home", "/srv", "/usr",
@@ -619,6 +639,7 @@ def test_av_aw_paths_fail_closed(bundle):
             request_for(bundle, install_root=path)
 
 
+@pytest.mark.integration
 def test_ba_progress_events_are_ordered(settings, bundle, tmp_path):
     scenario = {}
     manager, _ = manager_for(settings, tmp_path, scenario)
@@ -630,6 +651,7 @@ def test_ba_progress_events_are_ordered(settings, bundle, tmp_path):
     assert positions == sorted(positions)
 
 
+@pytest.mark.integration
 def test_bd_bundle_build_is_deterministic(tmp_path):
     """BD/BE: deterministic helper produces identical gzip bytes/tree hash."""
     from scripts.deploy_audit_worker import tree_hash, write_bundle_archive
@@ -648,6 +670,7 @@ def test_bd_bundle_build_is_deterministic(tmp_path):
     assert tree_hash(source, files) == tree_hash(source, list(reversed(files)))
 
 
+@pytest.mark.integration
 def test_security_source_has_no_hostkey_bypass_or_production_host():
     root = Path(__file__).resolve().parents[1]
     sources = "\n".join(
@@ -659,6 +682,7 @@ def test_security_source_has_no_hostkey_bypass_or_production_host():
     assert "/home/coder" not in sources
 
 
+@pytest.mark.integration
 def test_redactor_handles_url_token_password_and_oauth_like_values():
     value = {
         "password": TEST_SSH_PASSWORD,
@@ -671,6 +695,7 @@ def test_redactor_handles_url_token_password_and_oauth_like_values():
     assert "oauth_TEST_1234567890" not in clean
 
 
+@pytest.mark.integration
 def test_registration_stdin_flag_is_allowed_but_secret_value_is_not_argv():
     from backend.app.services.worker_bootstrap.security import secret_free_argv
 
@@ -679,6 +704,7 @@ def test_registration_stdin_flag_is_allowed_but_secret_value_is_not_argv():
         secret_free_argv(["python", "register", TEST_REGISTRATION_SECRET])
 
 
+@pytest.mark.integration
 def test_host_enrollment_persists_only_the_fingerprint_that_was_verified(
     tmp_path, monkeypatch
 ):
@@ -706,6 +732,7 @@ def test_host_enrollment_persists_only_the_fingerprint_that_was_verified(
     assert known_hosts.read_bytes() == trusted + b"\n"
 
 
+@pytest.mark.integration
 def test_deploy_adapter_converts_cli_exit_to_typed_remote_failure(monkeypatch):
     from backend.app.services.worker_bootstrap.remote import _BootstrapDeployRemote
 
@@ -719,6 +746,7 @@ def test_deploy_adapter_converts_cli_exit_to_typed_remote_failure(monkeypatch):
         remote.run("false")
 
 
+@pytest.mark.integration
 def test_rollback_snapshots_and_restores_release_config(
     settings, bundle, monkeypatch
 ):
@@ -743,6 +771,7 @@ def test_rollback_snapshots_and_restores_release_config(
     assert "install -m 0600" in combined
 
 
+@pytest.mark.network
 def test_codex_status_uses_success_exit_code_when_message_is_on_stderr(
     settings, bundle, tmp_path, monkeypatch
 ):
@@ -783,6 +812,7 @@ def test_codex_status_uses_success_exit_code_when_message_is_on_stderr(
     assert result["action_required"] == []
 
 
+@pytest.mark.integration
 def test_ready_waits_for_fresh_post_start_heartbeat(
     settings, bundle, tmp_path, monkeypatch
 ):
@@ -830,6 +860,7 @@ def test_ready_waits_for_fresh_post_start_heartbeat(
     assert sleep_calls == [1]
 
 
+@pytest.mark.integration
 def test_runtime_selftest_assigns_job_with_center_role(settings, monkeypatch):
     from backend.app.services.distributed_workers import job_service
     from backend.app.services.worker_bootstrap.manager import _default_runtime_selftest
@@ -858,6 +889,7 @@ def test_runtime_selftest_assigns_job_with_center_role(settings, monkeypatch):
     assert result["real_provider_calls"] == 0
 
 
+@pytest.mark.integration
 def test_zero_inference_test_job_resumes_orphan_created_before_assignment(
     settings,
 ):
@@ -926,6 +958,7 @@ def test_zero_inference_test_job_resumes_orphan_created_before_assignment(
     assert sorted(path.name for path in source_dir.iterdir()) == original_files
 
 
+@pytest.mark.integration
 def test_provider_metadata_is_advertised_without_secret(monkeypatch, tmp_path):
     from audit_worker.config import load_config
 
@@ -943,6 +976,7 @@ def test_provider_metadata_is_advertised_without_secret(monkeypatch, tmp_path):
     ]
 
 
+@pytest.mark.integration
 def test_action_required_uses_integrated_resume_command():
     instructions = BootstrapManager._provider_instructions(
         "wbs_test_session", ["claude", "openrouter"]
@@ -959,6 +993,7 @@ def test_action_required_uses_integrated_resume_command():
     }
 
 
+@pytest.mark.integration
 def test_invalid_api_payload_does_not_echo_rejected_secrets():
     from fastapi import HTTPException
     from backend.app.api.routers.worker_bootstrap import _validated_payload

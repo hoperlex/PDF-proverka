@@ -99,6 +99,7 @@ def _approve(client, worker_id, *, configured_max_slots=1):
 
 
 # ─── §4 Двухэтапная выдача токена ────────────────────────────────────────────
+@pytest.mark.integration
 def test_register_does_not_issue_token(client):
     """На регистрации выдаётся claim-secret, а НЕ токен доступа."""
     response = _register(client)
@@ -109,6 +110,7 @@ def test_register_does_not_issue_token(client):
     assert "worker_token" not in body
 
 
+@pytest.mark.integration
 def test_claim_before_approval_is_rejected(client):
     body = _register(client).json()
     response = client.post(
@@ -120,6 +122,7 @@ def test_claim_before_approval_is_rejected(client):
     assert "не одобрена" in response.json()["detail"]
 
 
+@pytest.mark.integration
 def test_claim_is_single_use(client):
     body = _register(client).json()
     worker_id = body["worker_id"]
@@ -142,6 +145,7 @@ def test_claim_is_single_use(client):
     assert "уже использован" in second.json()["detail"]
 
 
+@pytest.mark.integration
 def test_wrong_claim_secret_rejected(client):
     body = _register(client).json()
     _approve(client, body["worker_id"])
@@ -153,6 +157,7 @@ def test_wrong_claim_secret_rejected(client):
     assert response.status_code == 409
 
 
+@pytest.mark.integration
 def test_rejected_worker_cannot_claim(client):
     body = _register(client).json()
     assert client.post(f"/api/workers/{body['worker_id']}/reject").status_code == 200
@@ -165,6 +170,7 @@ def test_rejected_worker_cannot_claim(client):
     assert "отклонена" in response.json()["detail"]
 
 
+@pytest.mark.integration
 def test_token_is_not_recoverable_from_db(client, center_env):
     """Потерянный токен нельзя достать обратно: в БД только sha256."""
     from backend.app.services.distributed_workers import database
@@ -196,6 +202,7 @@ def test_token_is_not_recoverable_from_db(client, center_env):
     assert row["claim_used_at"] is not None
 
 
+@pytest.mark.integration
 def test_revoked_token_is_refused(client):
     body = _register(client).json()
     worker_id = body["worker_id"]
@@ -220,6 +227,7 @@ def test_revoked_token_is_refused(client):
     assert after.status_code == 401
 
 
+@pytest.mark.integration
 def test_repeat_registration_does_not_multiply_workers(client, center_env):
     from backend.app.services.distributed_workers import repositories
 
@@ -248,6 +256,7 @@ def _approved_worker(client):
     return worker_id, headers
 
 
+@pytest.mark.integration
 def test_idempotency_key_same_body_replays(client):
     worker_id, headers = _approved_worker(client)
     client.post("/api/workers/jobs",
@@ -265,6 +274,7 @@ def test_idempotency_key_same_body_replays(client):
     assert second.json()["attempt_id"] == first.json()["attempt_id"]
 
 
+@pytest.mark.integration
 def test_idempotency_key_different_body_conflicts(client):
     worker_id, headers = _approved_worker(client)
     client.post("/api/workers/jobs",
@@ -293,6 +303,7 @@ def test_idempotency_key_different_body_conflicts(client):
     assert conflict.json()["detail"]["error"] == "idempotency_key_reuse"
 
 
+@pytest.mark.integration
 def test_foreign_worker_cannot_touch_job(client):
     """Чужой воркер не получает и не меняет задание, даже зная job_id."""
     owner_id, owner_headers = _approved_worker(client)
@@ -327,6 +338,7 @@ def test_foreign_worker_cannot_touch_job(client):
 
 
 # ─── §23 TLS ─────────────────────────────────────────────────────────────────
+@pytest.mark.integration
 def test_no_global_verify_disable(monkeypatch, tmp_path):
     """Переменной, отключающей проверку сертификата, не существует."""
     from audit_worker import config as cfg
@@ -337,6 +349,7 @@ def test_no_global_verify_disable(monkeypatch, tmp_path):
     assert conf.verify_tls is True
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "url,allow,ok",
     [
@@ -375,6 +388,7 @@ def _tar_with(entries, path, manifest=None):
             tar.addfile(item, io.BytesIO(payload))
 
 
+@pytest.mark.integration
 def test_duplicate_paths_rejected(tmp_path, center_env):
     from backend.app.services.distributed_workers import package_service
 
@@ -385,6 +399,7 @@ def test_duplicate_paths_rejected(tmp_path, center_env):
     assert "Повторяющийся путь" in str(info.value)
 
 
+@pytest.mark.integration
 def test_compression_bomb_ratio_rejected(tmp_path, center_env):
     from backend.app.services.distributed_workers import package_service
 
@@ -396,6 +411,7 @@ def test_compression_bomb_ratio_rejected(tmp_path, center_env):
     assert "степень сжатия" in str(info.value)
 
 
+@pytest.mark.integration
 def test_worker_detects_file_hash_mismatch(tmp_path):
     """Манифест, лгущий о хэше файла, отвергается при распаковке."""
     from audit_worker import package_io
@@ -416,6 +432,7 @@ def test_worker_detects_file_hash_mismatch(tmp_path):
     assert not (tmp_path / "work").exists()
 
 
+@pytest.mark.integration
 def test_worker_requires_required_files(tmp_path):
     from audit_worker import package_io
 
@@ -434,6 +451,7 @@ def test_worker_requires_required_files(tmp_path):
     assert "обязательных файлов" in str(info.value)
 
 
+@pytest.mark.integration
 def test_source_manifest_declares_required_files(center_env):
     from backend.app.models.distributed_workers import TestJobParams
     from backend.app.services.distributed_workers import (
@@ -473,6 +491,7 @@ def test_source_manifest_declares_required_files(center_env):
 
 
 # ─── §19 Порядок записи чанка ────────────────────────────────────────────────
+@pytest.mark.integration
 def test_chunk_not_marked_received_when_write_fails(center_env, monkeypatch, tmp_path):
     """Сбой записи на диск не должен оставлять чанк «принятым»."""
     from backend.app.models.distributed_workers import TestJobParams
@@ -522,6 +541,7 @@ def test_chunk_not_marked_received_when_write_fails(center_env, monkeypatch, tmp
 
 
 # ─── §18 Состав результирующего пакета ───────────────────────────────────────
+@pytest.mark.integration
 def test_result_package_has_all_sections(tmp_path):
     from audit_worker import package_io
 
@@ -555,6 +575,7 @@ def test_result_package_has_all_sections(tmp_path):
 
 
 # ─── §14 Fingerprint и маркер завершения ─────────────────────────────────────
+@pytest.mark.integration
 def test_command_fingerprint_distinguishes_commands(tmp_path):
     from audit_worker import test_runner
 
@@ -563,6 +584,7 @@ def test_command_fingerprint_distinguishes_commands(tmp_path):
     assert a != b and len(a) == 32
 
 
+@pytest.mark.integration
 def test_registry_rejects_foreign_pid_by_fingerprint(tmp_path):
     """Чужой процесс, занявший наш pid, не признаётся своим."""
     from audit_worker.process_registry import ProcessRegistry
@@ -574,6 +596,7 @@ def test_registry_rejects_foreign_pid_by_fingerprint(tmp_path):
     assert not registry.alive_for_job("j", "a", command_fingerprint="theirs")
 
 
+@pytest.mark.integration
 def test_completed_marker_written(tmp_path):
     from audit_worker.executor import write_completed_marker as _write_completed_marker
     from audit_worker.test_runner import RunOutcome
@@ -590,6 +613,7 @@ def test_completed_marker_written(tmp_path):
 
 
 # ─── §17 Redaction: расширенные правила ──────────────────────────────────────
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "text,leaked",
     [
@@ -606,6 +630,7 @@ def test_extended_redaction(text, leaked):
     assert leaked not in redaction.redact(text)
 
 
+@pytest.mark.unit
 def test_center_and_worker_redaction_identical():
     """Редакторы центра и воркера — один и тот же модуль по содержанию."""
     center = (_ROOT / "backend/app/services/distributed_workers/redaction.py").read_text()
@@ -643,6 +668,7 @@ def _running_job(client, center_env):
     return job_id, attempt_id, headers
 
 
+@pytest.mark.integration
 def test_reconcile_dead_process_is_not_told_to_continue(client, center_env):
     """«continue» для мёртвого процесса — ложь: продолжать нечего."""
     job_id, attempt_id, headers = _running_job(client, center_env)
@@ -668,6 +694,7 @@ def test_reconcile_dead_process_is_not_told_to_continue(client, center_env):
     assert dead["jobs"][0]["center_state"] == "running"
 
 
+@pytest.mark.integration
 def test_reconcile_returns_retention_after_offline_acceptance(client, center_env, tmp_path):
     """Воркер, пропустивший подтверждение приёма, узнаёт retention_until."""
     from backend.app.services.distributed_workers import job_service, repositories
@@ -698,6 +725,7 @@ def test_reconcile_returns_retention_after_offline_acceptance(client, center_env
     assert verdict["execution_token_valid"] is False   # задание терминально
 
 
+@pytest.mark.integration
 def test_reconcile_reports_superseded_jobs(client, center_env):
     job_id, attempt_id, headers = _running_job(client, center_env)
     response = client.post(
@@ -712,6 +740,7 @@ def test_reconcile_reports_superseded_jobs(client, center_env):
     assert response["jobs"][0]["execution_token_valid"] is False
 
 
+@pytest.mark.integration
 def test_reconcile_ignores_foreign_job(client, center_env):
     job_id, attempt_id, headers = _running_job(client, center_env)
     other = _register(client, instance_id="inst_other0002").json()
@@ -733,6 +762,7 @@ def test_reconcile_ignores_foreign_job(client, center_env):
     assert response["jobs"] == []
 
 
+@pytest.mark.integration
 def test_worker_reports_lost_process_after_restart(tmp_path):
     """Агент сам сообщает о смерти своего процесса, а не ждёт вердикта центра."""
     from audit_worker import reconciliation
@@ -753,6 +783,7 @@ def test_worker_reports_lost_process_after_restart(tmp_path):
     assert [m["job_id"] for m in lost] == ["job-lost"]
 
 
+@pytest.mark.integration
 def test_known_jobs_payload_carries_disk_state(tmp_path):
     from audit_worker import reconciliation
     from audit_worker.local_store import LocalJobStore
@@ -772,6 +803,7 @@ def test_known_jobs_payload_carries_disk_state(tmp_path):
 
 
 # ─── §21 Экран оператора: контракт данных ────────────────────────────────────
+@pytest.mark.integration
 def test_pending_count_in_summary(client):
     _register(client)
     summary = client.get("/api/workers").json()["summary"]
@@ -779,6 +811,7 @@ def test_pending_count_in_summary(client):
     assert summary["total"] == 1
 
 
+@pytest.mark.integration
 def test_result_details_exposed_after_acceptance(client, center_env, tmp_path):
     """Оператор видит, ЧТО принято: хэш, размер, дату приёма, срок хранения."""
     from backend.app.models.distributed_workers import JobState
@@ -814,6 +847,7 @@ def test_result_details_exposed_after_acceptance(client, center_env, tmp_path):
     assert view["retention_unconfirmed"] is False
 
 
+@pytest.mark.unit
 def test_ui_offers_reject_for_pending_only():
     """Кнопка «Отклонить» рисуется рядом с «Одобрить» и бьёт в /reject."""
     js = (_ROOT / "frontend/static/js/audit-workers.js").read_text(encoding="utf-8")
@@ -828,6 +862,7 @@ def test_ui_offers_reject_for_pending_only():
     assert 'id="pendingBlock"' in html
 
 
+@pytest.mark.unit
 def test_ui_shows_result_credentials():
     js = (_ROOT / "frontend/static/js/audit-workers.js").read_text(encoding="utf-8")
     for field in ("result_package_hash", "result_package_size", "validated_at",
@@ -836,6 +871,7 @@ def test_ui_shows_result_credentials():
 
 
 # ─── §18 Обрыв связи ПРИ ПЕРЕДАЧЕ готового результата ────────────────────────
+@pytest.mark.integration
 def test_upload_failure_is_not_a_job_failure(tmp_path, monkeypatch):
     """Аудит выполнен, канал упал: это отложенная передача, а не провал.
 
@@ -888,6 +924,7 @@ def test_upload_failure_is_not_a_job_failure(tmp_path, monkeypatch):
     assert "job_failed" not in types                    # ключевое
 
 
+@pytest.mark.integration
 def test_pending_results_are_retried_without_restart(tmp_path, monkeypatch):
     """Досылка не должна ждать перезапуска агента."""
     from audit_worker.agent import WorkerAgent
@@ -918,6 +955,7 @@ def test_pending_results_are_retried_without_restart(tmp_path, monkeypatch):
     assert tried == [("j1", "att_1")]
 
 
+@pytest.mark.integration
 def test_center_catches_up_when_archive_arrives_before_events(client, center_env):
     """Пакет доехал раньше событий: центр обязан догнать состояние, а не 500."""
     from backend.app.models.distributed_workers import JobState
@@ -935,6 +973,7 @@ def test_center_catches_up_when_archive_arrives_before_events(client, center_env
     assert states[-3:] == ["completed_locally", "result_uploading", "result_received"]
 
 
+@pytest.mark.integration
 def test_result_of_failed_attempt_is_stored_not_published(client, center_env, tmp_path):
     """Результат провалившейся попытки не теряется и не публикуется."""
     from backend.app.models.distributed_workers import JobState
@@ -962,6 +1001,7 @@ def test_result_of_failed_attempt_is_stored_not_published(client, center_env, tm
 
 
 # ─── §19 Миграции: обновление без удаления базы ──────────────────────────────
+@pytest.mark.integration
 def test_migration_2_upgrades_existing_database(tmp_path):
     """Старая база версии 1 доводится до 2 без потери данных и без пересоздания."""
     import sqlite3
@@ -1010,6 +1050,7 @@ def test_migration_2_upgrades_existing_database(tmp_path):
     conn.close()
 
 
+@pytest.mark.integration
 def test_no_plaintext_token_column_exists(tmp_path):
     """В схеме нет колонки, куда токен можно было бы положить открытым текстом."""
     import sqlite3
@@ -1032,6 +1073,7 @@ def test_no_plaintext_token_column_exists(tmp_path):
 
 
 # ─── §14 Потоки вывода, артефакты, восстановление связи ──────────────────────
+@pytest.mark.integration
 def test_stdout_and_stderr_are_separate_streams(tmp_path):
     """Потоки не сливаются: у каждой строки известен источник."""
     from audit_worker import test_runner
@@ -1054,6 +1096,7 @@ def test_stdout_and_stderr_are_separate_streams(tmp_path):
     assert outcome.stderr_lines == sum(1 for s, _, _ in lines if s == "stderr")
 
 
+@pytest.mark.integration
 def test_artifact_created_declares_every_result_file(tmp_path):
     """Каждый файл результата объявляется событием с размером и хэшем.
 
@@ -1087,6 +1130,7 @@ def test_artifact_created_declares_every_result_file(tmp_path):
                for e in outbox.pending_batch(limit=50))
 
 
+@pytest.mark.integration
 def test_reconnect_event_is_sent_in_the_same_pass(tmp_path):
     """worker_reconnected не должен зависать в outbox до следующего цикла."""
     from audit_worker.agent import WorkerAgent
@@ -1122,6 +1166,7 @@ def test_reconnect_event_is_sent_in_the_same_pass(tmp_path):
 
 
 # ─── Находки состязательных проверок ─────────────────────────────────────────
+@pytest.mark.integration
 def test_poisoned_resource_snapshot_cannot_reach_screen(client, center_env):
     """HTML и строки вместо чисел не доезжают до панели оператора."""
     worker_id, headers = _approved_worker(client)
@@ -1147,6 +1192,7 @@ def test_poisoned_resource_snapshot_cannot_reach_screen(client, center_env):
     assert len(shown["slots"]["explanation"]) <= 200
 
 
+@pytest.mark.integration
 def test_poisoned_progress_does_not_kill_the_jobs_screen(client, center_env):
     """Строка в elapsed_sec роняла ВЕСЬ список заданий, и навсегда."""
     job_id, attempt_id, headers = _running_job(client, center_env)
@@ -1172,6 +1218,7 @@ def test_poisoned_progress_does_not_kill_the_jobs_screen(client, center_env):
     assert client.get(f"/api/workers/jobs/{job_id}").status_code == 200
 
 
+@pytest.mark.integration
 def test_repeat_registration_does_not_reissue_claim_secret(client):
     """Чужой instance_id не перехватывает выдачу токена."""
     first = _register(client).json()
@@ -1192,6 +1239,7 @@ def test_repeat_registration_does_not_reissue_claim_secret(client):
     assert ok.status_code == 200
 
 
+@pytest.mark.integration
 def test_foreign_worker_cannot_read_upload_session(client, center_env):
     owner_id, owner_headers = _approved_worker(client)
     client.post("/api/workers/jobs",
@@ -1220,6 +1268,7 @@ def test_foreign_worker_cannot_read_upload_session(client, center_env):
                       headers=foreign).status_code == 403
 
 
+@pytest.mark.integration
 def test_foreign_ack_does_not_swallow_the_command(client, center_env):
     """403 не должен гасить команду: адресат обязан её получить."""
     from backend.app.services.distributed_workers import repositories
@@ -1251,6 +1300,7 @@ def test_foreign_ack_does_not_swallow_the_command(client, center_env):
     assert [c["command_id"] for c in pending["commands"]] == [command_id]
 
 
+@pytest.mark.integration
 def test_log_path_traversal_is_rejected(client, center_env):
     job_id, _, _ = _running_job(client, center_env)
     bad = client.get(f"/api/workers/jobs/{job_id}/logs",
@@ -1259,6 +1309,7 @@ def test_log_path_traversal_is_rejected(client, center_env):
     assert "Недопустимый" in bad.json()["detail"]
 
 
+@pytest.mark.integration
 def test_register_accepts_only_bearer_scheme(client):
     response = client.post(
         "/api/v1/worker/register",
@@ -1268,6 +1319,7 @@ def test_register_accepts_only_bearer_scheme(client):
     assert response.status_code == 401
 
 
+@pytest.mark.integration
 def test_execution_token_is_not_cached_in_plaintext(client, center_env):
     """Кэш идемпотентности не должен хранить секрет попытки открытым текстом."""
     from backend.app.services.distributed_workers import database
@@ -1302,6 +1354,7 @@ def test_execution_token_is_not_cached_in_plaintext(client, center_env):
     assert ok.status_code == 200
 
 
+@pytest.mark.integration
 def test_reconcile_reoffers_job_the_worker_never_received(client, center_env):
     """Потерянный ответ /jobs/next больше не блокирует проект навсегда."""
     from backend.app.services.distributed_workers import repositories
@@ -1337,6 +1390,7 @@ def test_reconcile_reoffers_job_the_worker_never_received(client, center_env):
     assert again.json()["job_id"] == job_id
 
 
+@pytest.mark.integration
 def test_running_job_is_never_reoffered(client, center_env):
     """Работающее задание в очередь не возвращается ни при каких условиях."""
     from backend.app.services.distributed_workers import job_service, repositories
@@ -1351,6 +1405,7 @@ def test_running_job_is_never_reoffered(client, center_env):
     assert repositories.get_job(job_id, settings=center_env)["state"] == "running"
 
 
+@pytest.mark.integration
 def test_heartbeat_carries_retention_updates(client, center_env):
     """Канал подтверждения хранения не должен быть пустым всегда."""
     from backend.app.models.distributed_workers import JobState
@@ -1373,6 +1428,7 @@ def test_heartbeat_carries_retention_updates(client, center_env):
     assert beat["retention_updates"][0]["retention_until"] is not None
 
 
+@pytest.mark.integration
 def test_finalize_survives_center_restart_inside_validation(client, center_env, tmp_path):
     """Состояние validating перестало быть тупиком."""
     from backend.app.models.distributed_workers import JobState
@@ -1413,6 +1469,7 @@ def test_finalize_survives_center_restart_inside_validation(client, center_env, 
     assert updated["state"] == "completed"
 
 
+@pytest.mark.integration
 def test_outbox_append_is_thread_safe(tmp_path):
     """Три потока пишут в один outbox: seq не должен дублироваться."""
     import threading
@@ -1439,6 +1496,7 @@ def test_outbox_append_is_thread_safe(tmp_path):
     assert sorted(seqs) == list(range(1, 601))
 
 
+@pytest.mark.integration
 def test_outbox_repairs_cursor_ahead_of_segments(tmp_path):
     """Курсор впереди файлов останавливал поток событий насовсем."""
     from audit_worker.event_outbox import EventOutbox
@@ -1460,6 +1518,7 @@ def test_outbox_repairs_cursor_ahead_of_segments(tmp_path):
     assert [e["seq"] for e in batch] == [1, 2, 3, 4, 5]
 
 
+@pytest.mark.integration
 def test_finished_work_is_packaged_not_declared_lost(tmp_path):
     """Рестарт между выходом процесса и сборкой архива не уничтожает работу."""
     from audit_worker import reconciliation, test_runner
@@ -1487,6 +1546,7 @@ def test_finished_work_is_packaged_not_declared_lost(tmp_path):
     assert reconciliation.lost_processes(store, registry) == []
 
 
+@pytest.mark.integration
 def test_crashed_run_without_marker_is_still_reported_lost(tmp_path):
     """Обратная сторона: без маркера это по-прежнему потеря процесса."""
     from audit_worker import reconciliation
@@ -1502,6 +1562,7 @@ def test_crashed_run_without_marker_is_still_reported_lost(tmp_path):
     assert [m["job_id"] for m in reconciliation.lost_processes(store, registry)] == ["job-crash"]
 
 
+@pytest.mark.integration
 def test_agent_sends_idempotency_key(tmp_path):
     """Заголовок должен реально уходить: иначе защита от повтора не включается."""
     from audit_worker.client import CenterClient

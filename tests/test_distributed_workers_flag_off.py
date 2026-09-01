@@ -29,6 +29,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 
+@pytest.mark.unit
 def test_default_is_off():
     """Флаг по умолчанию выключен — включение всегда осознанное."""
     import importlib
@@ -39,6 +40,7 @@ def test_default_is_off():
     assert config.DISTRIBUTED_WORKERS_ENABLED is False
 
 
+@pytest.mark.integration
 def test_no_database_created_when_disabled(tmp_path, monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_WORKERS_ENABLED", "false")
     monkeypatch.setenv("DISTRIBUTED_WORKERS_DATA_DIR", str(tmp_path / "off"))
@@ -58,6 +60,7 @@ def test_no_database_created_when_disabled(tmp_path, monkeypatch):
     assert not settings.data_dir.exists()
 
 
+@pytest.mark.integration
 def test_worker_api_absent_when_disabled(tmp_path, monkeypatch):
     """Роутер воркеров не регистрируется — путей нет вовсе."""
     monkeypatch.setenv("DISTRIBUTED_WORKERS_ENABLED", "false")
@@ -80,6 +83,7 @@ def test_worker_api_absent_when_disabled(tmp_path, monkeypatch):
     assert client.get("/api/workers/jobs/list").status_code == 404
 
 
+@pytest.mark.integration
 def test_status_endpoint_reports_disabled(tmp_path, monkeypatch):
     """Фронт должен честно показать «отключено», а не пустой экран."""
     monkeypatch.setenv("DISTRIBUTED_WORKERS_ENABLED", "false")
@@ -101,6 +105,7 @@ def test_status_endpoint_reports_disabled(tmp_path, monkeypatch):
     assert "DISTRIBUTED_WORKERS_ENABLED" in body["reason"]
 
 
+@pytest.mark.integration
 def test_status_does_not_require_reusable_bootstrap_secret(tmp_path, monkeypatch):
     """Enabled Center has no reusable shared-bootstrap configuration gate."""
     monkeypatch.setenv("DISTRIBUTED_WORKERS_ENABLED", "true")
@@ -119,6 +124,7 @@ def test_status_does_not_require_reusable_bootstrap_secret(tmp_path, monkeypatch
 
 
 # ─── Существующий конвейер не затронут ───────────────────────────────────────
+@pytest.mark.unit
 def test_pipeline_manager_knows_nothing_about_the_worker_subsystem():
     """Граница врезки: менеджер знает про `pipeline.execution` и больше ни про что.
 
@@ -147,6 +153,7 @@ def test_pipeline_manager_knows_nothing_about_the_worker_subsystem():
     assert "backend.app.pipeline.execution" in source
 
 
+@pytest.mark.unit
 def test_no_llm_invocation_in_worker_package():
     """В пакете воркера нет обращений ни к Claude Code, ни к Codex.
 
@@ -178,6 +185,7 @@ def test_no_llm_invocation_in_worker_package():
     assert not offenders, offenders
 
 
+@pytest.mark.unit
 def test_provider_layer_is_the_only_place_naming_real_clis():
     """Граница после этапа 11: имена настоящих CLI живут ТОЛЬКО в providers/.
 
@@ -222,6 +230,7 @@ def test_provider_layer_is_the_only_place_naming_real_clis():
     )
 
 
+@pytest.mark.unit
 def test_only_one_subprocess_spawn_point():
     """Порождение процесса — ровно одно место и без shell.
 
@@ -318,6 +327,7 @@ def test_only_one_subprocess_spawn_point():
     assert "-m" in literals and "audit_worker" in literals and "executor" in literals
 
 
+@pytest.mark.unit
 def test_no_arbitrary_command_execution_in_agent():
     """Ни одной ветки, где команда/argv приходят из задания."""
     package = _ROOT / "audit_worker"
@@ -331,6 +341,7 @@ def test_no_arbitrary_command_execution_in_agent():
     assert not offenders, "опасные конструкции в агенте:\n" + "\n".join(offenders)
 
 
+@pytest.mark.unit
 def test_agent_does_not_import_backend():
     """Агент самодостаточен: ставится на голый VPS без кода платформы."""
     package = _ROOT / "audit_worker"
@@ -342,6 +353,7 @@ def test_agent_does_not_import_backend():
     assert not offenders, f"агент импортирует backend: {offenders}"
 
 
+@pytest.mark.unit
 def test_portal_auth_exempts_only_worker_prefix():
     """Исключение из портальной авторизации — ровно один префикс."""
     from backend.app.core import portal_auth
@@ -406,6 +418,7 @@ def _probe_main(env: dict) -> dict:
     return json.loads(result.stdout.strip().splitlines()[-1])
 
 
+@pytest.mark.network
 def test_real_main_registers_nothing_when_flag_off(tmp_path):
     """При выключенном флаге в НАСТОЯЩЕМ приложении нет ни одной ручки воркеров."""
     routes = _probe_main({
@@ -422,6 +435,7 @@ def test_real_main_registers_nothing_when_flag_off(tmp_path):
     assert not (tmp_path / "off").exists()
 
 
+@pytest.mark.network
 def test_real_main_registers_both_contours_when_flag_on(tmp_path):
     routes = _probe_main({
         "DISTRIBUTED_WORKERS_ENABLED": "true",
@@ -435,6 +449,7 @@ def test_real_main_registers_both_contours_when_flag_on(tmp_path):
     assert len(routes["worker_api"]) >= 15
 
 
+@pytest.mark.network
 def test_admin_contour_not_exposed_without_portal_auth(tmp_path):
     """Операторский API не поднимается, если портальная защита выключена.
 
@@ -454,6 +469,7 @@ def test_admin_contour_not_exposed_without_portal_auth(tmp_path):
     assert "/api/v1/worker/register" in routes["worker_api"]
 
 
+@pytest.mark.network
 def test_admin_contour_available_with_explicit_dev_optin(tmp_path):
     routes = _probe_main({
         "DISTRIBUTED_WORKERS_ENABLED": "true",

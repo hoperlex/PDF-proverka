@@ -4,6 +4,10 @@ import pytest
 
 from backend.app.services.common import audit_logger
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _enable_v2_primary(monkeypatch, v2_root):
     monkeypatch.setenv("AUDIT_STORAGE_BACKEND", "projects_v2")

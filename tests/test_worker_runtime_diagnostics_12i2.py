@@ -32,6 +32,9 @@ from backend.app.services.distributed_workers import (  # noqa: E402
     worker_registry,
 )
 
+# Primary lane §5: contract — сверяет схемы/proto из `contracts/**` с источником.
+pytestmark = pytest.mark.contract
+
 JOB = "job-12i2"
 ATTEMPT = "attempt-12i2"
 

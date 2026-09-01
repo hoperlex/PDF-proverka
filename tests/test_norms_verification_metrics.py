@@ -11,7 +11,10 @@ import json
 
 from backend.app.pipeline.stages.norms import _core
 
+import pytest
 
+
+@pytest.mark.unit
 def test_native_python_is_trusted_paragraph_entry():
     # #36: native-запись считается доверенной (раньше — нет → лишняя ре-верификация).
     assert _core._is_trusted_paragraph_entry({"verified_via": "native_python"}) is True
@@ -20,6 +23,7 @@ def test_native_python_is_trusted_paragraph_entry():
     assert _core._is_trusted_paragraph_entry({"verified_via": "websearch"}) is False
 
 
+@pytest.mark.integration
 def test_merge_surfaces_paragraph_verification_metrics(tmp_path, monkeypatch):
     # #37: метрики подтверждения цитат попадают в meta и в return-stats.
     monkeypatch.setattr(
@@ -49,6 +53,7 @@ def test_merge_surfaces_paragraph_verification_metrics(tmp_path, monkeypatch):
     assert pv["by_source"] == {"native_python": 2, "norms_mcp_paragraph": 1}
 
 
+@pytest.mark.integration
 def test_merge_no_paragraph_checks_metrics_zero(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _core, "merge_paragraph_checks",

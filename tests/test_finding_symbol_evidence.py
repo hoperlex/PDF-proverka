@@ -26,6 +26,7 @@ def _observation(item: dict) -> dict:
     return item[SYMBOL_EVIDENCE_FIELD][0]
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ("latin", "cyrillic"),
     list(HOMOGLYPH_TO_CYRILLIC.items()),
@@ -36,6 +37,7 @@ def test_homoglyph_table_normalizes_to_cyrillic(latin: str, cyrillic: str):
     assert normalize_homoglyph_token(cyrillic) == cyrillic
 
 
+@pytest.mark.unit
 def test_domain_alias_and_internal_punctuation_are_conservative():
     assert normalize_homoglyph_token("УУРиО") == normalize_homoglyph_token("УЧРиО")
     assert normalize_homoglyph_token("П1") != normalize_homoglyph_token("П-1")
@@ -43,6 +45,7 @@ def test_domain_alias_and_internal_punctuation_are_conservative():
     assert normalize_homoglyph_token("P1") != normalize_homoglyph_token("П1")
 
 
+@pytest.mark.unit
 def test_homoglyph_mismatch_is_observed_with_raw_vector_offset():
     finding = {
         "problem": "Несоответствие обозначений: D11 против Д11.",
@@ -70,6 +73,7 @@ def test_homoglyph_mismatch_is_observed_with_raw_vector_offset():
     assert report["observation_counts"] == {"ocr_artifact": 1}
 
 
+@pytest.mark.unit
 def test_real_mixed_alphabets_are_not_labeled_ocr_artifact():
     finding = {
         "problem": "Марки записаны разными алфавитами: Д11 и D11.",
@@ -88,6 +92,7 @@ def test_real_mixed_alphabets_are_not_labeled_ocr_artifact():
     assert report["annotated_findings"] == 0
 
 
+@pytest.mark.unit
 def test_other_salient_numeric_difference_is_not_ocr_artifact():
     finding = {
         "problem": "Несоответствие обозначения «Д11, 900» и «D11, 850».",
@@ -104,6 +109,7 @@ def test_other_salient_numeric_difference_is_not_ocr_artifact():
     assert SYMBOL_EVIDENCE_FIELD not in observed[0]
 
 
+@pytest.mark.unit
 def test_live_range_shape_finds_same_mark_without_expanding_range():
     finding = {
         "problem": (
@@ -128,6 +134,7 @@ def test_live_range_shape_finds_same_mark_without_expanding_range():
     assert receipt["normalized_token"] == "Д11"
 
 
+@pytest.mark.unit
 def test_false_absence_uses_token_next_to_predicate_not_value_found():
     finding = {
         "finding": (
@@ -152,6 +159,7 @@ def test_false_absence_uses_token_next_to_predicate_not_value_found():
     assert report["observation_counts"] == {"false_absence": 1}
 
 
+@pytest.mark.unit
 def test_false_absence_finds_normalized_alias_in_same_page_neighbor():
     finding = {"finding": "Обозначение «УУРиО» отсутствует."}
     sources = {
@@ -177,6 +185,7 @@ def test_false_absence_finds_normalized_alias_in_same_page_neighbor():
     assert evidence["offset_start"] == 0
 
 
+@pytest.mark.unit
 def test_false_absence_does_not_use_substring_or_another_page():
     finding = {"finding": "Обозначение «ПС1» отсутствует."}
     sources = {
@@ -195,6 +204,7 @@ def test_false_absence_does_not_use_substring_or_another_page():
     assert SYMBOL_EVIDENCE_FIELD not in observed[0]
 
 
+@pytest.mark.unit
 def test_semantic_or_speculative_absence_is_not_token_checked():
     findings = [
         {"finding": "Подвижное соединение не показано."},
@@ -211,6 +221,7 @@ def test_semantic_or_speculative_absence_is_not_token_checked():
     assert all(SYMBOL_EVIDENCE_FIELD not in item for item in observed)
 
 
+@pytest.mark.unit
 def test_observer_default_off_and_malformed_sources_are_fail_soft():
     finding = {"problem": "Несоответствие обозначений: D11 против Д11.", "page": 1}
 
@@ -231,6 +242,7 @@ def test_observer_default_off_and_malformed_sources_are_fail_soft():
     assert malformed_report["annotated_findings"] == 0
 
 
+@pytest.mark.unit
 def test_observation_does_not_change_publication_decision():
     finding = {
         "severity": "ЭКСПЛУАТАЦИОННОЕ",
@@ -263,6 +275,7 @@ def test_observation_does_not_change_publication_decision():
     assert _observation(with_observation[0][0])["status"] == "ocr_artifact"
 
 
+@pytest.mark.unit
 def test_stage01_production_adapter_preserves_observation():
     from backend.app.pipeline.stages.block_analysis.gemma_findings_only import (
         adapt_findings_to_production,
@@ -292,6 +305,7 @@ def test_stage01_production_adapter_preserves_observation():
     assert _observation(adapted[0])["vector_evidence"]["offset_start"] == 4
 
 
+@pytest.mark.integration
 def test_targeted_union_runs_observer_only_when_flag_enabled(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,

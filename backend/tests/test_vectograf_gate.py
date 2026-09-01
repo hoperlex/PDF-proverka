@@ -8,6 +8,11 @@ from backend.app.pipeline.stages.block_grounding.singleline_graph_geometry impor
     evaluate_vectograf_gate,
 )
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def _graph(feeders_total=40, active=38, ambiguous=0, power_rate=1.0,
            geometry_conflicts=0, linked_occ=38, total_occ=40,

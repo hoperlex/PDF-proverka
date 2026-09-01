@@ -8,6 +8,11 @@ from types import SimpleNamespace
 
 import backend.app.api.routers.knowledge_base as kb_router
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 class _FakeRequest:
     """Минимальная заглушка Request (важно лишь, что объект передаётся дальше)."""

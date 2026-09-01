@@ -28,6 +28,10 @@ from backend.app.services.common.project_service import (
 from backend.app.services.common import md_resolver
 from backend.app.services.storage import projects_v2_source_resolver as src_resolver
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 NEW_BUNDLE = [

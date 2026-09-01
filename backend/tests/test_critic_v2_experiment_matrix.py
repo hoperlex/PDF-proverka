@@ -123,6 +123,10 @@ def _make_manifest(tmp_path: Path, sections=None) -> tuple[Path, dict]:
 # ─── Tests: load_manifest ────────────────────────────────────────────────────
 
 class TestLoadManifest:
+    # Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+    # память».
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_matrix_mod()
 
@@ -152,6 +156,8 @@ class TestLoadManifest:
 # ─── Tests: filter_manifest_records ──────────────────────────────────────────
 
 class TestFilterManifestRecords:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_matrix_mod()
 
@@ -196,6 +202,9 @@ class TestFilterManifestRecords:
 # ─── Tests: det_only experiment via CLI ──────────────────────────────────────
 
 class TestDetOnlyExperiment:
+    # Primary lane §5: network — запускает настоящие дочерние процессы.
+    pytestmark = pytest.mark.network
+
     def test_det_only_runs_via_cli(self, tmp_path):
         manifest_path, _ = _make_manifest(tmp_path)
         out = tmp_path / "matrix"
@@ -232,6 +241,8 @@ class TestDetOnlyExperiment:
 # ─── Tests: mock LLM experiments ──────────────────────────────────────────────
 
 class TestMockLLMExperiments:
+    pytestmark = pytest.mark.network
+
     def test_llm_no_context_runs(self, tmp_path):
         manifest_path, _ = _make_manifest(tmp_path)
         out = tmp_path / "matrix"
@@ -282,6 +293,8 @@ class TestMockLLMExperiments:
 # ─── Tests: matrix summary ───────────────────────────────────────────────────
 
 class TestMatrixSummary:
+    pytestmark = pytest.mark.network
+
     def test_matrix_summary_created(self, tmp_path):
         manifest_path, _ = _make_manifest(tmp_path)
         out = tmp_path / "matrix"
@@ -364,16 +377,19 @@ class TestFalseRejectDangerDetection:
             "context_enrichment": {},
         }
 
+    @pytest.mark.integration
     def test_fr_zero_not_danger(self):
         summary = self._summary_with_fr(0)
         m = self.mod._experiment_metrics(summary)
         assert m["is_danger"] is False
 
+    @pytest.mark.integration
     def test_fr_nonzero_is_danger(self):
         summary = self._summary_with_fr(2)
         m = self.mod._experiment_metrics(summary)
         assert m["is_danger"] is True
 
+    @pytest.mark.integration
     def test_danger_disqualifies_from_ranking(self):
         danger_summary = self._summary_with_fr(1, "dangerous")
         safe_summary = self._summary_with_fr(0, "safe")
@@ -388,11 +404,13 @@ class TestFalseRejectDangerDetection:
         if len(ranking_names) == 2:
             assert ranking_names[0] == "safe"
 
+    @pytest.mark.integration
     def test_candidate_score_infinite_for_danger(self):
         m = {"is_danger": True, "false_reject": 1, "false_reject_rate": 0.1}
         score = self.mod._compute_candidate_score(m)
         assert score == float("-inf")
 
+    @pytest.mark.integration
     def test_candidate_score_finite_for_safe(self):
         m = {
             "is_danger": False, "false_reject": 0, "false_reject_rate": 0.0,
@@ -405,6 +423,7 @@ class TestFalseRejectDangerDetection:
         assert score != float("-inf")
         assert isinstance(score, float)
 
+    @pytest.mark.integration
     def test_markdown_shows_danger_warning(self):
         danger_m = self._summary_with_fr(1, "dangerous")
         matrix = self.mod.build_matrix_summary(
@@ -415,6 +434,7 @@ class TestFalseRejectDangerDetection:
         md = self.mod.render_matrix_markdown(matrix)
         assert "DANGER" in md
 
+    @pytest.mark.network
     def test_fr_danger_in_matrix_summary_json(self, tmp_path):
         manifest_path, _ = _make_manifest(tmp_path)
         out = tmp_path / "matrix"
@@ -437,6 +457,7 @@ class TestFalseRejectDangerDetection:
 # ─── Tests: safety — production artifacts not modified ───────────────────────
 
 class TestProductionNotModified:
+    @pytest.mark.integration
     def test_manifest_build_not_touch_output(self, tmp_path):
         root = tmp_path / "projects"
         proj = _make_project(root, "P1", section="KJ")
@@ -451,6 +472,7 @@ class TestProductionNotModified:
         after = sorted(f.name for f in output_dir.iterdir())
         assert before == after
 
+    @pytest.mark.network
     def test_matrix_not_touch_project_output(self, tmp_path):
         manifest_path, _ = _make_manifest(tmp_path)
         # Record all files in all project _output dirs
@@ -481,6 +503,8 @@ class TestProductionNotModified:
 # ─── Tests: dry-run ──────────────────────────────────────────────────────────
 
 class TestDryRun:
+    pytestmark = pytest.mark.network
+
     def test_dry_run_exits_0(self, tmp_path):
         manifest_path, _ = _make_manifest(tmp_path)
         result = subprocess.run(
@@ -521,6 +545,8 @@ class TestDryRun:
 # ─── Tests: section filter in matrix ────────────────────────────────────────
 
 class TestSectionFilterInMatrix:
+    pytestmark = pytest.mark.network
+
     def test_section_filter_limits_projects(self, tmp_path):
         manifest_path, _ = _make_manifest(tmp_path)
         out = tmp_path / "matrix"
@@ -588,6 +614,8 @@ class TestMatrixManifestWarnings:
     Tests ensuring the matrix correctly surfaces manifest warnings and uses
     matched decision counts rather than raw counts for metrics.
     """
+    pytestmark = pytest.mark.integration
+
 
     def setup_method(self):
         self.matrix_mod = _load_matrix_mod()
@@ -795,6 +823,7 @@ class TestTriageInMatrix:
         spec.loader.exec_module(mod)
         return mod
 
+    @pytest.mark.integration
     def test_build_matrix_summary_triage_key_present(self):
         """build_matrix_summary includes triage key in metrics when available."""
         mod = self.matrix_mod
@@ -845,6 +874,7 @@ class TestTriageInMatrix:
         assert "triage" in m, "triage key should be present in metrics_by_experiment"
         assert m["triage"] is not None
 
+    @pytest.mark.integration
     def test_matrix_triage_in_markdown(self):
         """Triage metrics appear in markdown when present."""
         mod = self.matrix_mod
@@ -888,6 +918,7 @@ class TestTriageInMatrix:
         assert "Triage Policy Metrics" in md
         assert "workload_reduction" in md.lower() or "Collapse%" in md
 
+    @pytest.mark.network
     def test_production_not_modified_with_triage_flag(self, tmp_path):
         """--triage flag does not modify production pipeline files."""
         import subprocess

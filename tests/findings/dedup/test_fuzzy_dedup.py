@@ -21,6 +21,9 @@ from backend.app.services.findings.dedup import (  # noqa: E402
     fuzzy_dedup,
 )
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def _f(**kw) -> dict:
     base = {

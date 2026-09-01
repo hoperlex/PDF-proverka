@@ -216,6 +216,10 @@ def _ambient_codex(worker_root: Path, personal: Path, body: str) -> CodexProvide
 # ═════════════════════ 1. SSH admin plane ════════════════════════════════════
 class TestSshAdminPlane:
     """SSH — канал администрирования. Всё, что его касается, проверяется без сети."""
+    # Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+    # память».
+    pytestmark = pytest.mark.integration
+
 
     def test_ssh_options_force_batch_mode_and_timeout(self):
         """Пароль не может быть запрошен даже теоретически.
@@ -333,6 +337,8 @@ class TestNoSshInRuntime:
     `".ssh"` в denylist каталогов. Оба — доказательства ОТСУТСТВИЯ транспорта,
     и оба завалили бы наивный греп.
     """
+    pytestmark = pytest.mark.integration
+
 
     @pytest.mark.parametrize("rel", _RUNTIME_MODULES)
     def test_runtime_module_never_imports_or_spawns_ssh(self, rel: str):
@@ -372,6 +378,7 @@ class TestNoSshInRuntime:
 class TestProviderDiscovery:
     """«Установлен» и «авторизован» — разные вопросы, и оба задаются CLI."""
 
+    @pytest.mark.network
     def test_claude_present_but_logged_out(self, worker_root, personal_home):
         adapter = _ambient_claude(worker_root, personal_home, _CLAUDE_LOGGED_OUT)
         identity = adapter.identity()
@@ -380,6 +387,7 @@ class TestProviderDiscovery:
         assert identity.auth_state == AUTH_LOGGED_OUT
         assert identity.auth_mode == am.AUTH_MODE_AMBIENT_USER
 
+    @pytest.mark.network
     def test_claude_present_and_logged_in(self, worker_root, personal_home):
         adapter = _ambient_claude(worker_root, personal_home, _CLAUDE_LOGGED_IN)
         identity = adapter.identity()
@@ -387,6 +395,7 @@ class TestProviderDiscovery:
         assert identity.auth_method == "claudeai"
         assert identity.plan_type == "max"
 
+    @pytest.mark.integration
     def test_codex_missing_is_a_state_not_an_exception(self, worker_root, personal_home):
         home = provider_home(worker_root, "codex",
                              auth_mode=am.AUTH_MODE_AMBIENT_USER,
@@ -396,6 +405,7 @@ class TestProviderDiscovery:
         assert identity.installation_status == INSTALL_MISSING
         assert identity.error_code == errors.ERR_CLI_MISSING
 
+    @pytest.mark.network
     def test_codex_present_and_logged_in(self, worker_root, personal_home):
         adapter = _ambient_codex(worker_root, personal_home, _codex_script())
         identity = adapter.identity()
@@ -404,6 +414,7 @@ class TestProviderDiscovery:
         assert identity.auth_state == AUTH_LOGGED_IN
         assert identity.auth_method == "chatgpt"
 
+    @pytest.mark.integration
     def test_ide_extension_binary_is_never_the_default_path(self, worker_root,
                                                             personal_home):
         """Логин в расширении IDE не считается логином CLI.
@@ -436,12 +447,14 @@ class TestProviderDiscovery:
 class TestAmbientAuth:
     """Ambient — это доступ к каталогу ЧЕЛОВЕКА. Проверяются границы доступа."""
 
+    @pytest.mark.integration
     def test_mode_is_opt_in_and_default_stays_isolated(self, worker_root):
         home = provider_home(worker_root, "claude")
         assert home.auth_mode == am.AUTH_MODE_ISOLATED_PROVIDER_HOME
         assert home.ambient is False
         assert home.home == worker_root / "providers" / "claude" / "home"
 
+    @pytest.mark.integration
     def test_mode_is_per_provider_not_global(self, worker_root, personal_home,
                                              monkeypatch):
         """Включение ambient одному провайдеру не включает его второму."""
@@ -454,6 +467,7 @@ class TestAmbientAuth:
         assert manager.adapters["codex"].home.ambient is True
         assert manager.adapters["claude"].home.ambient is False
 
+    @pytest.mark.integration
     def test_ensure_dirs_never_touches_the_personal_home(self, worker_root,
                                                          personal_home):
         """Главный предохранитель режима.
@@ -476,6 +490,7 @@ class TestAmbientAuth:
         assert stat.S_IMODE(home.runtime.stat().st_mode) == 0o700
         assert stat.S_IMODE(home.metadata.stat().st_mode) == 0o700
 
+    @pytest.mark.integration
     def test_ensure_dirs_does_not_create_missing_config_dir_in_personal_home(
         self, worker_root, tmp_path
     ):
@@ -487,6 +502,7 @@ class TestAmbientAuth:
         home.ensure_dirs()
         assert not (bare / ".codex").exists()
 
+    @pytest.mark.integration
     def test_provider_home_is_the_user_home_and_config_dir_follows(
         self, worker_root, personal_home
     ):
@@ -502,6 +518,7 @@ class TestAmbientAuth:
         assert codex.config_dir == personal_home / ".codex"
         assert codex.credential_path == personal_home / ".codex" / "auth.json"
 
+    @pytest.mark.integration
     def test_runtime_and_metadata_stay_owned_by_the_worker(self, worker_root,
                                                            personal_home):
         """cwd и соль отпечатка не переезжают в личный каталог вместе с HOME.
@@ -518,6 +535,7 @@ class TestAmbientAuth:
         assert worker_root in home.metadata.parents
         assert personal_home not in home.runtime.parents
 
+    @pytest.mark.integration
     def test_env_carries_home_and_user_but_not_worker_secrets(
         self, worker_root, personal_home, monkeypatch
     ):
@@ -534,6 +552,7 @@ class TestAmbientAuth:
                        "AUDIT_WORKER_DISPATCHER_URL"):
             assert banned not in env
 
+    @pytest.mark.integration
     def test_tmpdir_stays_inside_the_worker_even_in_ambient(self, worker_root,
                                                             personal_home):
         """HOME нужен ради авторизации; писать CLI обязан у себя."""
@@ -542,6 +561,7 @@ class TestAmbientAuth:
         assert str(worker_root) in env["TMPDIR"]
         assert not env["TMPDIR"].startswith(str(personal_home))
 
+    @pytest.mark.integration
     def test_providers_do_not_see_each_others_variables_in_ambient(
         self, worker_root, personal_home
     ):
@@ -558,6 +578,7 @@ class TestAmbientAuth:
         assert "CLAUDE_CONFIG_DIR" not in codex_env
         assert codex_env["CODEX_HOME"] == str(personal_home / ".codex")
 
+    @pytest.mark.network
     def test_cwd_is_the_empty_runtime_dir_not_the_user_home(self, worker_root,
                                                             personal_home):
         """Поведенческая проверка: CLI печатает свой cwd.
@@ -575,6 +596,7 @@ class TestAmbientAuth:
         assert adapter.home.runtime.is_dir()
         assert list(adapter.home.runtime.iterdir()) == []
 
+    @pytest.mark.network
     def test_credentials_are_never_copied_anywhere(self, worker_root, personal_home):
         """Ambient существует ровно чтобы НЕ копировать учётные данные."""
         cred = personal_home / ".claude" / ".credentials.json"
@@ -588,6 +610,7 @@ class TestAmbientAuth:
                   p.read_text(encoding="utf-8", errors="ignore")]
         assert copies == []
 
+    @pytest.mark.integration
     def test_credential_contents_are_never_opened(self, worker_root, personal_home):
         """Читается только `os.stat`: существование, режим, владелец.
 
@@ -624,6 +647,7 @@ class TestAmbientAuth:
         assert facts["mode"] == "0600"
         assert "content" not in facts and "value" not in facts
 
+    @pytest.mark.network
     def test_center_payload_reports_mode_without_any_path(self, worker_root,
                                                           personal_home):
         adapter = _ambient_claude(worker_root, personal_home, _CLAUDE_LOGGED_IN)
@@ -636,6 +660,8 @@ class TestAmbientAuth:
 
 # ═════════════════════ 5. Режим unavailable ══════════════════════════════════
 class TestUnavailableMode:
+    pytestmark = pytest.mark.integration
+
     def test_cli_is_not_launched_at_all(self, worker_root, tmp_path):
         """Объявленное «не используем» не оставляет следов в чужом HOME."""
         marker = tmp_path / "cli-was-launched"
@@ -688,6 +714,8 @@ class TestUnavailableMode:
 
 # ═════════════════════ 6. Конфигурация режима ════════════════════════════════
 class TestAuthModeConfig:
+    pytestmark = pytest.mark.integration
+
     def test_unknown_value_is_fatal_not_silently_defaulted(self, monkeypatch,
                                                            tmp_path):
         """Опечатка обязана валить старт.
@@ -741,6 +769,8 @@ class TestAuthModeConfig:
 # ═════════════════════ 7. Изоляция конвейера не изменилась ═══════════════════
 class TestPipelineIsolationUnchanged:
     """Ambient касается ТОЛЬКО подпроцесса CLI. Конвейер — другой процесс."""
+    pytestmark = pytest.mark.integration
+
 
     def test_pipeline_home_is_still_inside_the_attempt_dir(self, tmp_path):
         job_dir = tmp_path / "jobs" / "job-1" / "attempt-1"
@@ -772,6 +802,7 @@ class TestPipelineIsolationUnchanged:
 
 # ═════════════════════ 8. Безопасность ═══════════════════════════════════════
 class TestSecurity:
+    @pytest.mark.network
     def test_no_token_reaches_the_process_argv_or_environ(self, worker_root,
                                                           personal_home,
                                                           monkeypatch, tmp_path):
@@ -812,6 +843,7 @@ class TestSecurity:
         # то есть что прежняя (слепая) форма проверки была именно слепой.
         assert f"HOME={personal_home}" in raw
 
+    @pytest.mark.integration
     def test_forbidden_env_names_are_rejected_even_if_added_later(
         self, worker_root, personal_home
     ):
@@ -830,12 +862,14 @@ class TestSecurity:
         with pytest.raises(ProviderEnvironmentError):
             Leaky(home).build_env()
 
+    @pytest.mark.integration
     def test_deployment_package_never_carries_provider_credentials(self):
         """Артефакт деплоя не увозит с машины ни `.claude`, ни `.codex`."""
         for candidate in (".claude/.credentials.json", ".codex/auth.json",
                           ".ssh/id_ed25519", ".env"):
             assert deploy._denied_reason(Path(candidate)) is not None, candidate
 
+    @pytest.mark.integration
     def test_canary_marker_is_not_stored_in_the_repository(self):
         """Контрольный файл живёт на VPS, а не в git.
 
@@ -859,6 +893,8 @@ class TestCenterVisibility:
     что оператор режима не увидит. Спасает `capability`: адаптер кладёт
     `auth_mode` туда, а `capability_json` сохраняется целиком.
     """
+    pytestmark = pytest.mark.integration
+
 
     def _snapshot(self, auth_mode: str) -> dict:
         from backend.app.services.distributed_workers import provider_accounts as pa
@@ -903,6 +939,9 @@ class TestCenterVisibility:
 
 # ═════════════════════ 10. Квота ═════════════════════════════════════════════
 class TestQuota:
+    # Primary lane §5: network — по каскаду §5.
+    pytestmark = pytest.mark.network
+
     def test_codex_structured_quota_survives_ambient_mode(self, worker_root,
                                                           personal_home):
         """Режим авторизации меняет окружение, а не разбор ответа."""

@@ -35,6 +35,10 @@ from contracts.agent_stream.v1 import agent_stream_pb2 as stream_pb
 from contracts.agent_stream.v1 import agent_stream_pb2_grpc as stream_grpc
 from contracts.agent_stream.v1 import common_pb2 as common_pb
 
+# Primary lane §5: network — GatewayServer.start() реально открывает порт на 127.0.0.1,
+# сокет живёт в production-коде, но открывается по-настоящему.
+pytestmark = pytest.mark.network
+
 
 SHA = "a" * 64
 

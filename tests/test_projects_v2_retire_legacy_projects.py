@@ -10,6 +10,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "projects_v2"))
 import retire_legacy_projects as retire  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _source(tmp_path: Path) -> Path:
     root = tmp_path / "projects"

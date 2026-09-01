@@ -53,6 +53,10 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: network — гоняет CLI дочерним процессом; убийство группы здесь —
+# cleanup, а не chaos: перезапуска убитого нет.
+pytestmark = pytest.mark.network
+
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
 CONTRACT_PATH = ROOT / "docs" / "architecture" / "QUALITY_RUNTIME_CONTRACT_V1.md"

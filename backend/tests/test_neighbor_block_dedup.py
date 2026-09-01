@@ -6,6 +6,11 @@ from backend.app.services.common.neighbor_block_dedup import (
     _tokens,
 )
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 TEXT_LAYER = (
     "QF3.9 ВА-300 1Р 15кА 10А Освещение ЛК1.1 1-12 эт. "

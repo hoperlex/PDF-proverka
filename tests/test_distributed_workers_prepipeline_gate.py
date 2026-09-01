@@ -32,6 +32,9 @@ from pathlib import Path
 
 import pytest
 
+# Lane §5 по нодам: единственный chaos — убийство агента SIGKILL с
+# последующим подъёмом заново; остальное — настоящие uvicorn и процессы.
+
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -162,6 +165,7 @@ def _key() -> dict[str, str]:
 
 
 # ═══ §1 Разбор конфигурации ролей и fail-closed ══════════════════════════════
+@pytest.mark.network
 def test_role_config_parses_lists_and_normalizes_unicode():
     from backend.app.services.distributed_workers import authorization as az
 
@@ -178,6 +182,7 @@ def test_role_config_parses_lists_and_normalizes_unicode():
     assert config.role_for("IVAN") is None
 
 
+@pytest.mark.network
 def test_role_config_rejects_wildcards_and_closes_access():
     from backend.app.services.distributed_workers import authorization as az
 
@@ -189,6 +194,7 @@ def test_role_config_rejects_wildcards_and_closes_access():
     assert az.ROLE_PERMISSIONS[az.ROLE_ADMIN] > az.ROLE_PERMISSIONS[az.ROLE_OPERATOR]
 
 
+@pytest.mark.network
 def test_role_config_rejects_control_characters():
     from backend.app.services.distributed_workers import authorization as az
 
@@ -196,6 +202,7 @@ def test_role_config_rejects_control_characters():
     assert not config.ok
 
 
+@pytest.mark.network
 def test_empty_role_config_grants_nothing():
     from backend.app.services.distributed_workers import authorization as az
 
@@ -205,6 +212,7 @@ def test_empty_role_config_grants_nothing():
     assert "не настроены" in (config.diagnostics() or "")
 
 
+@pytest.mark.network
 def test_admin_role_includes_operate_and_view():
     from backend.app.services.distributed_workers import authorization as az
 
@@ -214,6 +222,7 @@ def test_admin_role_includes_operate_and_view():
     assert az.ROLE_PERMISSIONS[az.ROLE_VIEWER] == {az.PERM_VIEW}
 
 
+@pytest.mark.network
 def test_highest_role_wins_for_subject_in_two_lists():
     from backend.app.services.distributed_workers import authorization as az
 
@@ -224,10 +233,12 @@ def test_highest_role_wins_for_subject_in_two_lists():
 
 
 # ═══ §2 Матрица разрешений ═══════════════════════════════════════════════════
+@pytest.mark.network
 def test_unauthenticated_get_is_rejected(anonymous):
     assert anonymous.get("/api/workers").status_code == 401
 
 
+@pytest.mark.network
 def test_unauthenticated_mutation_is_rejected(anonymous, admin):
     worker_id, _headers, _ = _approved_worker(admin)
     response = anonymous.post(
@@ -236,6 +247,7 @@ def test_unauthenticated_mutation_is_rejected(anonymous, admin):
     assert response.status_code == 401
 
 
+@pytest.mark.network
 def test_viewer_can_read(viewer, admin):
     _approved_worker(admin)
     listing = viewer.get("/api/workers")
@@ -244,6 +256,7 @@ def test_viewer_can_read(viewer, admin):
     assert viewer.get("/api/workers/jobs/list").status_code == 200
 
 
+@pytest.mark.network
 @pytest.mark.parametrize(
     "path_suffix, body",
     [
@@ -264,6 +277,7 @@ def test_viewer_cannot_touch_attempt(viewer, admin, path_suffix, body):
     assert response.json()["detail"]["error"] == "permission_denied"
 
 
+@pytest.mark.network
 def test_viewer_cannot_create_attempt_or_job(viewer, admin):
     worker_id, _headers, _ = _approved_worker(admin)
     job = _create_job(admin, worker_id)
@@ -278,6 +292,7 @@ def test_viewer_cannot_create_attempt_or_job(viewer, admin):
     ).status_code == 403
 
 
+@pytest.mark.network
 def test_operator_manages_attempts(operator, admin):
     worker_id, headers, _ = _approved_worker(admin)
     job = _create_job(operator, worker_id)
@@ -295,6 +310,7 @@ def test_operator_manages_attempts(operator, admin):
     assert cancel.json()["command_id"] is None
 
 
+@pytest.mark.network
 def test_operator_cannot_administer_workers(operator, admin):
     worker_id, _headers, _ = _approved_worker(admin)
     for path in ("approve", "reject", "revoke", "rotate-token"):
@@ -307,11 +323,13 @@ def test_operator_cannot_administer_workers(operator, admin):
         )
 
 
+@pytest.mark.network
 def test_operator_cannot_read_full_admin_log(operator, admin):
     _approved_worker(admin)
     assert operator.get("/api/workers/admin-actions").status_code == 403
 
 
+@pytest.mark.network
 def test_admin_can_rotate_and_read_log(admin):
     worker_id, _headers, _ = _approved_worker(admin)
     rotated = admin.post(f"/api/workers/{worker_id}/rotate-token", json={}, headers=_key())
@@ -322,6 +340,7 @@ def test_admin_can_rotate_and_read_log(admin):
     assert any(a["action_type"] == "rotate_worker_token" for a in log.json()["actions"])
 
 
+@pytest.mark.network
 def test_unknown_authenticated_subject_has_no_rights(center_env, admin):
     """Вошёл в портал, но в списках подсистемы не значится — прав нет."""
     from tests.distributed_workers_helpers import STRANGER_USER
@@ -334,6 +353,7 @@ def test_unknown_authenticated_subject_has_no_rights(center_env, admin):
     ).status_code == 403
 
 
+@pytest.mark.network
 def test_me_answers_without_rights(center_env):
     from tests.distributed_workers_helpers import STRANGER_USER
 
@@ -347,6 +367,7 @@ def test_me_answers_without_rights(center_env):
     assert body["diagnostics"]
 
 
+@pytest.mark.network
 def test_me_never_leaks_other_subjects(admin):
     body = admin.get("/api/workers/me").json()
     from tests.distributed_workers_helpers import OPERATOR_USER, VIEWER_USER
@@ -356,6 +377,7 @@ def test_me_never_leaks_other_subjects(admin):
 
 
 # ═══ §2.1 Подделка роли ══════════════════════════════════════════════════════
+@pytest.mark.network
 def test_role_in_body_is_ignored(viewer, admin):
     worker_id, _headers, _ = _approved_worker(admin)
     response = viewer.post(
@@ -366,6 +388,7 @@ def test_role_in_body_is_ignored(viewer, admin):
     assert response.status_code in (403, 422)
 
 
+@pytest.mark.network
 def test_role_in_query_and_header_is_ignored(viewer, admin):
     worker_id, _headers, _ = _approved_worker(admin)
     response = viewer.post(
@@ -376,6 +399,7 @@ def test_role_in_query_and_header_is_ignored(viewer, admin):
     assert response.status_code == 403
 
 
+@pytest.mark.network
 def test_worker_token_gives_no_operator_rights(center_env, admin):
     """Токен воркера — машинный контур. Операторских прав он не даёт (R-09)."""
     import httpx as _httpx
@@ -394,6 +418,7 @@ def test_worker_token_gives_no_operator_rights(center_env, admin):
     ).status_code == 401
 
 
+@pytest.mark.network
 def test_portal_session_is_not_accepted_by_worker_api(admin):
     """И обратно: портальная cookie не открывает агентский контур."""
     response = admin.post(
@@ -404,6 +429,7 @@ def test_portal_session_is_not_accepted_by_worker_api(admin):
 
 
 # ═══ §2.2 CSRF ═══════════════════════════════════════════════════════════════
+@pytest.mark.network
 def test_missing_intent_header_is_rejected(operator, admin):
     worker_id, _headers, _ = _approved_worker(admin)
     job = _create_job(operator, worker_id)
@@ -417,6 +443,7 @@ def test_missing_intent_header_is_rejected(operator, admin):
     assert response.status_code == 403
 
 
+@pytest.mark.network
 def test_wrong_intent_header_is_rejected(operator, admin):
     worker_id, _headers, _ = _approved_worker(admin)
     job = _create_job(operator, worker_id)
@@ -428,6 +455,7 @@ def test_wrong_intent_header_is_rejected(operator, admin):
     assert response.status_code == 403
 
 
+@pytest.mark.network
 def test_correct_csrf_with_permission_passes(operator, admin):
     worker_id, _headers, _ = _approved_worker(admin)
     job = _create_job(operator, worker_id)
@@ -440,6 +468,7 @@ def test_correct_csrf_with_permission_passes(operator, admin):
 
 
 # ═══ §3 Отказ ничего не меняет ═══════════════════════════════════════════════
+@pytest.mark.network
 def test_denied_request_changes_nothing(viewer, admin, center_env):
     from backend.app.services.distributed_workers import repositories
 
@@ -468,6 +497,7 @@ def test_denied_request_changes_nothing(viewer, admin, center_env):
 
 
 # ═══ §4 Журнал: actor из сессии ══════════════════════════════════════════════
+@pytest.mark.network
 def test_audit_log_records_session_actor_role_and_permission(operator, admin, center_env):
     from backend.app.services.distributed_workers import repositories
     from tests.distributed_workers_helpers import OPERATOR_USER
@@ -486,6 +516,7 @@ def test_audit_log_records_session_actor_role_and_permission(operator, admin, ce
     assert cancel["permission"] == "distributed_workers.operate"
 
 
+@pytest.mark.network
 def test_audit_log_ignores_actor_from_request_body(operator, admin, center_env):
     """Тело запроса не может назвать себя другим оператором."""
     from backend.app.services.distributed_workers import repositories
@@ -504,6 +535,7 @@ def test_audit_log_ignores_actor_from_request_body(operator, admin, center_env):
     assert lost["actor_id"] == f"operator:{OPERATOR_USER}"
 
 
+@pytest.mark.network
 def test_admin_log_has_no_delete_endpoint():
     """Append-only не декларацией, а отсутствием ручки."""
     from backend.app.api.routers import audit_workers_admin
@@ -515,6 +547,7 @@ def test_admin_log_has_no_delete_endpoint():
 
 
 # ═══ §5 Слоты: нормализация и лимит ══════════════════════════════════════════
+@pytest.mark.network
 @pytest.mark.parametrize(
     "raw, expected, clamped",
     [
@@ -540,6 +573,7 @@ def test_max_slots_normalization(raw, expected, clamped):
         assert "проверялась" in (limit.notice or "")
 
 
+@pytest.mark.network
 def test_worker_normalization_mirrors_center():
     """Воркер ставится отдельным комплектом — правило обязано совпасть."""
     from audit_worker import slots as worker_slots
@@ -553,6 +587,7 @@ def test_worker_normalization_mirrors_center():
         )
 
 
+@pytest.mark.network
 def test_slot_predicates_are_single_source_of_truth():
     from backend.app.models.distributed_workers import JobState
     from backend.app.services.distributed_workers import slots
@@ -576,6 +611,7 @@ def test_slot_predicates_are_single_source_of_truth():
     assert slots.attempt_unproven_remote(lost)
 
 
+@pytest.mark.network
 def test_effective_limit_is_minimum_of_all_constraints():
     from backend.app.services.distributed_workers import slots
 
@@ -602,6 +638,7 @@ def test_effective_limit_is_minimum_of_all_constraints():
     assert slots.effective_limit(base, executor_status="unknown").value == 2
 
 
+@pytest.mark.network
 def test_approve_clamps_and_warns(admin):
     _worker_id, _headers, approved = _approved_worker(
         admin, instance_id="inst_gate_clamp1", max_slots=5
@@ -610,6 +647,7 @@ def test_approve_clamps_and_warns(admin):
     assert "проверялась" in (approved["slot_limit_notice"] or "")
 
 
+@pytest.mark.network
 def test_heartbeat_does_not_overwrite_operator_setting(admin, center_env):
     from backend.app.services.distributed_workers import repositories
 
@@ -637,6 +675,7 @@ def _take(client, headers, free_slots=2):
     )
 
 
+@pytest.mark.network
 def test_two_slots_allow_two_jobs_and_block_third(admin, center_env):
     worker_id, headers, _ = _approved_worker(
         admin, instance_id="inst_gate_two001", max_slots=2
@@ -654,6 +693,7 @@ def test_two_slots_allow_two_jobs_and_block_third(admin, center_env):
     assert third.json()["error"] == "no_free_slots"
 
 
+@pytest.mark.network
 def test_one_slot_worker_never_gets_two(admin):
     worker_id, headers, _ = _approved_worker(
         admin, instance_id="inst_gate_one001", max_slots=1
@@ -664,6 +704,7 @@ def test_one_slot_worker_never_gets_two(admin):
     assert _take(admin, headers, free_slots=1).status_code == 409
 
 
+@pytest.mark.network
 def test_center_does_not_trust_inflated_free_slots(admin):
     """Воркер заявил 5 свободных — центр всё равно считает сам (S-15)."""
     worker_id, headers, _ = _approved_worker(
@@ -675,6 +716,7 @@ def test_center_does_not_trust_inflated_free_slots(admin):
     assert _take(admin, headers, free_slots=5).status_code == 409
 
 
+@pytest.mark.network
 def test_slot_is_released_when_execution_ends(admin, center_env):
     from backend.app.models.distributed_workers import JobState
     from backend.app.services.distributed_workers import job_service, repositories
@@ -711,6 +753,7 @@ def test_slot_is_released_when_execution_ends(admin, center_env):
     assert _take(admin, headers, free_slots=1).status_code == 200
 
 
+@pytest.mark.network
 def test_result_uploading_does_not_hold_execution_slot(admin, center_env):
     from backend.app.models.distributed_workers import JobState
     from backend.app.services.distributed_workers import job_service, repositories
@@ -731,6 +774,7 @@ def test_result_uploading_does_not_hold_execution_slot(admin, center_env):
     assert usage.occupied == 0
 
 
+@pytest.mark.network
 def test_cancel_requested_holds_slot_until_worker_confirms(admin, operator, center_env):
     from backend.app.models.distributed_workers import JobState
     from backend.app.services.distributed_workers import job_service, repositories
@@ -754,6 +798,7 @@ def test_cancel_requested_holds_slot_until_worker_confirms(admin, operator, cent
     assert usage.occupied == 1, "cancel_requested занимает слот до подтверждения"
 
 
+@pytest.mark.network
 def test_declared_lost_is_counted_but_does_not_block(admin, operator, center_env):
     """Политика §34: потерянная попытка видна как «недоказанная», но не блокирует."""
     from backend.app.models.distributed_workers import JobState
@@ -781,6 +826,7 @@ def test_declared_lost_is_counted_but_does_not_block(admin, operator, center_env
     assert "может" in (view["unproven_warning"] or "")
 
 
+@pytest.mark.network
 def test_new_attempt_on_offline_worker_requires_risk_acknowledgement(
     admin, operator, center_env
 ):
@@ -820,6 +866,7 @@ def test_new_attempt_on_offline_worker_requires_risk_acknowledgement(
     assert accepted.status_code == 200, accepted.text
 
 
+@pytest.mark.network
 def test_disk_critical_blocks_new_jobs_but_not_running(admin, center_env):
     from backend.app.services.distributed_workers import repositories
 
@@ -844,6 +891,7 @@ def test_disk_critical_blocks_new_jobs_but_not_running(admin, center_env):
     assert attempt["state"] == "source_uploading"
 
 
+@pytest.mark.network
 def test_two_concurrent_jobs_next_never_exceed_limit(admin, center_env):
     """Настоящая гонка: два одновременных запроса на воркер с одним слотом."""
     import threading
@@ -889,6 +937,7 @@ def _worker_config(tmp_path, max_slots=2):
     )
 
 
+@pytest.mark.network
 def test_executor_claims_two_and_refuses_third(tmp_path):
     from audit_worker.executor import Executor
 
@@ -909,6 +958,7 @@ def test_executor_claims_two_and_refuses_third(tmp_path):
     assert waiting["state"] == "queued"
 
 
+@pytest.mark.network
 def test_executor_capacity_respects_configured_limit(tmp_path):
     from audit_worker.executor import Executor
 
@@ -920,6 +970,7 @@ def test_executor_capacity_respects_configured_limit(tmp_path):
     assert executor.db.claim_next(executor.instance_id, capacity_limit=1) is None
 
 
+@pytest.mark.network
 def test_executor_limit_is_clamped_to_verified_maximum(tmp_path):
     from audit_worker.executor import Executor
 
@@ -927,6 +978,7 @@ def test_executor_limit_is_clamped_to_verified_maximum(tmp_path):
     assert executor.slot_limit() == 2
 
 
+@pytest.mark.network
 def test_executor_capacity_zeroes_on_critical_disk(tmp_path, monkeypatch):
     from audit_worker.executor import Executor
 
@@ -938,6 +990,7 @@ def test_executor_capacity_zeroes_on_critical_disk(tmp_path, monkeypatch):
     assert free == 0 and "диск" in why
 
 
+@pytest.mark.network
 def test_two_executors_share_one_capacity_counter(tmp_path):
     """Второй исполнитель не может «добрать» сверх общего лимита очереди."""
     from audit_worker.executor import Executor
@@ -1022,6 +1075,7 @@ def test_event_sequence_is_unique_across_processes(tmp_path):
     assert db.allocated_event_high(job_id="jobB", attempt_id="attB") == per_writer * 2
 
 
+@pytest.mark.network
 def test_sequence_survives_restart(tmp_path):
     from audit_worker.event_outbox import EventOutbox
     from audit_worker.local_db import LocalDB
@@ -1038,6 +1092,7 @@ def test_sequence_survives_restart(tmp_path):
     assert second.append("job_started", {}) == 6
 
 
+@pytest.mark.network
 def test_allocation_gap_is_filled_visibly_not_masked(tmp_path):
     """Номер выдан, событие не дошло до диска — дыра ЗАКРЫВАЕТСЯ явной записью."""
     from audit_worker.event_outbox import EventOutbox
@@ -1069,6 +1124,7 @@ def test_allocation_gap_is_filled_visibly_not_masked(tmp_path):
     assert [e["seq"] for e in outbox.pending_batch()] == [1, 2, 3]
 
 
+@pytest.mark.network
 def test_two_attempts_have_independent_sequences(tmp_path):
     from audit_worker.event_outbox import EventOutbox
     from audit_worker.local_db import LocalDB
@@ -1559,7 +1615,9 @@ def test_two_real_processes_overlap_and_third_waits(two_slot_worker):
     assert len(_live_processes(db)) <= 2, "одновременно больше двух — нарушение S-01"
 
 
-@pytest.mark.network
+# Primary lane §5: chaos — агент убит SIGKILL и поднят заново, состав процессов обязан
+# совпасть.
+@pytest.mark.chaos
 @pytest.mark.slow
 def test_agent_restart_keeps_two_processes_and_creates_no_duplicates(two_slot_worker):
     """S-07…S-09: убийство агента не трогает работу и не порождает дублей."""
@@ -1618,6 +1676,7 @@ def test_agent_restart_keeps_two_processes_and_creates_no_duplicates(two_slot_wo
 
 
 # ═══ §9 Безопасность экрана ══════════════════════════════════════════════════
+@pytest.mark.network
 def test_frontend_has_no_html_injection_points():
     source = (_ROOT / "frontend" / "static" / "js" / "audit-workers.js").read_text(
         encoding="utf-8"
@@ -1626,6 +1685,7 @@ def test_frontend_has_no_html_injection_points():
         assert marker not in source, marker
 
 
+@pytest.mark.network
 def test_frontend_reads_permissions_from_server_only():
     """Права не берутся из localStorage и не отправляются обратно на сервер."""
     source = (_ROOT / "frontend" / "static" / "js" / "audit-workers.js").read_text(
@@ -1639,6 +1699,7 @@ def test_frontend_reads_permissions_from_server_only():
     assert not re.search(r"body:\s*JSON\.stringify\([^)]*role", source)
 
 
+@pytest.mark.network
 def test_frontend_renders_slot_counters_and_warnings():
     source = (_ROOT / "frontend" / "static" / "js" / "audit-workers.js").read_text(
         encoding="utf-8"
@@ -1648,6 +1709,7 @@ def test_frontend_renders_slot_counters_and_warnings():
         assert marker in source, marker
 
 
+@pytest.mark.network
 def test_dangerous_values_reach_screen_as_text(admin, center_env):
     """XSS-строки в данных возвращаются как ДАННЫЕ, а не как разметка."""
     from backend.app.services.distributed_workers import repositories
@@ -1682,6 +1744,7 @@ def test_dangerous_values_reach_screen_as_text(admin, center_env):
 # которых лежала ровно на двухслотовом пути. Здесь закрепляется КАЖДОЕ
 # подтверждённое исправление — иначе следующая правка тихо вернёт всё назад.
 
+@pytest.mark.network
 def test_terminal_queue_state_cannot_be_overwritten(tmp_path):
     """Исход попытки записывается один раз. Второй поверх него — потеря."""
     from audit_worker import local_db
@@ -1696,6 +1759,7 @@ def test_terminal_queue_state_cannot_be_overwritten(tmp_path):
     assert db.queue_item("a1")["state"] == local_db.QUEUE_CANCELLED
 
 
+@pytest.mark.network
 def test_queue_state_write_can_require_the_state_it_observed(tmp_path):
     """Условная запись закрывает окно «прочитал → решил → записал»."""
     from audit_worker import local_db
@@ -1709,6 +1773,7 @@ def test_queue_state_write_can_require_the_state_it_observed(tmp_path):
                               expect_states=(local_db.QUEUE_QUEUED,)) is True
 
 
+@pytest.mark.network
 def test_cancelled_attempt_never_starts_a_process(tmp_path, monkeypatch):
     """Гонка отмены: центр уже считает попытку отменённой — процесс не стартует.
 
@@ -1744,6 +1809,7 @@ def test_cancelled_attempt_never_starts_a_process(tmp_path, monkeypatch):
     assert executor.db.queue_item("a1")["state"] == local_db.QUEUE_CANCELLED
 
 
+@pytest.mark.network
 def test_cancel_that_lost_the_race_does_not_report_success(tmp_path):
     """Проиграв гонку, отмена отвечает ошибкой, а не «отменено»."""
     from audit_worker import local_db
@@ -1758,6 +1824,7 @@ def test_cancel_that_lost_the_race_does_not_report_success(tmp_path):
     assert result["detail"]["outcome"] == "state_changed_concurrently"
 
 
+@pytest.mark.network
 def test_process_row_is_closed_after_restart_packaging(tmp_path):
     """После рестарта исполнителя запись процесса обязана перестать быть `running`.
 
@@ -1791,6 +1858,7 @@ def test_process_row_is_closed_after_restart_packaging(tmp_path):
     assert executor.db.queue_item("a1")["state"] == "finished"
 
 
+@pytest.mark.network
 def test_adopt_claim_transfers_ownership_so_lease_renews(tmp_path):
     """Подхват после рестарта переписывает владельца строки очереди на себя."""
     from audit_worker import local_db
@@ -1807,6 +1875,7 @@ def test_adopt_claim_transfers_ownership_so_lease_renews(tmp_path):
     assert db.adopt_claim("a1", "executor-third") is False
 
 
+@pytest.mark.network
 def test_signal_is_never_sent_without_a_proven_process_group():
     """Не доказана группа — не отправляется НИЧЕГО, даже по голому pid."""
     from audit_worker import process_control
@@ -1823,6 +1892,7 @@ def test_signal_is_never_sent_without_a_proven_process_group():
     assert not hasattr(process_registry.ProcessRegistry, "terminate_job")
 
 
+@pytest.mark.network
 def test_temp_file_name_is_unique_per_thread(tmp_path):
     """Каждая атомарная запись берёт СВОЁ временное имя.
 
@@ -1862,6 +1932,7 @@ def test_temp_file_name_is_unique_per_thread(tmp_path):
     assert len(set(names)) == len(names), names
 
 
+@pytest.mark.network
 def test_role_diagnostics_never_leak_the_subject_value():
     """Диагностику ролей читает любой вошедший — чужого имени в ней быть не может."""
     from backend.app.services.distributed_workers import authorization as az
@@ -1873,6 +1944,7 @@ def test_role_diagnostics_never_leak_the_subject_value():
     assert "Андрей" not in text and "secret-admin" not in text, text
 
 
+@pytest.mark.network
 def test_every_operator_route_declares_a_permission():
     """Право — не дисциплина автора, а свойство каждого маршрута.
 
@@ -1904,6 +1976,7 @@ def test_every_operator_route_declares_a_permission():
     assert seen_exceptions == allowed_without_permission, seen_exceptions
 
 
+@pytest.mark.network
 def test_every_mutating_route_requires_the_intent_header(admin):
     """CSRF-рубеж стоит на КАЖДОЙ изменяющей ручке, а не на выбранных."""
     from backend.app.api.routers import audit_workers_admin as mod
@@ -1925,6 +1998,7 @@ def test_every_mutating_route_requires_the_intent_header(admin):
     assert checked >= 9, checked
 
 
+@pytest.mark.network
 def test_rotate_token_repeat_with_same_key_does_not_kill_the_new_token(admin):
     """Повтор ротации по тому же ключу не гасит токен, который уже прописан."""
     worker_id, _headers, _view = _approved_worker(admin)
@@ -1948,6 +2022,7 @@ def test_rotate_token_repeat_with_same_key_does_not_kill_the_new_token(admin):
     assert probe.status_code == 200, probe.text
 
 
+@pytest.mark.network
 def test_worker_capacity_hint_is_not_anchored_to_center_occupancy(admin, center_env):
     """Подсказка воркера считается от ЕГО занятости, а не от занятости центра."""
     from backend.app.services.distributed_workers import repositories
@@ -1977,6 +2052,7 @@ def test_worker_capacity_hint_is_not_anchored_to_center_occupancy(admin, center_
     ) is not None
 
 
+@pytest.mark.network
 def test_slot_mismatch_is_detected_in_both_directions():
     """«Центр считает свободным, воркер — занятым» тоже расхождение."""
     from backend.app.services.distributed_workers import slots
@@ -1996,6 +2072,7 @@ def test_slot_mismatch_is_detected_in_both_directions():
     assert view3["slot_count_mismatch"] is False
 
 
+@pytest.mark.network
 def test_agent_takes_no_work_when_the_local_database_is_unreadable(tmp_path):
     """Не знаем занятость — не берём работу. Прежний запас ошибался в опасную сторону."""
     from audit_worker.agent import WorkerAgent
@@ -2017,6 +2094,7 @@ def test_agent_takes_no_work_when_the_local_database_is_unreadable(tmp_path):
     assert WorkerAgent._free_slots(agent) == 0
 
 
+@pytest.mark.network
 def test_pending_delivery_covers_interrupted_upload_and_failure(tmp_path):
     """Результат в `uploading` и провал при мёртвом агенте обязаны быть досланы."""
     import threading as _threading
@@ -2050,6 +2128,7 @@ def test_pending_delivery_covers_interrupted_upload_and_failure(tmp_path):
     assert flushed == ["a3"], flushed
 
 
+@pytest.mark.network
 def test_configured_max_slots_column_never_stores_more_than_proven(admin, center_env):
     """В БД не должно оседать значение выше доказанного максимума.
 
@@ -2088,6 +2167,7 @@ def test_configured_max_slots_column_never_stores_more_than_proven(admin, center
     assert approved.json().get("slot_limit_notice"), "зажатие обязано быть объяснено"
 
 
+@pytest.mark.network
 def test_occupancy_counter_may_exceed_limit_but_only_conservatively(admin, operator, center_env):
     """Ложное «3/2» закрыто: отмена НЕвыданного задания слот больше не держит.
 

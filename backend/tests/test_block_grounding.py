@@ -15,6 +15,11 @@ from backend.app.pipeline.stages.block_grounding.grounding import (
     vector_usable,
 )
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 _VEC = "Бетон В40 F100 W4, колонна Км-400-1200-2800-1, отм. +12.500, размеры 5000 3000"
 
 

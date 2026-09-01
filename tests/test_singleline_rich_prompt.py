@@ -43,10 +43,15 @@ def _sibling_pdf(rj: Path):
 RJ = _find_result_json()
 PDF = _sibling_pdf(RJ) if RJ else None
 
-pytestmark = pytest.mark.skipif(
-    not (RJ and PDF),
-    reason="нет данных проекта 13АВ-РД-ЭМ-К1 (projects/ в .gitignore)",
-)
+pytestmark = [
+    # Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+    # память».
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not (RJ and PDF),
+        reason="нет данных проекта 13АВ-РД-ЭМ-К1 (projects/ в .gitignore)",
+    ),
+]
 
 
 def _scheme_vt():

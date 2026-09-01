@@ -10,7 +10,10 @@ from backend.app.pipeline.stages.block_grounding.block_profile_registry import (
     select_reference,
 )
 
+import pytest
 
+
+@pytest.mark.unit
 def test_reference_is_selected_by_exact_discipline_and_profile():
     reference = select_reference(
         "hvac_floor_plan", "ОВ", source_kind="structured_hvac"
@@ -22,6 +25,7 @@ def test_reference_is_selected_by_exact_discipline_and_profile():
     assert "профил" in reference["selection"]
 
 
+@pytest.mark.unit
 def test_package_keeps_graph_gate_reference_and_llm_text():
     graph = {
         "profile_id": "vk_floor_plan",
@@ -47,6 +51,7 @@ def test_package_keeps_graph_gate_reference_and_llm_text():
     assert package["gate"]["use"] is True
 
 
+@pytest.mark.unit
 def test_reference_prefers_matching_subtype_inside_one_profile():
     cctv = select_reference(
         "discipline_floor_plan", "СС", source_kind="structured_alia_scheme",
@@ -66,6 +71,7 @@ def test_reference_prefers_matching_subtype_inside_one_profile():
     assert cctv["candidate_count"] > 1
 
 
+@pytest.mark.unit
 def test_reference_uses_semantics_and_keeps_exact_profile_boundary():
     reference = select_reference(
         "electrical_installation_detail", "ЭОМ", source_kind="structured_electrical",
@@ -82,6 +88,7 @@ def test_reference_uses_semantics_and_keeps_exact_profile_boundary():
     assert "Сравнено эталонов" in reference["explanation"]
 
 
+@pytest.mark.unit
 def test_door_scheme_prefers_door_view_over_canonical_door_table():
     reference = select_reference(
         "ar_opening_drawing", "АР", source_kind="structured_architecture",
@@ -110,6 +117,7 @@ def test_door_scheme_prefers_door_view_over_canonical_door_table():
     assert any(item["block_id"] == "9EXP-KHJC-PMW" for item in reference["alternatives"])
 
 
+@pytest.mark.unit
 def test_reference_falls_back_to_canonical_without_current_block_features():
     reference = select_reference(
         "hvac_floor_plan", "ОВ", source_kind="structured_hvac"
@@ -120,6 +128,7 @@ def test_reference_falls_back_to_canonical_without_current_block_features():
     assert "Недостаточно признаков" in reference["explanation"]
 
 
+@pytest.mark.unit
 def test_package_survives_dynamic_reference_selection_error(monkeypatch):
     def broken_semantic_comparison(*_args, **_kwargs):
         raise ValueError("повреждённый корпус")
@@ -147,6 +156,7 @@ def test_package_survives_dynamic_reference_selection_error(monkeypatch):
     assert "Векторный граф блока сохранён" in package["reference"]["explanation"]
 
 
+@pytest.mark.integration
 def test_prepared_package_round_trip(tmp_path):
     package = make_package(
         block_id="B/2",
@@ -168,6 +178,7 @@ def test_prepared_package_round_trip(tmp_path):
     assert loaded["profile_id"] == "hvac_floor_plan"
 
 
+@pytest.mark.integration
 def test_prepared_package_loads_safe_graph_sidecar(tmp_path):
     package = make_package(
         block_id="GALLERY-1",
@@ -192,6 +203,7 @@ def test_prepared_package_loads_safe_graph_sidecar(tmp_path):
     assert loaded["graph"]["nodes"] == [{"id": "n1"}]
 
 
+@pytest.mark.integration
 def test_prepared_package_rejects_graph_sidecar_outside_artifact_dir(tmp_path):
     package = make_package(
         block_id="GALLERY-2",

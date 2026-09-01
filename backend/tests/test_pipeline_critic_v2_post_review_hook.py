@@ -40,6 +40,10 @@ from backend.app.pipeline.stages.critic_v2_triage.runner import (  # noqa: E402
     ARTIFACT_TRIAGE_UI,
 )
 
+# Primary lane §5: integration — замокан только LLM: артефакты хука реально пишутся в
+# tmp_path.
+pytestmark = pytest.mark.integration
+
 
 # ─── Sample findings (минимум, чтобы runner вернул success=True) ───
 

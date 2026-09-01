@@ -62,6 +62,10 @@ from backend.app.services.distributed_workers.settings import get_settings
 from contracts.agent_stream.v1 import agent_stream_pb2 as stream_pb
 from contracts.agent_stream.v1 import agent_stream_pb2_grpc as stream_grpc
 
+# Primary lane §5: network — GatewayServer с mTLS слушает 127.0.0.1, канал и рукопожатие
+# настоящие.
+pytestmark = pytest.mark.network
+
 
 def _pem_key(key) -> bytes:
     return key.private_bytes(

@@ -9,6 +9,11 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 _MOD_PATH = Path(__file__).resolve().parent.parent / "scripts" / "audit_env_flags.py"
 _spec = importlib.util.spec_from_file_location("audit_env_flags", _MOD_PATH)
 aef = importlib.util.module_from_spec(_spec)

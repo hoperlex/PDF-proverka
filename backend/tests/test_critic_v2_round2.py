@@ -53,6 +53,9 @@ from backend.app.pipeline.stages.findings_review.critic_v2.triage import (  # no
     _round2_match_rd_pz,
 )
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 

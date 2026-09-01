@@ -14,6 +14,12 @@ import migrate_legacy_findings_preserve as mig  # noqa: E402
 import v2lib  # noqa: E402
 import validate_migration as vm  # noqa: E402
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 KING = '213. Мосфильмовская 31А "King&Sons"'
 
 

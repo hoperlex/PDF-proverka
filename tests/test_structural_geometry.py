@@ -5,6 +5,9 @@ from backend.app.pipeline.stages.block_grounding.structural_geometry import ALL_
 from backend.app.pipeline.stages.block_grounding.legend_geometry import (PROFILE_LEGEND,
     evaluate_legend_gate,render_legend_markdown)
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 # «Условные обозначения» — надведомственный профиль: легенда есть в любом
 # разделе, в набор профилей дисциплины не входит, гейт и рендер у неё свои.
 def _gate(g):return evaluate_legend_gate(g) if g["profile_id"]==PROFILE_LEGEND else evaluate_structural_gate(g)

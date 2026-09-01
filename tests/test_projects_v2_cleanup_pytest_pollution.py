@@ -4,6 +4,12 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/projects_v2/cleanup_pytest_pollution.py"
 SPEC = importlib.util.spec_from_file_location("cleanup_pytest_pollution", SCRIPT)

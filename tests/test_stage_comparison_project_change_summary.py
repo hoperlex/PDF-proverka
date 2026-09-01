@@ -6,6 +6,9 @@ import pytest
 
 from backend.app.services.stage_comparison import project_change_summary as summary
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def evidence(
     evidence_id: str, text: str, *, before: str | None = None,

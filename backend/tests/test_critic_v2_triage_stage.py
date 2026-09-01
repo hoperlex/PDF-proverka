@@ -35,6 +35,10 @@ from backend.app.pipeline.stages.critic_v2_triage.runner import (  # noqa: E402
     ARTIFACT_TRIAGE_UI,
 )
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
 

@@ -102,6 +102,10 @@ def _make_project(
 # ─── Tests: build_manifest_record ────────────────────────────────────────────
 
 class TestBuildManifestRecord:
+    # Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+    # память».
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_script()
 
@@ -196,6 +200,8 @@ class TestBuildManifestRecord:
 # ─── Tests: build_manifest ────────────────────────────────────────────────────
 
 class TestBuildManifest:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_script()
 
@@ -266,6 +272,8 @@ class TestBuildManifest:
 # ─── Tests: write_outputs ─────────────────────────────────────────────────────
 
 class TestWriteOutputs:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_script()
 
@@ -330,6 +338,9 @@ class TestWriteOutputs:
 # ─── Tests: CLI ───────────────────────────────────────────────────────────────
 
 class TestCLI:
+    # Primary lane §5: network — запускает настоящие дочерние процессы.
+    pytestmark = pytest.mark.network
+
     def _setup(self, tmp_path: Path) -> tuple[Path, Path]:
         root = tmp_path / "projects"
         _make_project(root, "KJ-P1", section="KJ")
@@ -434,6 +445,8 @@ class TestDuplicateAndUnmatchedDecisions:
     - human_accepted + human_rejected matched counts
     - warnings in the manifest record and manifest-level
     """
+    pytestmark = pytest.mark.integration
+
 
     def setup_method(self):
         self.mod = _load_script()

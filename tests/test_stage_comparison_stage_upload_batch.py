@@ -9,6 +9,10 @@ import pytest
 
 from backend.app.services.stage_comparison import scanner, stage_upload
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _pdf_bytes(label: str) -> bytes:
     document = fitz.open()

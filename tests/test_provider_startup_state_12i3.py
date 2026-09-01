@@ -49,6 +49,9 @@ pytest.importorskip("google.protobuf")
 from contracts.agent_stream.v1 import adapters  # noqa: E402
 from contracts.agent_stream.v1.adapters import provider_status_digest  # noqa: E402
 
+# Primary lane §5: contract — сверяет обязательства из `contracts/**`.
+pytestmark = pytest.mark.contract
+
 PROVIDERS = ("claude", "codex", "openrouter")
 
 

@@ -8,6 +8,10 @@ from backend.app.services.stage_comparison import paths
 from backend.app.services.stage_comparison import project_change_summary
 from backend.app.services.stage_comparison import store
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def write_json(path, payload):
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -31,6 +31,10 @@ if str(_ROOT) not in sys.path:
 
 import backend.app.services.common.schedule_service as schedule_service  # noqa: E402
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 
 def _entry(reviewer, date, project, section="AR", object_id="214", **extra):
     e = {

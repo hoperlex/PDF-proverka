@@ -6,6 +6,10 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: integration — дерево projects_v2 в tmp_path; модель и подпроцессы
+# заглушены.
+pytestmark = pytest.mark.integration
+
 _WMODE = "AUDIT_PROJECTS_V2_WRITE_MODE"
 _V2DIR = "AUDIT_PROJECTS_V2_DIR"
 

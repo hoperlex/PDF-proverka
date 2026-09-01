@@ -6,7 +6,10 @@ import threading
 
 from backend.app.services.common.atomic_json import atomic_write_json
 
+import pytest
 
+
+@pytest.mark.unit
 def test_round_trip(tmp_path):
     p = tmp_path / "x.json"
     payload = {"a": 1, "кир": [1, 2, 3], "nested": {"k": "v"}}
@@ -14,6 +17,7 @@ def test_round_trip(tmp_path):
     assert json.loads(p.read_text(encoding="utf-8")) == payload
 
 
+@pytest.mark.unit
 def test_no_tmp_leftover(tmp_path):
     p = tmp_path / "x.json"
     atomic_write_json(p, {"a": 1})
@@ -21,6 +25,7 @@ def test_no_tmp_leftover(tmp_path):
     assert list(tmp_path.glob("*.tmp")) == []
 
 
+@pytest.mark.unit
 def test_overwrite_is_atomic(tmp_path):
     p = tmp_path / "x.json"
     atomic_write_json(p, {"v": 1})
@@ -28,6 +33,7 @@ def test_overwrite_is_atomic(tmp_path):
     assert json.loads(p.read_text(encoding="utf-8")) == {"v": 2}
 
 
+@pytest.mark.integration
 def test_concurrent_writers_no_corruption(tmp_path):
     p = tmp_path / "x.json"
 

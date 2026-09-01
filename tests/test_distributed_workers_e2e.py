@@ -114,6 +114,7 @@ def running_executor(config, *, max_jobs=1):
         thread.join(timeout=15)
 
 
+@pytest.mark.network
 def test_vertical_slice_full_cycle(tmp_path, transport, admin):
     from audit_worker.agent import WorkerAgent
     from audit_worker.registration import ensure_registered
@@ -278,6 +279,7 @@ def test_vertical_slice_full_cycle(tmp_path, transport, admin):
     assert "payload/result/run_log.txt" in names
 
 
+@pytest.mark.network
 def test_offline_run_then_late_delivery(tmp_path, transport, admin):
     """Аудит завершается без связи → события копятся → досылаются после."""
     from audit_worker.agent import WorkerAgent
@@ -377,6 +379,7 @@ def test_offline_run_then_late_delivery(tmp_path, transport, admin):
     agent.shutdown()
 
 
+@pytest.mark.integration
 def test_worker_api_requires_token(transport):
     """Контуры аутентификации разделены: без bearer-токена воркерский API закрыт."""
     client = httpx.Client(transport=transport, base_url="http://center",

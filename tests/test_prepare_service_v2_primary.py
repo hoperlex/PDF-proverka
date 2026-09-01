@@ -6,6 +6,12 @@ from pathlib import Path
 from backend.app.pipeline.stages.prepare import prepare_service
 from backend.app.pipeline.stages.gemma_enrichment.gemma_enrichment_contract import gemma_enrichment_crop_policy
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 _WMODE = "AUDIT_PROJECTS_V2_WRITE_MODE"
 _V2DIR = "AUDIT_PROJECTS_V2_DIR"
 

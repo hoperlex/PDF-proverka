@@ -9,6 +9,9 @@ from backend.app.pipeline.stages.block_grounding.vector_path_graph import (
     terminal_network_diagnostics,
 )
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SS_DIR = ROOT / "experiments" / "блоки разных дисциплин" / "СС"

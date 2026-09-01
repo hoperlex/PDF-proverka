@@ -18,6 +18,8 @@ from backend.app.services.text_analysis.document_type_detector import (
     detect_document_type,
 )
 
+import pytest
+
 
 def _finding(**overrides):
     base = {
@@ -41,6 +43,7 @@ def _finding(**overrides):
     return base
 
 
+@pytest.mark.unit
 def test_evidence_gate_publishes_proved_and_defers_context_gap():
     proved = _finding()
     context_gap = _finding(
@@ -64,6 +67,7 @@ def test_evidence_gate_publishes_proved_and_defers_context_gap():
     assert report["deferred"] == 1
 
 
+@pytest.mark.unit
 def test_evidence_gate_deduplicates_same_problem_and_entity():
     first = _finding(confidence=0.91)
     stronger = _finding(confidence=0.97, finding="Д16: EI 30 против EI 60.")
@@ -76,6 +80,7 @@ def test_evidence_gate_deduplicates_same_problem_and_entity():
     assert report["reason_counts"]["block_duplicate"] == 1
 
 
+@pytest.mark.unit
 def test_document_retrieval_finds_mark_on_other_sheet_and_has_receipt():
     graph = {
         "pages": [
@@ -97,11 +102,13 @@ def test_document_retrieval_finds_mark_on_other_sheet_and_has_receipt():
     assert receipt["selected_pages"] == [7]
 
 
+@pytest.mark.unit
 def test_ai_storage_path_routes_to_architecture_profile():
     path = "/tmp/projects_v2/objects/O/disciplines/AI/documents/D/versions/v1/out"
     assert _discipline_hint(path) == "АР"
 
 
+@pytest.mark.integration
 def test_ai_experiment_copy_uses_project_info_discipline(tmp_path):
     version = tmp_path / "work_version"
     output = version / "03_analysis" / "out"
@@ -115,6 +122,7 @@ def test_ai_experiment_copy_uses_project_info_discipline(tmp_path):
     assert _discipline_hint(output) == "АР"
 
 
+@pytest.mark.unit
 def test_wall_elevation_wins_over_incidental_door_and_scheme_words():
     description = (
         "Схема содержит развертки стен помещений 19 и 20, дверной проем Д12 "
@@ -123,6 +131,7 @@ def test_wall_elevation_wins_over_incidental_door_and_scheme_words():
     assert classify_ar_profile(description) == PROFILE_WALL_ELEVATION
 
 
+@pytest.mark.unit
 def test_rd_filename_beats_specification_tables_in_content():
     doc_type, confidence = detect_document_type(
         {"pdf_file": "1141-КИС-РД-М-АИ-П_V1.pdf", "section": "AI"},
@@ -132,6 +141,7 @@ def test_rd_filename_beats_specification_tables_in_content():
     assert confidence == 0.80
 
 
+@pytest.mark.unit
 def test_furniture_plan_wins_over_incidental_door_openings():
     description = (
         "Фрагмент плана расстановки мебели. Показаны M-17, M-18 и дверные проемы."
@@ -139,6 +149,7 @@ def test_furniture_plan_wins_over_incidental_door_openings():
     assert classify_ar_profile(description) == PROFILE_FURNITURE
 
 
+@pytest.mark.unit
 def test_evidence_gate_defers_internal_metadata_comparison_and_vague_count():
     metadata = _finding(
         finding="Тип фрагмента в переданной текстовой разметке противоречит чертежу.",

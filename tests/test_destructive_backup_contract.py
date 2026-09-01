@@ -11,6 +11,12 @@ from backend.app.services.storage.v2_primary_wiring import (
     restore_from_backup_id,
 )
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _tree_digest(root: Path) -> str:
     h = hashlib.sha256()

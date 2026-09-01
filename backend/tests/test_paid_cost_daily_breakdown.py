@@ -40,6 +40,7 @@ def fresh_tracker(tmp_path, monkeypatch):
     return usage_service.PaidCostTracker()
 
 
+@pytest.mark.unit
 def test_add_writes_daily_buckets(fresh_tracker):
     fresh_tracker.add(0.5, model="openai/gpt-5.4", project_id="proj-A", stage="block_analysis")
     fresh_tracker.add(0.25, model="google/gemini-2.5-flash", project_id="proj-A", stage="text_analysis")
@@ -62,6 +63,7 @@ def test_add_writes_daily_buckets(fresh_tracker):
     assert day["by_stage"]["text_analysis"] == pytest.approx(0.25)
 
 
+@pytest.mark.unit
 def test_add_zero_or_negative_is_noop(fresh_tracker):
     fresh_tracker.add(0.0, model="m", project_id="p", stage="s")
     fresh_tracker.add(-1.5, model="m", project_id="p", stage="s")
@@ -70,6 +72,7 @@ def test_add_zero_or_negative_is_noop(fresh_tracker):
     assert daily["days"] == []
 
 
+@pytest.mark.unit
 def test_buckets_consistent_with_total(fresh_tracker):
     fresh_tracker.add(1.0, model="m1", project_id="p1", stage="s1")
     fresh_tracker.add(2.0, model="m2", project_id="p2", stage="s2")
@@ -81,6 +84,7 @@ def test_buckets_consistent_with_total(fresh_tracker):
     assert sum(day["by_stage"].values()) == pytest.approx(day["total"])
 
 
+@pytest.mark.integration
 def test_window_filters_old_dates(fresh_tracker):
     fresh_tracker.add(1.0, model="m", project_id="p", stage="s")
     # Подмешиваем старую запись через файл (имитируя инкремент из subprocess'а
@@ -106,6 +110,7 @@ def test_window_filters_old_dates(fresh_tracker):
     assert {d["date"] for d in daily_7["days"]} == {datetime.now().date().isoformat(), yesterday}
 
 
+@pytest.mark.unit
 def test_reset_display_keeps_daily_breakdown(fresh_tracker):
     fresh_tracker.add(2.0, model="m", project_id="p", stage="s")
     assert fresh_tracker.get()["display_usd"] == pytest.approx(2.0)
@@ -115,6 +120,7 @@ def test_reset_display_keeps_daily_breakdown(fresh_tracker):
     assert daily["window_total_usd"] == pytest.approx(2.0)
 
 
+@pytest.mark.unit
 def test_get_picks_up_external_writes(tmp_path, monkeypatch):
     """get()/get_daily() должны видеть инкременты от другого писателя (subprocess)."""
     _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -135,6 +141,7 @@ def test_get_picks_up_external_writes(tmp_path, monkeypatch):
     assert tracker_b.get()["display_usd"] == pytest.approx(0.5)
 
 
+@pytest.mark.integration
 def test_legacy_file_without_daily_breakdown(tmp_path, monkeypatch):
     """Старый paid_cost.json без daily_breakdown должен загружаться без ошибок."""
     _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -166,6 +173,7 @@ def test_legacy_file_without_daily_breakdown(tmp_path, monkeypatch):
     assert tracker.get_daily(days=1)["window_total_usd"] == pytest.approx(0.5)
 
 
+@pytest.mark.unit
 def test_month_calibration_is_overlay_and_future_add_increases_it(
     fresh_tracker, monkeypatch,
 ):
@@ -198,6 +206,7 @@ def test_month_calibration_is_overlay_and_future_add_increases_it(
     assert persisted["monthly_calibration_history"][-1]["month_key"] == "2026-08"
 
 
+@pytest.mark.unit
 def test_month_rollover_does_not_carry_calibration(fresh_tracker):
     january = datetime(2026, 1, 31, 23, 0, 0)
     february = datetime(2026, 2, 1, 1, 0, 0)
@@ -220,6 +229,7 @@ def test_month_rollover_does_not_carry_calibration(fresh_tracker):
     assert fresh_tracker.get(now=january)["monthly_spent_usd"] == pytest.approx(7.0)
 
 
+@pytest.mark.unit
 def test_monthly_limit_reports_remaining_percent_and_overage(
     fresh_tracker, monkeypatch,
 ):
@@ -236,6 +246,7 @@ def test_monthly_limit_reports_remaining_percent_and_overage(
     assert snapshot["monthly_over_limit_usd"] == pytest.approx(2.5)
 
 
+@pytest.mark.integration
 def test_monthly_limit_override_applies_only_to_selected_month(
     fresh_tracker, monkeypatch,
 ):
@@ -255,18 +266,21 @@ def test_monthly_limit_override_applies_only_to_selected_month(
     assert september["monthly_limit_is_override"] is False
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("amount", [-1, float("nan"), float("inf"), "bad", True])
 def test_calibrate_month_validates_amount(fresh_tracker, amount):
     with pytest.raises(ValueError, match="finite non-negative"):
         fresh_tracker.calibrate_month(amount)
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("month", ["2026-1", "2026-13", "not-a-month", 202601])
 def test_calibrate_month_validates_month(fresh_tracker, month):
     with pytest.raises(ValueError, match="YYYY-MM"):
         fresh_tracker.calibrate_month(1.0, month=month)
 
 
+@pytest.mark.unit
 def test_calibration_endpoint_accepts_amount_and_rejects_bad_body(
     fresh_tracker, monkeypatch,
 ):

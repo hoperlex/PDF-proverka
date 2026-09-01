@@ -44,6 +44,7 @@ def _attempt(plan: dict) -> dict:
     }
 
 
+@pytest.mark.unit
 def test_frozen_lookup_found_not_found_and_invalid(monkeypatch, caplog):
     caplog.set_level(logging.INFO)
     plan = build_plan(presets.PRESET_FULL_CODEX)
@@ -112,6 +113,7 @@ def test_frozen_lookup_found_not_found_and_invalid(monkeypatch, caplog):
     assert "INVALID" in caplog.text
 
 
+@pytest.mark.integration
 def test_result_package_has_per_action_provenance_and_roundtrip_hash(tmp_path):
     plan = build_plan(presets.PRESET_FULL_CODEX)
     raw_plan = plan.to_dict()
@@ -188,6 +190,7 @@ def test_result_package_has_per_action_provenance_and_roundtrip_hash(tmp_path):
     )
 
 
+@pytest.mark.unit
 def test_result_routing_hash_mismatch_is_rejected():
     plan = build_plan(presets.PRESET_CLAUDE_GPT_CODEX)
     manifest = {
@@ -201,6 +204,7 @@ def test_result_routing_hash_mismatch_is_rejected():
         )
 
 
+@pytest.mark.integration
 def test_provider_concurrency_limits_are_independent(monkeypatch):
     monkeypatch.setenv("AUDIT_WORKER_PROVIDER_CLAUDE_MAX_CONCURRENCY", "1")
     monkeypatch.setenv("AUDIT_WORKER_PROVIDER_CODEX_MAX_CONCURRENCY", "2")
@@ -232,6 +236,7 @@ def test_provider_concurrency_limits_are_independent(monkeypatch):
     assert peaks == {"claude": 1, "codex": 2}
 
 
+@pytest.mark.integration
 def test_zero_norms_write_authoritative_empty_handoff_marker(tmp_path):
     """Успешный zero-norm tail создаёт обязательный norm_checks.json."""
     output = tmp_path / "latest"

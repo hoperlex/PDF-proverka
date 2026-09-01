@@ -12,9 +12,12 @@ from backend.app.models.websocket import WSMessage
 from backend.app.services.common import audit_logger
 from backend.app.ws.manager import ConnectionManager
 
+import pytest
+
 
 # ─── WSMessage.status_change ────────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_status_change_includes_pipeline_summary():
     summary = [{"key": "findings_merge", "label": "Свод замечаний", "status": "running"}]
     msg = WSMessage.status_change("P1", {"findings_merge": "running"}, pipeline_summary=summary)
@@ -23,6 +26,7 @@ def test_status_change_includes_pipeline_summary():
     assert msg.data["pipeline_summary"] == summary
 
 
+@pytest.mark.unit
 def test_status_change_without_summary_keeps_legacy_shape():
     msg = WSMessage.status_change("P1", {"crop_blocks": "done"})
     assert "pipeline_summary" not in msg.data
@@ -30,6 +34,7 @@ def test_status_change_without_summary_keeps_legacy_shape():
 
 # ─── ConnectionManager.schedule_broadcast_to_project ────────────────────────
 
+@pytest.mark.integration
 def test_schedule_broadcast_without_any_loop_is_failsoft():
     manager = ConnectionManager()
 
@@ -44,6 +49,7 @@ def test_schedule_broadcast_without_any_loop_is_failsoft():
     assert not t.is_alive()
 
 
+@pytest.mark.integration
 def test_schedule_broadcast_from_worker_thread_uses_saved_loop():
     manager = ConnectionManager()
     delivered = threading.Event()
@@ -74,6 +80,7 @@ def test_schedule_broadcast_from_worker_thread_uses_saved_loop():
 
 # ─── update_pipeline_log → broadcast с pipeline_summary ─────────────────────
 
+@pytest.mark.unit
 def test_update_pipeline_log_broadcasts_pipeline_summary(tmp_path, monkeypatch):
     monkeypatch.setattr(audit_logger, "_project_output_dir", lambda pid: tmp_path)
 

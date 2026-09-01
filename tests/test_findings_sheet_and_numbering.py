@@ -22,6 +22,12 @@ from backend.app.pipeline.stages.findings_merge.runner import (
 )
 from backend.app.pipeline.stages.prepare.graph_builder import looks_like_sheet_ref
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 V2_GRAPH = {
     "version": 2,

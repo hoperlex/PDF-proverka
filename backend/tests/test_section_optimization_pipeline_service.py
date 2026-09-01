@@ -6,6 +6,9 @@ import pytest
 
 from backend.app.services import section_optimization_pipeline_service as pipeline
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 
 async def _wait_until_settled(section: str, object_id: str, timeout: float = 5.0) -> dict:

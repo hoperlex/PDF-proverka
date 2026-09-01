@@ -27,6 +27,10 @@ import pytest
 
 from backend.app.services.findings import findings_service as fs
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write(p: Path, obj) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)

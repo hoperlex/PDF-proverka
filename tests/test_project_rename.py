@@ -25,6 +25,10 @@ if str(_ROOT) not in sys.path:
 import backend.app.services.common.project_rename_service as prs  # noqa: E402
 import backend.app.services.common.project_service as ps  # noqa: E402
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 _PDF = b"%PDF-1.4\n%doc\n%%EOF\n"
 
 

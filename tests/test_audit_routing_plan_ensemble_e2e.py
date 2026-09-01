@@ -32,6 +32,10 @@ from backend.app.services.audit_routing import active_plan, presets, registry
 
 from tests.test_audit_routing_plan import build_plan
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 #: Ответ, который поддельный CLI отдаёт как результат работы модели.
 _BLOCK_ANSWER = {
     "findings": [

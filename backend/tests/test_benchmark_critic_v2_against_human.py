@@ -18,6 +18,9 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: network — запускает настоящие дочерние процессы.
+pytestmark = pytest.mark.network
+
 # ─── Script path ──────────────────────────────────────────────────────────────
 
 SCRIPT = Path("backend/scripts/benchmark_critic_v2_against_human.py")

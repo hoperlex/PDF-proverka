@@ -38,6 +38,7 @@ from tests.test_distributed_workers_step35 import (  # noqa: F401 — фикст
 
 
 # ═══ §1 Принадлежность процесса (I-17) ═══════════════════════════════════════
+@pytest.mark.unit
 def test_pid_without_start_time_is_not_proof_of_life():
     """Голый pid не доказывает ничего — даже того, что процесс жив.
 
@@ -52,6 +53,7 @@ def test_pid_without_start_time_is_not_proof_of_life():
     assert process_registry.is_alive(os.getpid(), identity) is True
 
 
+@pytest.mark.unit
 def test_ownership_refused_without_start_identity():
     from audit_worker import process_control, process_registry
 
@@ -65,6 +67,7 @@ def test_ownership_refused_without_start_identity():
     assert "метка времени старта" in why
 
 
+@pytest.mark.unit
 def test_ownership_checks_command_of_the_live_process_not_our_own_copy():
     """Второй источник — ядро, а не вторая копия нашей же записи.
 
@@ -88,6 +91,7 @@ def test_ownership_checks_command_of_the_live_process_not_our_own_copy():
     assert ok is True, why
 
 
+@pytest.mark.unit
 def test_live_fingerprint_matches_the_recorded_formula():
     """Отпечаток из /proc считается так же, как при запуске процесса."""
     from audit_worker import process_registry, test_runner
@@ -101,6 +105,7 @@ def test_live_fingerprint_matches_the_recorded_formula():
 
 
 # ═══ §2 Журнал событий ═══════════════════════════════════════════════════════
+@pytest.mark.integration
 def test_cursor_behind_segments_is_repaired_upward(tmp_path):
     """Потерян cursor.json, сегменты целы → номера НЕ переиспользуются.
 
@@ -122,6 +127,7 @@ def test_cursor_behind_segments_is_repaired_upward(tmp_path):
     assert second.append("job_started", {}) == 6
 
 
+@pytest.mark.integration
 def test_two_processes_never_hand_out_the_same_seq(tmp_path):
     """Исполнитель и агент пишут в один каталог — номер обязан быть уникальным.
 
@@ -151,6 +157,7 @@ def test_two_processes_never_hand_out_the_same_seq(tmp_path):
     assert sorted(written) == list(range(1, 21))
 
 
+@pytest.mark.integration
 def test_pending_batch_finds_events_moved_to_acked(tmp_path):
     """После 409 центр просит повторить с номера, уже уехавшего в acked/."""
     from audit_worker.event_outbox import EventOutbox
@@ -167,6 +174,7 @@ def test_pending_batch_finds_events_moved_to_acked(tmp_path):
 
 
 # ═══ §3 Центр: адресация попыткой, а не заданием ═════════════════════════════
+@pytest.mark.integration
 def test_stale_idempotency_key_cannot_reissue_token_of_another_attempt(
     client, center_env
 ):
@@ -217,6 +225,7 @@ def test_stale_idempotency_key_cannot_reissue_token_of_another_attempt(
     assert token_after == token_before, "токен чужой попытки перевыпущен"
 
 
+@pytest.mark.integration
 def test_lost_attempt_is_never_offered_to_the_worker_again(client, center_env):
     """Признанную потерянной попытку центр не выдаёт повторно (I-03)."""
     from backend.app.models.distributed_workers import JobState
@@ -244,6 +253,7 @@ def test_lost_attempt_is_never_offered_to_the_worker_again(client, center_env):
     ) == []
 
 
+@pytest.mark.integration
 def test_operator_cannot_declare_cancelled_once_worker_has_the_package(center_env):
     """`source_*` → `cancelled` напрямую нет (критерий 6).
 
@@ -276,6 +286,7 @@ def test_operator_cannot_declare_cancelled_once_worker_has_the_package(center_en
 
 
 # ═══ §4 Центр: доставка результата ═══════════════════════════════════════════
+@pytest.mark.integration
 def test_result_is_deliverable_while_cancel_is_pending(center_env):
     """Догон состояния знает `cancel_requested`.
 
@@ -307,6 +318,7 @@ def test_result_is_deliverable_while_cancel_is_pending(center_env):
     assert caught["state"] == JobState.RESULT_RECEIVED.value
 
 
+@pytest.mark.integration
 def test_attempt_revoked_during_validation_is_not_published(center_env, tmp_path):
     """Оператор отозвал попытку, пока центр проверял её архив (I-07)."""
     from backend.app.models.distributed_workers import JobState
@@ -334,6 +346,7 @@ def test_attempt_revoked_during_validation_is_not_published(center_env, tmp_path
     assert archive.exists(), "архив не должен исчезнуть при отказе публикации"
 
 
+@pytest.mark.integration
 def test_migrated_legacy_attempt_can_still_store_its_result(center_env, tmp_path):
     """Мигрированный `att_legacy1` — валидный ключ пути ЗАПИСИ, а не 500."""
     from backend.app.services.distributed_workers import job_service
@@ -356,6 +369,7 @@ def test_migrated_legacy_attempt_can_still_store_its_result(center_env, tmp_path
     assert job_service.store_unpublished_result is not None
 
 
+@pytest.mark.integration
 def test_poisoned_resource_snapshot_via_resources_endpoint(client, center_env):
     """`POST /resources` тоже обязан санировать снимок, а не только heartbeat."""
     worker_id, headers = _approved_worker(client)
@@ -371,6 +385,7 @@ def test_poisoned_resource_snapshot_via_resources_endpoint(client, center_env):
 
 
 # ═══ §5 Операторские действия ════════════════════════════════════════════════
+@pytest.mark.integration
 def test_idempotency_key_is_bound_to_the_attempt(client, center_env):
     """Тот же ключ на ДРУГОЙ попытке не выдаёт чужой результат за свой."""
     worker_id, headers = _approved_worker(client)
@@ -404,6 +419,7 @@ def test_idempotency_key_is_bound_to_the_attempt(client, center_env):
     assert fresh[0]["attempt_disposition"] == "operator_declared_lost"
 
 
+@pytest.mark.integration
 def test_cancel_ack_effect_applies_even_on_replay(client, center_env):
     """Центр упал между записью ACK и применением эффекта — отмена не зависает."""
     from backend.app.services.distributed_workers import repositories
@@ -446,6 +462,7 @@ def test_cancel_ack_effect_applies_even_on_replay(client, center_env):
     )
 
 
+@pytest.mark.integration
 def test_repeat_deletion_request_enqueues_a_fresh_command(client, center_env):
     """Ключ команды удаления со счётчиком, а не фиксированный."""
     from backend.app.services.distributed_workers import repositories
@@ -499,6 +516,7 @@ def test_repeat_deletion_request_enqueues_a_fresh_command(client, center_env):
     assert len(keys) == 2
 
 
+@pytest.mark.integration
 def test_worker_management_endpoints_require_intent_header(client, center_env):
     """Одобрить/отклонить/отозвать/создать задание — тоже за CSRF-рубежом."""
     worker_id, _ = _approved_worker(client)
@@ -517,6 +535,7 @@ def test_worker_management_endpoints_require_intent_header(client, center_env):
         client.headers["X-Requested-With"] = "audit-workers"
 
 
+@pytest.mark.integration
 def test_second_active_job_for_project_is_409_not_500(client, center_env):
     """Конфликт по индексу проекта — тоже ответ оператору, а не 500."""
     from backend.app.services.distributed_workers import repositories
@@ -530,6 +549,7 @@ def test_second_active_job_for_project_is_409_not_500(client, center_env):
 
 
 # ═══ §6 Воркер: очередь, команды, хранение ═══════════════════════════════════
+@pytest.mark.integration
 def test_grace_period_is_clamped(tmp_path):
     """`grace_period_sec: 1e9` не должен останавливать главный цикл навсегда."""
     from audit_worker.executor import MAX_GRACE_SEC, _grace_period
@@ -542,6 +562,7 @@ def test_grace_period_is_clamped(tmp_path):
     assert _grace_period(12) == 12.0
 
 
+@pytest.mark.integration
 def test_orphan_local_commands_return_to_the_queue(tmp_path):
     """Команда, застрявшая в `processing` после смерти исполнителя."""
     from audit_worker import local_db
@@ -561,6 +582,7 @@ def test_orphan_local_commands_return_to_the_queue(tmp_path):
     assert again["local_command_id"] == claimed["local_command_id"]
 
 
+@pytest.mark.integration
 def test_recovery_does_not_steal_attempts_of_a_live_executor(tmp_path):
     """Второй исполнитель не становится вторым наблюдателем чужого процесса."""
     from audit_worker import local_db
@@ -577,6 +599,7 @@ def test_recovery_does_not_steal_attempts_of_a_live_executor(tmp_path):
     assert other.executor_alive("exe_never_existed") is False
 
 
+@pytest.mark.integration
 def test_claimed_but_never_started_attempt_returns_to_the_queue(tmp_path):
     from audit_worker import local_db
 
@@ -593,6 +616,7 @@ def test_claimed_but_never_started_attempt_returns_to_the_queue(tmp_path):
     assert row["claimed_by_executor"] is None
 
 
+@pytest.mark.integration
 def test_retention_refuses_to_delete_the_jobs_root(tmp_path):
     """`target == root` было в РАЗРЕШАЮЩЕЙ части условия."""
     from audit_worker import local_db
@@ -610,6 +634,7 @@ def test_retention_refuses_to_delete_the_jobs_root(tmp_path):
     assert config.jobs_dir.is_dir(), "каталог заданий уцелел"
 
 
+@pytest.mark.integration
 def test_job_metadata_with_execution_token_is_not_group_readable(tmp_path):
     """В metadata.json лежит execution_token — файл обязан быть 0600."""
     from audit_worker.local_store import LocalJobStore
@@ -622,6 +647,7 @@ def test_job_metadata_with_execution_token_is_not_group_readable(tmp_path):
     assert mode == 0o600, oct(mode)
 
 
+@pytest.mark.integration
 def test_local_job_dir_rejects_unsafe_key(tmp_path):
     """Путь строится только из безопасного ключа — даже во внутреннем store."""
     from audit_worker.local_store import LocalJobStore
@@ -634,6 +660,7 @@ def test_local_job_dir_rejects_unsafe_key(tmp_path):
         store.job_dir(str(uuid.uuid4()), "13АВ/РД-АР3-К7")
 
 
+@pytest.mark.integration
 def test_stuck_assembly_session_can_be_reclaimed(center_env):
     """Сборщик умер вместе с процессом — сессия не залипает навсегда."""
     from backend.app.services.distributed_workers import repositories

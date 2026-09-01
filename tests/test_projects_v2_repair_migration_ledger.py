@@ -4,6 +4,12 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/projects_v2/repair_migration_ledger.py"
 SPEC = importlib.util.spec_from_file_location("repair_migration_ledger", SCRIPT)

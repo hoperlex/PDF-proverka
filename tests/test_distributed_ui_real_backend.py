@@ -220,6 +220,7 @@ def viewer(seeded):
     return portal_client(make_center_app(), username=VIEWER_USER)
 
 
+@pytest.mark.integration
 def test_overview_surfaces_real_12h_history_and_honest_kpis(viewer, seeded):
     from backend.app.services.distributed_workers import repositories
 
@@ -259,6 +260,7 @@ def test_overview_surfaces_real_12h_history_and_honest_kpis(viewer, seeded):
     assert repositories.get_worker(WORKER_ID, settings=seeded)["connection_status"] == "offline"
 
 
+@pytest.mark.integration
 def test_tasks_keep_completed_evidence_and_historical_needs_operator_separate(viewer):
     response = viewer.get("/api/workers/distributed/tasks")
     assert response.status_code == 200, response.text
@@ -285,6 +287,7 @@ def test_tasks_keep_completed_evidence_and_historical_needs_operator_separate(vi
     assert SECRET_VALUE not in json.dumps(response.json(), ensure_ascii=False)
 
 
+@pytest.mark.integration
 def test_finding_count_reads_only_the_12h_resolved_same_version(monkeypatch, tmp_path):
     from backend.app.services.distributed_workers import distributed_ui, result_import
 
@@ -313,6 +316,7 @@ def test_finding_count_reads_only_the_12h_resolved_same_version(monkeypatch, tmp
     assert seen == [(REAL_JOB_ID, "13АВ-РД-КМ-К2", "v001")]
 
 
+@pytest.mark.integration
 def test_limits_and_diagnostics_are_nullable_and_credential_free(viewer):
     limits_response = viewer.get("/api/workers/distributed/limits")
     assert limits_response.status_code == 200
@@ -370,6 +374,7 @@ def test_limits_and_diagnostics_are_nullable_and_credential_free(viewer):
         assert forbidden not in serialized
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ("state", "central", "expected"),
     [
@@ -392,6 +397,7 @@ def test_human_stage_mapping(state, central, expected):
     }) == expected
 
 
+@pytest.mark.unit
 def test_human_stage_treats_12h_imported_success_as_done():
     from backend.app.services.distributed_workers import distributed_ui
 
@@ -403,6 +409,7 @@ def test_human_stage_treats_12h_imported_success_as_done():
     }) == "done"
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ("job", "expected"),
     [
@@ -451,6 +458,7 @@ def test_human_stage_import_completion_rules(job, expected):
     assert distributed_ui.human_stage(job) == expected
 
 
+@pytest.mark.integration
 def test_12h_like_fixture_lands_in_completed_with_finding_count(
     center_env, monkeypatch, tmp_path,
 ):
@@ -484,6 +492,7 @@ def test_12h_like_fixture_lands_in_completed_with_finding_count(
     assert all(task["id"] != REAL_JOB_ID for task in snapshot["tasks"]["active"])
 
 
+@pytest.mark.integration
 def test_all_12i_routes_are_viewer_only_gets_and_no_mutation_surface(seeded):
     from backend.app.api.routers import audit_workers_admin
     from tests.distributed_workers_helpers import (
@@ -515,6 +524,7 @@ def test_all_12i_routes_are_viewer_only_gets_and_no_mutation_surface(seeded):
     assert viewer.get("/api/workers/distributed/recommendation").status_code == 200
     assert stranger.get("/api/workers/distributed/recommendation").status_code == 403
 
+@pytest.mark.integration
 def test_worker_slot_semantics_intake_off(seeded):
     from backend.app.services.distributed_workers import database, distributed_ui
 
@@ -528,6 +538,7 @@ def test_worker_slot_semantics_intake_off(seeded):
     assert slots["physicalFreeSlots"] == max(0, slots["totalSlots"] - slots["occupiedSlots"])
 
 
+@pytest.mark.unit
 def test_resource_view_exposes_cpu_ram_gpu():
     from backend.app.services.distributed_workers import distributed_ui
 
@@ -544,6 +555,7 @@ def test_resource_view_exposes_cpu_ram_gpu():
 
 
 
+@pytest.mark.unit
 def test_resource_view_reports_no_gpu_instead_of_zeroes():
     """Машина без видеокарты не должна выглядеть как машина с пустой картой.
 
@@ -570,6 +582,7 @@ def test_resource_view_reports_no_gpu_instead_of_zeroes():
     assert view["ram"] == 33.0
 
 
+@pytest.mark.unit
 def test_resource_view_reads_disk_from_heartbeat_report():
     """Диск приходит в `disk_report` в БАЙТАХ, ключа `disk` в снимке нет.
 
@@ -591,6 +604,7 @@ def test_resource_view_reads_disk_from_heartbeat_report():
     assert view["disk"] == 56.2
 
 
+@pytest.mark.unit
 def test_resource_view_keeps_unknown_distinct_from_zero():
     """Отсутствие сведений — это `None`, а не ноль."""
     from backend.app.services.distributed_workers import distributed_ui
@@ -601,6 +615,7 @@ def test_resource_view_keeps_unknown_distinct_from_zero():
         assert view[key] is None, key
 
 
+@pytest.mark.unit
 def test_disabled_intake_is_not_a_slot_count_mismatch():
     """Выключенный приём — это политика центра, а не расхождение в счёте.
 
@@ -628,6 +643,7 @@ def test_disabled_intake_is_not_a_slot_count_mismatch():
     assert view["limit_binding"] == "operator_intake"
 
 
+@pytest.mark.unit
 def test_real_slot_count_mismatch_is_still_reported():
     """Настоящее расхождение обязано остаться видимым.
 
@@ -652,6 +668,7 @@ def test_real_slot_count_mismatch_is_still_reported():
     assert view["slot_count_mismatch_hint"]
 
 
+@pytest.mark.unit
 def test_idle_worker_provider_is_available_not_unknown():
     """Простой воркер не делает исправного провайдера «неизвестным».
 
@@ -681,6 +698,7 @@ def test_idle_worker_provider_is_available_not_unknown():
     assert view["inferenceCapable"] is False
 
 
+@pytest.mark.unit
 def test_blocked_provider_is_still_unavailable():
     """Обратная сторона: настоящая блокировка обязана остаться видимой."""
     from backend.app.services.distributed_workers import distributed_ui
@@ -705,6 +723,7 @@ def test_blocked_provider_is_still_unavailable():
         assert view["availability"] == "unavailable", broken
 
 
+@pytest.mark.unit
 def test_reported_quota_is_not_marked_as_estimate():
     """Число от провайдера — не оценка.
 
@@ -735,6 +754,7 @@ def test_reported_quota_is_not_marked_as_estimate():
     assert view["resetAt"] is not None
 
 
+@pytest.mark.integration
 def test_every_supported_provider_reaches_the_limits_row(seeded):
     """openrouter доезжал до центра, но терялся на выходе из проекции.
 

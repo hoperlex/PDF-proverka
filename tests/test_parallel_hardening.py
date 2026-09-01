@@ -28,6 +28,9 @@ if str(_ROOT) not in sys.path:
 
 from backend.app.models.audit import AuditJob, AuditStage, JobStatus  # noqa: E402
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 # ─── 1. Выгрузка норм-моделей ────────────────────────────────────────────────
 

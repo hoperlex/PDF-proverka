@@ -140,6 +140,7 @@ def _materialize(snapshot, root: Path) -> Path:
 
 
 # ═══ §1. Дисциплина ══════════════════════════════════════════════════════════
+@pytest.mark.integration
 def test_discipline_comes_from_authoritative_metadata(project_tree):
     """CH-01: дисциплина читается из метаданных версии, а не из имени каталога."""
     from backend.app.services.common import discipline_identity
@@ -151,6 +152,7 @@ def test_discipline_comes_from_authoritative_metadata(project_tree):
     assert project_tree.discipline == "ВК"
 
 
+@pytest.mark.unit
 def test_discipline_normalizes_cyrillic_aliases():
     """Кириллический `section` — норма корпуса, а не исключение."""
     from backend.app.services.common import discipline_identity as di
@@ -162,6 +164,7 @@ def test_discipline_normalizes_cyrillic_aliases():
     assert di.normalize_discipline_code("КЖ") == "KJ"
 
 
+@pytest.mark.unit
 def test_unknown_discipline_is_an_error_not_eom():
     """CH-03: неопознанное значение не превращается в EOM."""
     from backend.app.services.common import discipline_identity as di
@@ -171,6 +174,7 @@ def test_unknown_discipline_is_an_error_not_eom():
         di.discipline_id("ХЗ")
 
 
+@pytest.mark.integration
 def test_discipline_id_ignores_external_project_name(project_tree):
     """CH-02: внешний код проекта не участвует в выборе файла профиля."""
     from backend.app.services.common import discipline_identity as di
@@ -182,6 +186,7 @@ def test_discipline_id_ignores_external_project_name(project_tree):
     assert di.normalize_discipline_code("../../etc") is None
 
 
+@pytest.mark.unit
 def test_load_discipline_no_longer_silently_falls_back(monkeypatch):
     """Механизм дефекта закрыт: кириллический код даёт СВОЙ профиль."""
     from backend.app.services.common import discipline_service
@@ -191,6 +196,7 @@ def test_load_discipline_no_longer_silently_falls_back(monkeypatch):
     assert discipline_service.load_discipline("ВК").code == "VK"
 
 
+@pytest.mark.integration
 def test_strict_mode_rejects_missing_profile(strict_profiles, monkeypatch, tmp_path):
     """CH-04: отсутствующий профиль в строгом режиме — отказ, а не EOM."""
     from backend.app.core import config as core_config
@@ -203,6 +209,7 @@ def test_strict_mode_rejects_missing_profile(strict_profiles, monkeypatch, tmp_p
     assert core_config is not None                 # модуль импортируем, побочек нет
 
 
+@pytest.mark.integration
 def test_strict_mode_rejects_unknown_discipline(strict_profiles):
     from backend.app.services.common import discipline_identity, discipline_service
 
@@ -210,6 +217,7 @@ def test_strict_mode_rejects_unknown_discipline(strict_profiles):
         discipline_service.load_discipline("ХЗ")
 
 
+@pytest.mark.unit
 def test_profile_snapshot_is_exact_and_hashed():
     """CH-05, CH-06: снимок ровно одной дисциплины, с SHA-256 и tree_hash."""
     snapshot = _profile_snapshot()
@@ -223,6 +231,7 @@ def test_profile_snapshot_is_exact_and_hashed():
         assert len(entry["sha256"]) == 64
 
 
+@pytest.mark.integration
 def test_profile_snapshot_requires_role_and_checklist(tmp_path):
     from backend.app.services.common import discipline_identity
     from backend.app.services.distributed_workers import discipline_profile
@@ -237,6 +246,7 @@ def test_profile_snapshot_requires_role_and_checklist(tmp_path):
         )
 
 
+@pytest.mark.integration
 def test_profile_verification_detects_tampering(tmp_path):
     """Подмена файла профиля ломает хэш — и это отказ, а не предупреждение."""
     from backend.app.services.distributed_workers import discipline_profile
@@ -249,6 +259,7 @@ def test_profile_verification_detects_tampering(tmp_path):
         discipline_profile.verify_profile_snapshot(root)
 
 
+@pytest.mark.integration
 def test_profile_verification_rejects_extra_files(tmp_path):
     from backend.app.services.distributed_workers import discipline_profile
 
@@ -261,6 +272,7 @@ def test_profile_verification_rejects_extra_files(tmp_path):
         discipline_profile.verify_profile_snapshot(root)
 
 
+@pytest.mark.integration
 def test_profile_verification_rejects_foreign_discipline(tmp_path):
     """CH-08: снимок другой дисциплины не принимается по заявленному ожиданию."""
     from backend.app.services.distributed_workers import discipline_profile
@@ -275,6 +287,7 @@ def test_profile_verification_rejects_foreign_discipline(tmp_path):
         )
 
 
+@pytest.mark.integration
 def test_worker_uses_package_profile_not_host_tree(tmp_path, strict_profiles):
     """CH-07: профиль берётся из пакета, а каталог хоста пуст."""
     from backend.app.services.common import discipline_service
@@ -304,6 +317,7 @@ def test_worker_uses_package_profile_not_host_tree(tmp_path, strict_profiles):
         discipline_service.invalidate_cache()
 
 
+@pytest.mark.unit
 def test_prompt_snapshot_no_longer_carries_all_profiles():
     """Общий снимок промптов не тащит чужие профили — у них свой раздел.
 
@@ -321,6 +335,7 @@ def test_prompt_snapshot_no_longer_carries_all_profiles():
     assert "prompts/disciplines/_registry.json" in prompts
 
 
+@pytest.mark.unit
 def test_runtime_snapshot_requires_discipline():
     """Снимок без дисциплины не собирается: воркер выбрал бы профиль сам."""
     from backend.app.services.distributed_workers import runtime_config
@@ -343,6 +358,7 @@ def test_runtime_snapshot_requires_discipline():
         )
 
 
+@pytest.mark.unit
 def test_feature_flags_snapshot_drops_center_paths():
     """Пути центра не едут во флагах: сборщик и валидатор больше не спорят."""
     from backend.app.services.distributed_workers import project_package, runtime_config
@@ -367,6 +383,7 @@ def test_feature_flags_snapshot_drops_center_paths():
     assert snapshot.feature_flags == {"PIPELINE_X": "true"}
 
 
+@pytest.mark.unit
 def test_audit_params_require_discipline():
     from backend.app.models.distributed_workers import AuditPipelineParams
 
@@ -388,6 +405,7 @@ def test_audit_params_require_discipline():
     assert params.discipline_id == DISCIPLINE
 
 
+@pytest.mark.unit
 def test_worker_rejects_job_without_discipline():
     """Воркер не исполняет задание без дисциплины и хэша профиля."""
     from audit_worker import audit_runner
@@ -423,6 +441,7 @@ def _staged(tmp_path: Path, payload: dict[str, Any], *, name="03_analysis/latest
     return staged
 
 
+@pytest.mark.integration
 def test_known_path_fields_are_relativized(tmp_path):
     from backend.app.services.distributed_workers import portable_paths
 
@@ -439,6 +458,7 @@ def test_known_path_fields_are_relativized(tmp_path):
     assert not portable_paths.residual_absolute_paths(staged)
 
 
+@pytest.mark.integration
 def test_runtime_only_fields_are_dropped(tmp_path):
     from backend.app.services.distributed_workers import portable_paths
 
@@ -451,6 +471,7 @@ def test_runtime_only_fields_are_dropped(tmp_path):
     assert not report.violations
 
 
+@pytest.mark.integration
 def test_unknown_absolute_path_field_is_rejected(tmp_path):
     """CH-21: неописанное поле с абсолютным путём отвергает пакет."""
     from backend.app.services.distributed_workers import portable_paths
@@ -461,6 +482,7 @@ def test_unknown_absolute_path_field_is_rejected(tmp_path):
     assert report.violations[0]["key"] == "какое_то_поле"
 
 
+@pytest.mark.integration
 def test_prose_with_slashes_is_not_touched(tmp_path):
     """Текст замечания — не путь. Нормализатор не имеет права его править."""
     from backend.app.services.distributed_workers import portable_paths
@@ -474,6 +496,7 @@ def test_prose_with_slashes_is_not_touched(tmp_path):
     assert not report.files_touched
 
 
+@pytest.mark.integration
 def test_traversal_in_relative_value_is_caught(tmp_path):
     from backend.app.services.distributed_workers import portable_paths
 
@@ -481,6 +504,7 @@ def test_traversal_in_relative_value_is_caught(tmp_path):
     assert portable_paths.relative_paths_are_safe(staged)
 
 
+@pytest.mark.integration
 def test_jsonl_is_normalized_too(tmp_path):
     from backend.app.services.distributed_workers import portable_paths
 
@@ -514,6 +538,7 @@ def _attempt(center_env, *, project_id="ТЕСТ-РД-ВК1-К1", payload=None):
     return repositories.get_attempt(job["attempt_id"], settings=center_env)
 
 
+@pytest.mark.integration
 def test_handoff_axis_moves_only_forward(center_env):
     from backend.app.services.distributed_workers import central_handoff as ch
     from backend.app.services.distributed_workers import repositories
@@ -533,6 +558,7 @@ def test_handoff_axis_moves_only_forward(center_env):
     assert ch.current(row) is ch.HandoffState.RESULT_VALIDATED
 
 
+@pytest.mark.integration
 def test_handoff_axis_is_idempotent(center_env):
     from backend.app.services.distributed_workers import central_handoff as ch
 
@@ -544,6 +570,7 @@ def test_handoff_axis_is_idempotent(center_env):
     assert second["changed"] is False
 
 
+@pytest.mark.integration
 def test_handoff_axis_survives_restart(center_env, tmp_path):
     """Ось живёт в workers.db, а не в памяти процесса."""
     from backend.app.services.distributed_workers import central_handoff as ch
@@ -558,6 +585,7 @@ def test_handoff_axis_survives_restart(center_env, tmp_path):
     assert ch.current(row) is ch.HandoffState.RESULT_VALIDATED
 
 
+@pytest.mark.integration
 def test_handoff_failed_is_not_ahead(center_env):
     from backend.app.services.distributed_workers import central_handoff as ch
     from backend.app.services.distributed_workers import repositories
@@ -573,6 +601,7 @@ def test_handoff_failed_is_not_ahead(center_env):
     assert ch.detail_of(row)["stage"] == "norm_verify"
 
 
+@pytest.mark.integration
 def test_handoff_state_is_derived_for_old_attempts(center_env):
     """У попыток без колонки состояние выводится из состояния исполнения."""
     from backend.app.services.distributed_workers import central_handoff as ch
@@ -583,6 +612,7 @@ def test_handoff_state_is_derived_for_old_attempts(center_env):
     assert ch.current(attempt) is ch.HandoffState.RESULT_RECEIVED
 
 
+@pytest.mark.integration
 def test_handoff_view_is_exposed_to_operator(center_env):
     from backend.app.services.distributed_workers import central_handoff as ch
     from backend.app.services.distributed_workers import job_service, repositories
@@ -597,6 +627,7 @@ def test_handoff_view_is_exposed_to_operator(center_env):
     assert view["central_resume_stage"] == "norm_verify"
 
 
+@pytest.mark.unit
 def test_manager_does_not_import_worker_subsystem():
     """Граница врезки: отметка этапа хвоста идёт через абстракцию исполнения."""
     source = (_ROOT / "backend/app/pipeline/manager.py").read_text(encoding="utf-8")
@@ -681,6 +712,7 @@ def revision_env(monkeypatch):
     importlib.reload(core_config)
 
 
+@pytest.mark.integration
 def test_import_applies_only_generated_paths(center_env, tmp_path, revision_env):
     from backend.app.services.distributed_workers import result_import
 
@@ -709,6 +741,7 @@ def test_import_applies_only_generated_paths(center_env, tmp_path, revision_env)
     assert report["path_normalization"]["violation_count"] == 0
 
 
+@pytest.mark.integration
 def test_import_rejects_foreign_discipline(center_env, tmp_path, revision_env):
     """Аудит чужим профилем не отличим по транспорту — только по манифесту."""
     from backend.app.services.distributed_workers import repositories, result_import
@@ -732,6 +765,7 @@ def test_import_rejects_foreign_discipline(center_env, tmp_path, revision_env):
     assert "не тем профилем" in str(excinfo.value)
 
 
+@pytest.mark.integration
 def test_import_rejects_foreign_profile_hash(center_env, tmp_path, revision_env):
     from backend.app.services.distributed_workers import repositories, result_import
 
@@ -753,6 +787,7 @@ def test_import_rejects_foreign_profile_hash(center_env, tmp_path, revision_env)
         )
 
 
+@pytest.mark.integration
 def test_import_rejects_worker_absolute_paths(center_env, tmp_path, revision_env):
     """CH-20/CH-21: чужой абсолютный путь в артефакте отвергает пакет."""
     from backend.app.services.distributed_workers import repositories, result_import
@@ -781,6 +816,7 @@ def test_import_rejects_worker_absolute_paths(center_env, tmp_path, revision_env
     assert not (version / "03_analysis" / "latest" / "03_findings.json").exists()
 
 
+@pytest.mark.integration
 def test_import_rolls_back_on_failure(center_env, tmp_path, revision_env, monkeypatch):
     """§13: отказ посреди применения возвращает проект в исходное состояние."""
     from backend.app.services.distributed_workers import repositories, result_import
@@ -830,6 +866,7 @@ def test_import_rolls_back_on_failure(center_env, tmp_path, revision_env, monkey
     assert json.loads(existing.read_text("utf-8"))["findings"][0]["id"] == "F-001"
 
 
+@pytest.mark.integration
 def test_import_is_idempotent_and_detects_conflict(center_env, tmp_path, revision_env):
     from backend.app.services.distributed_workers import repositories, result_import
 
@@ -851,6 +888,7 @@ def test_import_is_idempotent_and_detects_conflict(center_env, tmp_path, revisio
         result_import.import_result_for_attempt(attempt=other, settings=center_env)
 
 
+@pytest.mark.integration
 def test_import_rejects_source_overwrite(center_env, tmp_path, revision_env):
     from backend.app.services.distributed_workers import result_import
 
@@ -861,6 +899,7 @@ def test_import_rejects_source_overwrite(center_env, tmp_path, revision_env):
     assert result_import.classify_path("что-то/чужое.json") == "unknown"
 
 
+@pytest.mark.integration
 def test_finalize_result_uses_artifacts_of_the_job_type(center_env):
     """Рубеж приёма знает тип задания: тестовый список отвергал КАЖДЫЙ аудит."""
     from backend.app.services.distributed_workers import job_service
@@ -876,6 +915,7 @@ def test_finalize_result_uses_artifacts_of_the_job_type(center_env):
 
 
 # ═══ §5. Resume ══════════════════════════════════════════════════════════════
+@pytest.mark.unit
 def test_central_resume_uses_real_detector():
     """Свой «какой этап следующий» на центре не заводится."""
     source = (_ROOT / "backend/app/pipeline/manager.py").read_text(encoding="utf-8")
@@ -946,6 +986,7 @@ def _tail_manager(manager_module, calls, *, handoff_state=None,
     return mgr
 
 
+@pytest.mark.unit
 def test_resume_hint_is_only_a_hint(_restore_tail_neighbours):
     """Подсказка воркера не назначает этап: решение принимает центр.
 
@@ -970,6 +1011,7 @@ def test_resume_hint_is_only_a_hint(_restore_tail_neighbours):
     assert not any("findings_merge)" in t and "Подсказка воркера" in t for t in logged)
 
 
+@pytest.mark.unit
 def test_completed_tail_is_not_repeated_after_restart(_restore_tail_neighbours):
     """CH-29: по уже завершённому хвосту центральные этапы не выполняются.
 
@@ -992,6 +1034,7 @@ def test_completed_tail_is_not_repeated_after_restart(_restore_tail_neighbours):
     assert [state for kind, state in calls if kind == "handoff"] == []
 
 
+@pytest.mark.integration
 def test_worker_cannot_run_central_stages(tmp_path):
     from backend.app.pipeline import remote_audit_runner
 
@@ -1007,6 +1050,7 @@ def test_worker_cannot_run_central_stages(tmp_path):
         remote_audit_runner.load_spec(spec)
 
 
+@pytest.mark.unit
 def test_local_baseline_enables_central_stages():
     """Эталон отличается от удалённой ноги ровно снятым процессным гейтом."""
     source = (
@@ -1017,6 +1061,7 @@ def test_local_baseline_enables_central_stages():
 
 
 # ═══ §6. Семантическая эквивалентность ═══════════════════════════════════════
+@pytest.mark.unit
 def test_semantic_contract_is_internally_consistent():
     from backend.app.services.distributed_workers import semantic_projection as sp
 
@@ -1024,6 +1069,7 @@ def test_semantic_contract_is_internally_consistent():
     assert not (sp.VOLATILE_KEYS & sp.PROTECTED_KEYS)
 
 
+@pytest.mark.unit
 def test_projection_allows_timestamps_and_ids():
     from backend.app.services.distributed_workers import semantic_projection as sp
 
@@ -1034,6 +1080,7 @@ def test_projection_allows_timestamps_and_ids():
     assert sp.semantic_diff(sp.project(left), sp.project(right)) == []
 
 
+@pytest.mark.unit
 def test_projection_detects_discipline_difference():
     from backend.app.services.distributed_workers import semantic_projection as sp
 
@@ -1043,6 +1090,7 @@ def test_projection_detects_discipline_difference():
     assert diff and "discipline_id" in diff[0]
 
 
+@pytest.mark.unit
 def test_projection_detects_missing_finding():
     from backend.app.services.distributed_workers import semantic_projection as sp
 
@@ -1051,6 +1099,7 @@ def test_projection_detects_missing_finding():
     assert sp.semantic_diff(left, right)
 
 
+@pytest.mark.unit
 def test_projection_detects_changed_recommendation_and_reference():
     from backend.app.services.distributed_workers import semantic_projection as sp
 
@@ -1070,6 +1119,7 @@ def test_projection_detects_changed_recommendation_and_reference():
     assert sp.semantic_diff(left, right2)
 
 
+@pytest.mark.integration
 def test_projection_detects_missing_final_artifact(tmp_path):
     from backend.app.services.distributed_workers import semantic_projection as sp
 
@@ -1083,6 +1133,7 @@ def test_projection_detects_missing_final_artifact(tmp_path):
     assert projection["excel"]["present"] is False
 
 
+@pytest.mark.unit
 def test_projection_does_not_hide_engineering_numbers():
     """Правило «ключ на _s волатилен» однажды вычищало расход в л/с."""
     from backend.app.services.distributed_workers import semantic_projection as sp
@@ -1113,6 +1164,7 @@ def viewer(center_env):
     return _client(VIEWER_USER)
 
 
+@pytest.mark.integration
 def test_audit_targets_reports_center_state(admin):
     response = admin.get("/api/workers/audit/targets")
     assert response.status_code == 200
@@ -1121,6 +1173,7 @@ def test_audit_targets_reports_center_state(admin):
     assert payload["profile"] == "remote_audit_pilot_v1"
 
 
+@pytest.mark.integration
 def test_audit_launch_requires_operator_rights(viewer):
     response = viewer.post(
         "/api/workers/audit/launch", headers={**INTENT, "Idempotency-Key": str(uuid.uuid4())},
@@ -1129,6 +1182,7 @@ def test_audit_launch_requires_operator_rights(viewer):
     assert response.status_code in (403, 404)
 
 
+@pytest.mark.integration
 def test_jobs_list_exposes_handoff_state(admin, center_env):
     from backend.app.services.distributed_workers import central_handoff as ch
 
@@ -1142,6 +1196,7 @@ def test_jobs_list_exposes_handoff_state(admin, center_env):
     assert rows and rows[0]["central_handoff_state"] == "result_imported"
 
 
+@pytest.mark.integration
 def test_create_audit_job_refuses_unknown_discipline(center_env, tmp_path):
     """CH-04 на боевом пути: задание не создаётся вовсе."""
     from tests.distributed_audit_e2e import fixture as fx
@@ -1156,6 +1211,7 @@ def test_create_audit_job_refuses_unknown_discipline(center_env, tmp_path):
     assert "не опознана" in str(excinfo.value) or "Дисциплина" in str(excinfo.value)
 
 
+@pytest.mark.integration
 def test_source_package_carries_discipline_profile(center_env, tmp_path, project_tree,
                                                    revision_env):
     """CH-05 на боевом сборщике пакета."""
@@ -1172,6 +1228,7 @@ def test_source_package_carries_discipline_profile(center_env, tmp_path, project
 
 
 # ─── §23. Дефекты, найденные адверсариальной проверкой ───────────────────────
+@pytest.mark.integration
 def test_axis_persists_resume_stage_when_state_unchanged(center_env):
     """Вердикт центрального детектора приходит ПОСЛЕ перехода в это состояние.
 
@@ -1198,6 +1255,7 @@ def test_axis_persists_resume_stage_when_state_unchanged(center_env):
     assert row["central_handoff_state"] == "central_resume_running"
 
 
+@pytest.mark.integration
 def test_axis_without_new_fields_stays_a_noop(center_env):
     """Повтор без новых данных по-прежнему не пишет ничего."""
     from backend.app.services.distributed_workers import central_handoff
@@ -1214,6 +1272,7 @@ def test_axis_without_new_fields_stays_a_noop(center_env):
                      "reason": "already_there"}
 
 
+@pytest.mark.unit
 def test_tail_without_norm_artifact_is_not_completed(_restore_tail_neighbours):
     """`completed` ставится по АРТЕФАКТУ, а не по достигнутой строке кода.
 
@@ -1240,6 +1299,7 @@ def test_tail_without_norm_artifact_is_not_completed(_restore_tail_neighbours):
     assert states[-1] == "failed"
 
 
+@pytest.mark.unit
 def test_tail_with_norm_artifact_is_completed(_restore_tail_neighbours):
     """Обратная сторона: артефакт есть — хвост завершён ровно один раз."""
     import asyncio
@@ -1259,6 +1319,7 @@ def test_tail_with_norm_artifact_is_completed(_restore_tail_neighbours):
     ]
 
 
+@pytest.mark.unit
 def test_prompt_without_section_does_not_become_eom():
     """Проект без раздела аудируется НЕЙТРАЛЬНО, а не профилем электрики."""
     from backend.app.pipeline.stages.prepare import task_builder
@@ -1271,6 +1332,7 @@ def test_prompt_without_section_does_not_become_eom():
     assert eom.role[:200] not in out
 
 
+@pytest.mark.unit
 def test_stage02_categories_path_is_built_from_registry():
     """Сегмент пути берётся из реестра, а не из пользовательской строки."""
     from backend.app.pipeline.stages.block_analysis import gemma_findings_only as g
@@ -1283,6 +1345,7 @@ def test_stage02_categories_path_is_built_from_registry():
     assert g.load_categories_for_section("ВК") == latin
 
 
+@pytest.mark.unit
 def test_markdown_normalizer_keeps_domain_text():
     """Нормализатор не трогает предметный текст с несколькими слэшами."""
     from backend.app.services.distributed_workers import semantic_projection as sp
@@ -1293,6 +1356,7 @@ def test_markdown_normalizer_keeps_domain_text():
     assert "<path>" in sp._normalize_markdown(with_path)
 
 
+@pytest.mark.integration
 def test_corrupted_required_artifact_counts_as_missing(tmp_path):
     """Битый JSON — не «артефакт есть»: обе стороны дали бы None и совпали."""
     from backend.app.services.distributed_workers import semantic_projection as sp
@@ -1306,6 +1370,7 @@ def test_corrupted_required_artifact_counts_as_missing(tmp_path):
     assert "norm_checks.json" in projection["missing_artifacts"]
 
 
+@pytest.mark.unit
 def test_stand_environment_drops_machine_pipeline_flags():
     """Флаги конвейера с машины не доезжают до процессов стенда."""
     from tests.distributed_audit_e2e import isolation
@@ -1323,6 +1388,7 @@ def test_stand_environment_drops_machine_pipeline_flags():
     assert set(isolation.inherited_project_env(dirty)) == set(dirty) - {"LANG"}
 
 
+@pytest.mark.unit
 def test_classify_path_does_not_strip_dots_as_charset():
     """`lstrip("./")` снимал множество символов и пускал исходники."""
     from backend.app.services.distributed_workers import result_import as ri
@@ -1334,6 +1400,7 @@ def test_classify_path_does_not_strip_dots_as_charset():
     assert ri.classify_path("03_analysis/latest/norm_checks.json") == "central"
 
 
+@pytest.mark.unit
 def test_absolute_path_predicate_ignores_diagnostics():
     """Диагностика с двоеточиями — не путь, и пакет из-за неё не отклоняется."""
     from backend.app.services.distributed_workers import portable_paths as pp
@@ -1343,6 +1410,7 @@ def test_absolute_path_predicate_ignores_diagnostics():
     assert pp.looks_like_absolute_path("/home/coder/projects/PDF-proverka") is True
 
 
+@pytest.mark.unit
 def test_handoff_shows_terminal_states_as_failed():
     """Отменённая, вытесненная и потерянная попытка — не «идёт на воркере»."""
     from backend.app.services.distributed_workers import central_handoff as ch
@@ -1353,6 +1421,7 @@ def test_handoff_shows_terminal_states_as_failed():
     assert ch.current({"state": "running"}) is ch.HandoffState.WORKER_RUNNING
 
 
+@pytest.mark.unit
 def test_contract_selfcheck_notices_gutted_protection(monkeypatch):
     """Вынести предметный ключ из защиты в волатильные больше нельзя молча."""
     from backend.app.services.distributed_workers import semantic_projection as sp
@@ -1362,6 +1431,7 @@ def test_contract_selfcheck_notices_gutted_protection(monkeypatch):
         sp.assert_contract_is_sane()
 
 
+@pytest.mark.unit
 def test_pipeline_log_projection_keeps_order_invariants():
     """Сравнивается инвариант порядка, а не тайминг параллельных ветвей."""
     from backend.app.services.distributed_workers import semantic_projection as sp
@@ -1383,6 +1453,7 @@ def test_pipeline_log_projection_keeps_order_invariants():
     assert sp.pipeline_log_projection(c) == sp.pipeline_log_projection(d)
 
 
+@pytest.mark.integration
 def test_interrupted_apply_is_rolled_back_before_reuse(tmp_path):
     """Рестарт посреди применения не уничтожает журнал отката."""
     import json as _json

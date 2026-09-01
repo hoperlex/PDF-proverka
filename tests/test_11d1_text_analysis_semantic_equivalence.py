@@ -45,6 +45,10 @@ os.environ.setdefault("AUDIT_DISABLE_DOTENV", "1")
 
 from backend.app.pipeline.stages.text_analysis import provider_transport  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 # ═══════════════════════════════ Фикстуры ════════════════════════════════════
 

@@ -6,7 +6,10 @@ from backend.app.pipeline.stages.text_analysis.md_prescan import (
     scan_md_text,
 )
 
+import pytest
 
+
+@pytest.mark.unit
 def test_scan_md_text_detects_high_risk_patterns():
     md = """
 ## СТРАНИЦА 3
@@ -47,6 +50,7 @@ def test_scan_md_text_detects_high_risk_patterns():
     assert keys["bvr_r_dn15_duplicate_codes"].related_block_ids == ["TEXT-P26"]
 
 
+@pytest.mark.unit
 def test_scan_md_text_new_results_format_matches_old_behavior():
     """Новый формат портала (*_results.md) даёт те же паттерны, что и старый.
 
@@ -135,6 +139,7 @@ Generated: 2026-07-15 05:51:33 UTC
     ]
 
 
+@pytest.mark.integration
 def test_augment_text_analysis_file_new_results_format_backfills_blk_ids(tmp_path: Path):
     md_path = tmp_path / "doc_results.md"
     md_path.write_text(
@@ -202,6 +207,7 @@ Generated: 2026-07-15 05:51:33 UTC
     assert "20 кПа" in data["text_findings"][1]["finding"]
 
 
+@pytest.mark.integration
 def test_augment_text_analysis_file_adds_missing_and_backfills_existing(tmp_path: Path):
     md_path = tmp_path / "document.md"
     md_path.write_text(

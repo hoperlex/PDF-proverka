@@ -26,6 +26,10 @@ if str(_ROOT) not in sys.path:
 
 from fastapi.testclient import TestClient
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 

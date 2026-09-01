@@ -10,6 +10,12 @@ import json
 from backend.app.pipeline import manager as mgr
 from backend.app.services.common import project_service, version_service
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write_log(vdir, status):
     (vdir / "_output").mkdir(parents=True, exist_ok=True)

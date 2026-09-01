@@ -146,6 +146,7 @@ def _v1_findings_hash(pdir: Path) -> bytes:
 # ─── 1. backfill_highlights via manager._backfill_highlight_regions ─────
 
 
+@pytest.mark.integration
 def test_backfill_highlight_regions_v2_does_not_touch_v1(v1_v2_with_artefacts):
     """manager._backfill_highlight_regions должен пробежать по V2 _output
     (когда active_jobs[pid].version_id='v2'), а не V1 root."""
@@ -169,6 +170,7 @@ def test_backfill_highlight_regions_v2_does_not_touch_v1(v1_v2_with_artefacts):
     )
 
 
+@pytest.mark.integration
 def test_backfill_highlight_regions_v1_still_works(v1_v2_with_artefacts):
     """V1 регрессия: при V1 job всё ещё работает с root _output."""
     projects_dir, pdir, _v2 = v1_v2_with_artefacts
@@ -191,6 +193,7 @@ def test_backfill_highlight_regions_v1_still_works(v1_v2_with_artefacts):
 # ─── 2. findings_merge/runner._version_output_dir picks V2 via bind ─────
 
 
+@pytest.mark.integration
 def test_backfill_text_evidence_uses_v2_via_bind_version(v1_v2_with_artefacts):
     """findings_merge.backfill_text_evidence_in_findings должен под bind_version('v2')
     читать/писать V2 03_findings.json, не трогая V1."""
@@ -206,6 +209,7 @@ def test_backfill_text_evidence_uses_v2_via_bind_version(v1_v2_with_artefacts):
     assert _v1_findings_hash(pdir) == v1_before
 
 
+@pytest.mark.integration
 def test_merge_similar_findings_uses_v2_via_bind_version(v1_v2_with_artefacts):
     _projects_dir, pdir, v2_dir = v1_v2_with_artefacts
     from backend.app.services.common import version_service
@@ -221,6 +225,7 @@ def test_merge_similar_findings_uses_v2_via_bind_version(v1_v2_with_artefacts):
     assert _v1_findings_hash(pdir) == v1_before
 
 
+@pytest.mark.integration
 def test_attach_stage02_coverage_to_findings_uses_v2_via_bind(v1_v2_with_artefacts):
     _projects_dir, pdir, v2_dir = v1_v2_with_artefacts
     from backend.app.services.common import version_service
@@ -237,6 +242,7 @@ def test_attach_stage02_coverage_to_findings_uses_v2_via_bind(v1_v2_with_artefac
 # ─── 3. prompt_builder reads via bind_version ───────────────────────────
 
 
+@pytest.mark.integration
 def test_prompt_builder_reads_v2_text_analysis(v1_v2_with_artefacts):
     """prompt_builder._read_text_analysis_for_blocks должен под bind_version('v2')
     вернуть содержимое V2 02_text_analysis.json."""
@@ -253,6 +259,7 @@ def test_prompt_builder_reads_v2_text_analysis(v1_v2_with_artefacts):
     assert '"T-V1"' not in out
 
 
+@pytest.mark.integration
 def test_prompt_builder_reads_v1_text_analysis_when_no_bind(v1_v2_with_artefacts):
     """V1 регрессия: без bind_version и при latest=v2 — fallback должен корректно
     выбрать latest (V2). Если V2 удалить — должна работать V1.
@@ -270,6 +277,7 @@ def test_prompt_builder_reads_v1_text_analysis_when_no_bind(v1_v2_with_artefacts
     assert '"T-V2"' in out
 
 
+@pytest.mark.integration
 def test_read_findings_merge_blocks_v2_via_bind(v1_v2_with_artefacts):
     _projects_dir, _pdir, _v2 = v1_v2_with_artefacts
     from backend.app.services.common import version_service
@@ -286,6 +294,7 @@ def test_read_findings_merge_blocks_v2_via_bind(v1_v2_with_artefacts):
 # ─── 4. task_builder _load_project_info / _get_md_file_path ─────────────
 
 
+@pytest.mark.integration
 def test_load_project_info_v2_via_bind(v1_v2_with_artefacts):
     _projects_dir, _pdir, v2_dir = v1_v2_with_artefacts
     from backend.app.services.common import version_service
@@ -297,6 +306,7 @@ def test_load_project_info_v2_via_bind(v1_v2_with_artefacts):
     assert info.get("pdf_file") == "v2.pdf"
 
 
+@pytest.mark.integration
 def test_get_md_file_path_v2_via_bind(v1_v2_with_artefacts):
     _projects_dir, _pdir, v2_dir = v1_v2_with_artefacts
     from backend.app.services.common import version_service
@@ -308,6 +318,7 @@ def test_get_md_file_path_v2_via_bind(v1_v2_with_artefacts):
     assert "M31A V2/v2_document.md" in md_path
 
 
+@pytest.mark.integration
 def test_get_project_paths_v2_via_bind(v1_v2_with_artefacts):
     _projects_dir, _pdir, v2_dir = v1_v2_with_artefacts
     from backend.app.services.common import version_service
@@ -319,6 +330,7 @@ def test_get_project_paths_v2_via_bind(v1_v2_with_artefacts):
     assert "M31A V2/_output" in out
 
 
+@pytest.mark.integration
 def test_load_document_graph_v2_via_bind(v1_v2_with_artefacts):
     _projects_dir, _pdir, _v2 = v1_v2_with_artefacts
     from backend.app.services.common import version_service
@@ -333,6 +345,7 @@ def test_load_document_graph_v2_via_bind(v1_v2_with_artefacts):
 # ─── 5. Pre-crop version-aware (V1-only guard removed, Task 2/6) ────────
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_precrop_v2_is_version_aware_not_guard_blocked(
     v1_v2_with_artefacts, monkeypatch
@@ -378,6 +391,7 @@ async def test_precrop_v2_is_version_aware_not_guard_blocked(
     assert "M31A V2" in crop_path, f"кроп должен идти в V2 dir, получено: {crop_path}"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_precrop_proceeds_for_v1_only_project(tmp_path, monkeypatch):
     """V1-only project (без manifest) должен пройти pre-crop guard."""
@@ -421,6 +435,7 @@ async def test_precrop_proceeds_for_v1_only_project(tmp_path, monkeypatch):
 # ─── 6. Grep regression: late-stage sources don't use raw resolve_project_dir/_output ───
 
 
+@pytest.mark.unit
 def test_late_stage_modules_use_version_helper():
     """Регрессия: late-stage helpers (prompt_builder, task_builder, findings_merge runner)
     больше не должны использовать `resolve_project_dir(...) / "_output"` напрямую

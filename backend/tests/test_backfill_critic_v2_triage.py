@@ -75,6 +75,7 @@ def _make_project(root: Path, name: str = "p1", with_blocks: bool = True) -> Pat
 # ─── dry-run ────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_dry_run_writes_nothing(tmp_path: Path, capsys):
     p = _make_project(tmp_path)
     out_before = {x.relative_to(p) for x in (p / "_output").rglob("*") if x.is_file()}
@@ -93,6 +94,7 @@ def test_dry_run_writes_nothing(tmp_path: Path, capsys):
 # ─── happy path ──────────────────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_writes_artifacts_under_output_subdir_only(tmp_path: Path):
     p = _make_project(tmp_path)
     files_before = {x.relative_to(p) for x in p.rglob("*") if x.is_file()}
@@ -110,6 +112,7 @@ def test_writes_artifacts_under_output_subdir_only(tmp_path: Path):
         )
 
 
+@pytest.mark.integration
 def test_production_artifacts_unchanged(tmp_path: Path):
     p = _make_project(tmp_path)
     findings = p / "_output" / "03_findings.json"
@@ -123,6 +126,7 @@ def test_production_artifacts_unchanged(tmp_path: Path):
     assert blocks.read_bytes() == blocks_b
 
 
+@pytest.mark.integration
 def test_skips_project_without_findings(tmp_path: Path):
     p = tmp_path / "no-findings"
     (p / "_output").mkdir(parents=True)
@@ -131,6 +135,7 @@ def test_skips_project_without_findings(tmp_path: Path):
     assert rc == 1
 
 
+@pytest.mark.integration
 def test_skips_existing_unless_force(tmp_path: Path, capsys):
     p = _make_project(tmp_path)
     rc1 = backfill.main(["--project", str(p)])
@@ -145,6 +150,7 @@ def test_skips_existing_unless_force(tmp_path: Path, capsys):
     assert '"skipped": 1' in out2
 
 
+@pytest.mark.integration
 def test_force_overwrites(tmp_path: Path):
     p = _make_project(tmp_path)
     backfill.main(["--project", str(p)])
@@ -167,6 +173,7 @@ def test_force_overwrites(tmp_path: Path):
 # ─── projects-root scanning ──────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_scans_projects_root(tmp_path: Path):
     root = tmp_path / "projects-root"
     root.mkdir()
@@ -179,6 +186,7 @@ def test_scans_projects_root(tmp_path: Path):
     assert (p2 / "_output" / "critic_v2" / ARTIFACT_STAGE_SUMMARY).exists()
 
 
+@pytest.mark.integration
 def test_scans_projects_root_two_level(tmp_path: Path):
     """Структура projects/<SECTION>/<project>/..."""
     root = tmp_path / "projects-root"
@@ -192,6 +200,7 @@ def test_scans_projects_root_two_level(tmp_path: Path):
     assert (p / "_output" / "critic_v2" / ARTIFACT_STAGE_SUMMARY).exists()
 
 
+@pytest.mark.integration
 def test_no_candidates_returns_1(tmp_path: Path):
     empty = tmp_path / "empty-root"
     empty.mkdir()
@@ -202,6 +211,7 @@ def test_no_candidates_returns_1(tmp_path: Path):
 # ─── No LLM, no network ─────────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_default_no_llm(tmp_path: Path):
     p = _make_project(tmp_path)
     rc = backfill.main(["--project", str(p)])
@@ -213,6 +223,7 @@ def test_default_no_llm(tmp_path: Path):
     assert summary["llm_enabled"] is False
 
 
+@pytest.mark.integration
 def test_invalid_profile_falls_back(tmp_path: Path):
     p = _make_project(tmp_path)
     rc = backfill.main(["--project", str(p), "--profile", "bogus"])
@@ -226,6 +237,7 @@ def test_invalid_profile_falls_back(tmp_path: Path):
 # ─── Custom output subdir ────────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_custom_output_subdir(tmp_path: Path):
     p = _make_project(tmp_path)
     rc = backfill.main(["--project", str(p), "--output-subdir", "critic_v2_alt"])
@@ -238,6 +250,7 @@ def test_custom_output_subdir(tmp_path: Path):
 # ─── Help shows safe defaults ────────────────────────────────────────────────
 
 
+@pytest.mark.network
 def test_help_runs_without_error(tmp_path: Path):
     """`--help` не должен пытаться импортировать LLM провайдеров и т.п."""
     proc = subprocess.run(

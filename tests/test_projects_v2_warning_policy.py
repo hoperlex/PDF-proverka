@@ -14,6 +14,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "projects_v2"))
 import readiness  # noqa: E402
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def _clean(**over) -> dict:
     """Полностью валидный сигнал (AUTO_SAFE), затем переопределяем поля."""

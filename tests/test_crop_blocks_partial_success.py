@@ -17,6 +17,12 @@ import types
 
 import backend.app.pipeline.stages.crop_blocks.runner as runner
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _fake_ctx(tmp_path, exit_code):
     logs: list = []

@@ -35,10 +35,12 @@ def _load_sim_module():
 # симулятор
 # --------------------------------------------------------------------------
 
+@pytest.mark.unit
 def test_simulation_script_exists():
     assert _SIM_PATH.is_file(), f"simulator missing at {_SIM_PATH}"
 
 
+@pytest.mark.unit
 def test_simulation_all_invariants_hold(monkeypatch, tmp_path):
     # дефолтный режим записи (env не выставлен) — симулятор сам локально
     # переключает режимы через monkeypatch get_write_mode.
@@ -61,6 +63,7 @@ def test_simulation_all_invariants_hold(monkeypatch, tmp_path):
     assert (v2root / "shadow_ok" / "objects").exists()
 
 
+@pytest.mark.unit
 def test_simulation_main_exit_zero(monkeypatch):
     monkeypatch.delenv("AUDIT_PROJECTS_V2_WRITE_MODE", raising=False)
     sim = _load_sim_module()
@@ -69,6 +72,7 @@ def test_simulation_main_exit_zero(monkeypatch):
     assert sim.main() == 0
 
 
+@pytest.mark.unit
 def test_simulation_does_not_touch_production(monkeypatch):
     """Симулятор пишет только в системный tmp, не в репозиторий/прод."""
     monkeypatch.delenv("AUDIT_PROJECTS_V2_WRITE_MODE", raising=False)
@@ -98,6 +102,7 @@ def test_simulation_does_not_touch_production(monkeypatch):
 # Step 9/10: фасад ПОДКЛЮЧЁН к write-chokepoints (но default legacy → no-op)
 # --------------------------------------------------------------------------
 
+@pytest.mark.unit
 def test_write_facade_wired_to_expected_chokepoints():
     """Step 9/10: write-facade подключён к ожидаемым write-chokepoints через
     safe-обёртки (shadow_mirror_project_*_safe)."""
@@ -122,6 +127,7 @@ def test_write_facade_wired_to_expected_chokepoints():
     assert missing == [], f"chokepoints not wired: {missing}"
 
 
+@pytest.mark.unit
 def test_routers_do_not_directly_wire_write_facade():
     """Запись идёт через сервисы, не напрямую из routers — фасад не должен
     вызываться прямо в HTTP-слое (GET read-эндпоинты гарантированно не задеты)."""
@@ -131,6 +137,7 @@ def test_routers_do_not_directly_wire_write_facade():
     assert offenders == [], f"facade wired directly into routers: {offenders}"
 
 
+@pytest.mark.unit
 def test_storage_backend_default_unchanged(monkeypatch):
     """Read-backend default остаётся legacy (importing write facade ничего не меняет)."""
     from backend.app.services.storage import projects_v2_adapter as adp
@@ -144,6 +151,7 @@ def test_storage_backend_default_unchanged(monkeypatch):
     assert swf.v2_writes_enabled() is False
 
 
+@pytest.mark.integration
 def test_wired_chokepoint_legacy_mode_no_v2_write(monkeypatch, tmp_path):
     """Интеграция: реальный wired chokepoint (save_project_info) в режиме legacy
     работает как раньше и НЕ создаёт projects_v2 (read/write не регрессируют)."""

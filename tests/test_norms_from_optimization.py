@@ -16,6 +16,10 @@ from norms import (
     merge_norms_maps,
 )
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write(path, payload):
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")

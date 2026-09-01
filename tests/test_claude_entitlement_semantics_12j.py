@@ -61,6 +61,7 @@ LIVE_403_ENVELOPE = {
 
 # ─── 1. Отказ провайдера — своя причина, а не «перелогиньтесь» ──────────────
 
+@pytest.mark.unit
 def test_live_403_is_classified_as_entitlement_not_auth():
     assert _provider_refusal_code(LIVE_403_ENVELOPE) == errors.ERR_ENTITLEMENT_BLOCKED
     # Ключевое отличие: обычный разлогин по-прежнему ведёт к входу.
@@ -69,12 +70,14 @@ def test_live_403_is_classified_as_entitlement_not_auth():
     )
 
 
+@pytest.mark.unit
 def test_successful_envelope_has_no_refusal():
     assert _provider_refusal_code(
         {"is_error": False, "result": "PROVIDER_PROBE_OK", "usage": {}}
     ) is None
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("status,expected", [
     (429, errors.ERR_RATE_LIMITED),
     (503, errors.ERR_PROVIDER_UNAVAILABLE),
@@ -88,6 +91,7 @@ def test_other_server_refusals_keep_their_own_meaning(status, expected):
 
 # ─── 2–3. Состояние переживает перезапуск и снимается успехом ───────────────
 
+@pytest.mark.unit
 def test_state_survives_process_and_is_not_latched(tmp_path):
     runtime_state.record(
         tmp_path, "claude", success=False, error_code=errors.ERR_ENTITLEMENT_BLOCKED
@@ -113,6 +117,7 @@ def test_state_survives_process_and_is_not_latched(tmp_path):
     assert again.last_success_at == freed.last_success_at
 
 
+@pytest.mark.unit
 def test_network_failure_is_not_entitlement(tmp_path):
     runtime_state.record(
         tmp_path, "claude", success=False, error_code=errors.ERR_NETWORK
@@ -122,6 +127,7 @@ def test_network_failure_is_not_entitlement(tmp_path):
     assert result.blocked is False
 
 
+@pytest.mark.unit
 def test_unknown_before_any_call(tmp_path):
     result = runtime_state.read(tmp_path, "claude")
     assert result.state == runtime_state.RUNTIME_UNKNOWN
@@ -136,6 +142,7 @@ def _manager(tmp_path):
     return ProviderManager(worker_root=tmp_path)
 
 
+@pytest.mark.unit
 def test_blocked_provider_reports_policy_blocked_quota(tmp_path):
     """Отказ обязан быть виден центру через ЕДИНСТВЕННОЕ доступное поле."""
     from audit_worker.providers.manager import _entitlement_applied
@@ -160,6 +167,7 @@ def test_blocked_provider_reports_policy_blocked_quota(tmp_path):
     assert out.cli_version == "2.1.220"
 
 
+@pytest.mark.unit
 def test_healthy_provider_snapshot_untouched(tmp_path):
     from audit_worker.providers.manager import _entitlement_applied
 
@@ -188,6 +196,7 @@ def _snapshot(quota_state="ready", policy="allowed", install="installed"):
     }
 
 
+@pytest.mark.contract
 def test_blocked_claude_removes_claude_routing_presets():
     from contracts.agent_stream.v1.adapters import usable_routing_compatibility
 
@@ -196,6 +205,7 @@ def test_blocked_claude_removes_claude_routing_presets():
     assert usable_routing_compatibility(declared, blocked) == ["codex_exec"]
 
 
+@pytest.mark.contract
 @pytest.mark.parametrize("state", ["ready", "unknown", "low", "stale"])
 def test_unknown_quota_does_not_remove_presets(state):
     """Незнание — не повод отказываться от работы."""
@@ -206,6 +216,7 @@ def test_unknown_quota_does_not_remove_presets(state):
     assert usable_routing_compatibility(declared, ok) == declared
 
 
+@pytest.mark.contract
 def test_codex_presets_unaffected_by_claude_block():
     from contracts.agent_stream.v1.adapters import usable_routing_compatibility
 
@@ -245,6 +256,7 @@ def _center_view(*, quota_state, policy="allowed", auth="logged_in",
     return distributed_ui._provider_quota(clean, now=now, settings=get_settings()), clean
 
 
+@pytest.mark.unit
 def test_entitlement_block_is_not_available():
     view, _ = _center_view(quota_state="policy_blocked")
     assert view["status"] == "entitlement_blocked"
@@ -254,11 +266,13 @@ def test_entitlement_block_is_not_available():
     assert view["loggedIn"] is True
 
 
+@pytest.mark.unit
 def test_entitlement_reason_code_is_safe_and_specific():
     view, _ = _center_view(quota_state="policy_blocked")
     assert view["reason"] == "organization_subscription_access_disabled"
 
 
+@pytest.mark.unit
 def test_operator_policy_block_is_not_confused_with_entitlement():
     """Собственный запрет оператора выглядит иначе — иначе и лечится."""
     view, _ = _center_view(quota_state="policy_blocked", policy="policy_blocked")
@@ -266,6 +280,7 @@ def test_operator_policy_block_is_not_confused_with_entitlement():
     assert view["reason"] != "organization_subscription_access_disabled"
 
 
+@pytest.mark.unit
 def test_missing_quota_alone_keeps_provider_available():
     view, _ = _center_view(quota_state="unknown")
     assert view["availability"] == "available"
@@ -273,6 +288,7 @@ def test_missing_quota_alone_keeps_provider_available():
     assert view["percentageRemaining"] is None
 
 
+@pytest.mark.unit
 def test_successful_run_returns_provider_to_ready():
     """После успеха воркер шлёт обычный снимок — центр снова видит рабочего."""
     view, _ = _center_view(
@@ -284,6 +300,7 @@ def test_successful_run_returns_provider_to_ready():
     assert view["percentageRemaining"] == 78.0
 
 
+@pytest.mark.unit
 def test_no_credentials_and_no_raw_provider_text_in_api():
     view, clean = _center_view(quota_state="policy_blocked")
     blob = json.dumps({"view": view, "clean": clean}, ensure_ascii=False, default=str)
@@ -293,6 +310,7 @@ def test_no_credentials_and_no_raw_provider_text_in_api():
     assert "Your organization has disabled" not in blob
 
 
+@pytest.mark.unit
 def test_codex_untouched_by_all_of_this():
     from backend.app.services.distributed_workers import distributed_ui, provider_accounts
     from backend.app.services.distributed_workers.settings import get_settings
@@ -318,6 +336,7 @@ def test_codex_untouched_by_all_of_this():
 
 # ─── 10. Ноль процентов — это число, а не отсутствие данных ────────────────
 
+@pytest.mark.contract
 def test_zero_remaining_survives_the_wire():
     """Наблюдалось вживую: Codex сообщил 0 %, карточка написала «нет данных».
 
@@ -349,6 +368,7 @@ def test_zero_remaining_survives_the_wire():
     assert roundtrip(None, supported=False)["estimated_remaining_pct"] is None
 
 
+@pytest.mark.unit
 def test_zero_remaining_shows_as_critical_not_unknown():
     view, _ = _center_view(
         quota_state="ready", remaining=0.0,

@@ -8,6 +8,11 @@ from __future__ import annotations
 
 from backend.app.pipeline.stages.norms import _native_verify as nv
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_salient_numbers_extracts_values():
     nums = nv._salient_numbers("кабель ВВГнг 5х10, ток 160 А, ширина 0,5 с, 1000")

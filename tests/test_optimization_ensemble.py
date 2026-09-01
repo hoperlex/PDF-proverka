@@ -7,6 +7,8 @@ from types import SimpleNamespace
 
 from backend.app.pipeline.stages.optimization import ensemble
 
+import pytest
+
 
 def _item(
     item_id: str,
@@ -41,6 +43,7 @@ def _doc(*items: dict) -> dict:
     }
 
 
+@pytest.mark.unit
 def test_exact_duplicate_is_merged_with_both_providers():
     merged, report = ensemble.merge_optimization_documents(
         _doc(_item("OPT-001")),
@@ -54,6 +57,7 @@ def test_exact_duplicate_is_merged_with_both_providers():
     assert merged["items"][0]["provenance"]["found_by"] == ["claude", "codex"]
 
 
+@pytest.mark.unit
 def test_same_object_with_different_optimization_actions_is_preserved():
     claude_item = _item(
         "OPT-001",
@@ -79,6 +83,7 @@ def test_same_object_with_different_optimization_actions_is_preserved():
     assert {item["detector_summary"] for item in merged["items"]} == {"claude", "codex"}
 
 
+@pytest.mark.unit
 def test_single_provider_result_is_degraded_but_not_lost():
     merged, report = ensemble.merge_optimization_documents(
         _doc(_item("OPT-001")), None, run_id="run-3"
@@ -89,6 +94,7 @@ def test_single_provider_result_is_degraded_but_not_lost():
     assert merged["meta"]["ensemble"]["source_counts"]["claude_only"] == 1
 
 
+@pytest.mark.integration
 def test_runner_starts_providers_concurrently_and_keeps_raw_outputs(tmp_path, monkeypatch):
     started: list[str] = []
     efforts: dict[str, str | None] = {}
@@ -138,6 +144,7 @@ def test_runner_starts_providers_concurrently_and_keeps_raw_outputs(tmp_path, mo
     assert json.loads((tmp_path / "optimization.json").read_text(encoding="utf-8"))["items"][0]["detector_summary"] == "claude_codex"
 
 
+@pytest.mark.unit
 def test_ensemble_model_is_only_allowed_for_optimization():
     from backend.app.core import config
 
@@ -146,6 +153,7 @@ def test_ensemble_model_is_only_allowed_for_optimization():
     assert config.validate_stage_model_choice("block_batch", model) is not None
 
 
+@pytest.mark.integration
 def test_provenance_is_restored_after_corrector_rewrite(tmp_path):
     original, _ = ensemble.merge_optimization_documents(
         _doc(_item("OPT-001")), _doc(_item("OPT-002")), run_id="run-4"
@@ -170,6 +178,7 @@ def test_provenance_is_restored_after_corrector_rewrite(tmp_path):
     assert saved["meta"]["ensemble"]["run_id"] == "run-4"
 
 
+@pytest.mark.integration
 def test_provider_failure_uses_other_result_and_removes_stale_raw_file(tmp_path, monkeypatch):
     (tmp_path / "optimization_codex.json").write_text(
         json.dumps(_doc(_item("OPT-OLD"))), encoding="utf-8"

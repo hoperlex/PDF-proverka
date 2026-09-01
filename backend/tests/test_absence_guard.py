@@ -17,6 +17,11 @@ from backend.app.pipeline.stages.text_analysis.absence_guard import (
     run_claude_verification_chunked,
 )
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 _VERIFY = "ПРОВЕРИТЬ ПО СМЕЖНЫМ"
 
 

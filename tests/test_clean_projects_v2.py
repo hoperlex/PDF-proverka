@@ -32,6 +32,10 @@ if str(_ROOT) not in sys.path:
 import backend.app.core.config as config  # noqa: E402
 import backend.app.services.common.project_service as ps  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
 

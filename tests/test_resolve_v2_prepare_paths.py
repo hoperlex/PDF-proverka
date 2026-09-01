@@ -5,6 +5,12 @@ from pathlib import Path
 
 from backend.app.services.storage import v2_primary_wiring as wiring
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _make_v2_doc(v2_root: Path, doc_code: str = "DOC-B5", *, versions=("v001",), current="v001") -> Path:
     doc = v2_root / "objects" / "OBJ_FOLDER" / "disciplines" / "KJ" / "documents" / doc_code

@@ -50,6 +50,9 @@ from audit_worker.providers.openrouter_adapter import (                       # 
 from audit_worker.providers.resolver import ProviderBinding, RouteBinding     # noqa: E402
 from tests.distributed_audit_e2e import openrouter_stub                       # noqa: E402
 
+# Primary lane §5: network — открывает настоящий сокет на loopback.
+pytestmark = pytest.mark.network
+
 TEST_KEY = "sk-or-v1-TESTONLY-11J-0123456789abcdef0123456789abcdef"
 
 #: Четыре действия этапа 01 в обоих пресетах. Порядок — порядок плана.

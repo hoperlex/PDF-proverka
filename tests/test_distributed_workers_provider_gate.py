@@ -40,6 +40,10 @@ from audit_worker.providers.identity import (  # noqa: E402
 from audit_worker.providers.manager import ProviderManager  # noqa: E402
 from audit_worker.providers.paths import provider_home  # noqa: E402
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 
 # ─── Инфраструктура: поддельные CLI ──────────────────────────────────────────
 def _write_exe(path: Path, body: str) -> Path:

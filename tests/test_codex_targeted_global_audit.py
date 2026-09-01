@@ -6,6 +6,12 @@ import json
 
 import backend.app.pipeline.stages.prepare.codex_targeted_findings as targeted
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 SAMPLE_MD = """\
 ## Page 3

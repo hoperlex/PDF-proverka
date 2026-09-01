@@ -15,6 +15,12 @@ from starlette.testclient import TestClient
 from backend.app.core.current_object import CurrentObjectMiddleware
 from backend.app.services.common import object_service, project_service
 
+import pytest
+
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 
 def _seed(path, current="objA"):
     path.parent.mkdir(parents=True, exist_ok=True)

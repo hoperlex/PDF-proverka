@@ -54,6 +54,7 @@ def isolated_paid_api(tmp_path, monkeypatch):
 # ─── A. paid_api_guard ────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_kill_switch_disabled_blocks_everything(isolated_paid_api, monkeypatch):
     """A1: PAID_API_ENABLED=false блокирует."""
     guard = isolated_paid_api["guard"]
@@ -70,6 +71,7 @@ def test_kill_switch_disabled_blocks_everything(isolated_paid_api, monkeypatch):
     assert exc.value.reason == "paid_api_disabled"
 
 
+@pytest.mark.unit
 def test_paid_api_allowed_without_manual_run_id(isolated_paid_api):
     """A2 (новый): PAID_API_ENABLED=true разрешает вызов без manual_run_id —
     pipeline сам управляет платными вызовами."""
@@ -83,6 +85,7 @@ def test_paid_api_allowed_without_manual_run_id(isolated_paid_api):
     guard.assert_paid_api_allowed(ctx)  # не должно поднять
 
 
+@pytest.mark.integration
 def test_short_discipline_code_project_id_blocks(isolated_paid_api):
     """A3: project_id "M31A" — короткий код, блок."""
     guard = isolated_paid_api["guard"]
@@ -97,6 +100,7 @@ def test_short_discipline_code_project_id_blocks(isolated_paid_api):
     assert exc.value.reason == "short_discipline_code_project_id"
 
 
+@pytest.mark.integration
 def test_missing_source_model_stage_blocked(isolated_paid_api):
     """A4: Sanity-проверка обязательных полей."""
     guard = isolated_paid_api["guard"]
@@ -111,6 +115,7 @@ def test_missing_source_model_stage_blocked(isolated_paid_api):
         assert exc.value.reason == f"missing_{missing}"
 
 
+@pytest.mark.integration
 def test_missing_project_id_blocked(isolated_paid_api):
     """A4b: missing project_id блокируется."""
     guard = isolated_paid_api["guard"]
@@ -123,6 +128,7 @@ def test_missing_project_id_blocked(isolated_paid_api):
     assert exc.value.reason == "missing_project_id"
 
 
+@pytest.mark.integration
 def test_daily_limit_blocks(isolated_paid_api, monkeypatch):
     """A5: daily_limit_usd=1.0 + estimated_cost_usd=2.0 → блок."""
     guard = isolated_paid_api["guard"]
@@ -137,6 +143,7 @@ def test_daily_limit_blocks(isolated_paid_api, monkeypatch):
     assert exc.value.reason == "daily_limit_exceeded"
 
 
+@pytest.mark.integration
 def test_runtime_kill_switch_takes_effect_without_module_reload(
     isolated_paid_api, monkeypatch
 ):
@@ -158,6 +165,7 @@ def test_runtime_kill_switch_takes_effect_without_module_reload(
     assert exc.value.reason == "paid_api_disabled"
 
 
+@pytest.mark.unit
 def test_canonical_project_id_allows_short_display_pid(isolated_paid_api):
     """A7: короткий project_id "M31A" допустим, если передан
     canonical_project_id с полным путём ИЛИ object_id."""
@@ -175,6 +183,7 @@ def test_canonical_project_id_allows_short_display_pid(isolated_paid_api):
 # ─── E. Append-only events ────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_blocked_event_is_appended(isolated_paid_api, monkeypatch):
     """E1: каждый block пишет строку в paid_api_blocked_events.jsonl."""
     guard = isolated_paid_api["guard"]
@@ -199,6 +208,7 @@ def test_blocked_event_is_appended(isolated_paid_api, monkeypatch):
     assert event["pid"]
 
 
+@pytest.mark.integration
 def test_paid_event_written_and_blocked_jsonl_not_cleared(isolated_paid_api):
     """E2: paid_event пишется отдельным API."""
     events = isolated_paid_api["events"]
@@ -226,6 +236,7 @@ def test_paid_event_written_and_blocked_jsonl_not_cleared(isolated_paid_api):
     assert tail[0]["job_id"] == "job-1"
 
 
+@pytest.mark.integration
 def test_count_blocked_today(isolated_paid_api, monkeypatch):
     """E3: count_blocked_today корректно считает только сегодняшние."""
     guard = isolated_paid_api["guard"]
@@ -243,6 +254,7 @@ def test_count_blocked_today(isolated_paid_api, monkeypatch):
 # ─── B. llm_runner — guard работает ПЕРЕД network ─────────────────────
 
 
+@pytest.mark.integration
 def test_llm_runner_blocks_before_network_when_kill_switch_off(
     isolated_paid_api, monkeypatch
 ):
@@ -274,6 +286,7 @@ def test_llm_runner_blocks_before_network_when_kill_switch_off(
     assert network_called["flag"] is False
 
 
+@pytest.mark.integration
 def test_llm_runner_stream_blocks_before_network_when_kill_switch_off(
     isolated_paid_api, monkeypatch
 ):
@@ -309,6 +322,7 @@ def test_llm_runner_stream_blocks_before_network_when_kill_switch_off(
 # ─── C. Stage 02 call_gpt_for_block (defence-in-depth) ────────────────
 
 
+@pytest.mark.integration
 def test_stage02_call_gpt_blocks_before_httpx_when_kill_switch_off(
     isolated_paid_api, tmp_path, monkeypatch
 ):
@@ -351,6 +365,7 @@ def test_stage02_call_gpt_blocks_before_httpx_when_kill_switch_off(
     assert httpx_called["flag"] is False
 
 
+@pytest.mark.integration
 def test_stage02_cache_hit_skips_network(isolated_paid_api, tmp_path):
     """C2: повторный call_gpt_for_block с теми же параметрами → cache hit,
     без httpx и без записи paid_event."""
@@ -412,6 +427,7 @@ def test_stage02_cache_hit_skips_network(isolated_paid_api, tmp_path):
 # ─── D. Queue / resume / orphan ───────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_resumed_job_allowed_without_manual_run(isolated_paid_api):
     """D1 (новый): после рестарта resumed job (без manual_run_id) разрешён.
     Это ключевое требование: orphan-состояния больше не блокируют pipeline."""
@@ -427,6 +443,7 @@ def test_resumed_job_allowed_without_manual_run(isolated_paid_api):
     guard.assert_paid_api_allowed(ctx)
 
 
+@pytest.mark.unit
 def test_batch_queue_item_has_no_manual_run_field(isolated_paid_api):
     """D2 (новый): BatchQueueItem больше не содержит manual_run_id."""
     from backend.app.models.audit import AuditJob, BatchQueueItem
@@ -445,6 +462,7 @@ def test_batch_queue_item_has_no_manual_run_field(isolated_paid_api):
     assert not hasattr(job, "manual_run_id") or getattr(job, "manual_run_id", None) is None
 
 
+@pytest.mark.integration
 def test_persisted_batch_queue_legacy_manual_run_stripped(isolated_paid_api, tmp_path, monkeypatch):
     """D3: load_persisted_queue корректно глотает старые batch_queue.json с
     устаревшим manual_run_id (он просто игнорируется)."""
@@ -484,6 +502,7 @@ def test_persisted_batch_queue_legacy_manual_run_stripped(isolated_paid_api, tmp
         getattr(pm._batch_queue.items[0], "manual_run_id", None) is None
 
 
+@pytest.mark.integration
 def test_critic_v2_openrouter_provider_blocks_when_kill_switch_off(
     isolated_paid_api, monkeypatch
 ):
@@ -529,6 +548,7 @@ def test_critic_v2_openrouter_provider_blocks_when_kill_switch_off(
 # ─── F. Status snapshot ───────────────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_status_snapshot_no_manual_run_fields(isolated_paid_api):
     """F1: status_snapshot не возвращает поля require_manual_start / active_manual_runs."""
     guard = isolated_paid_api["guard"]

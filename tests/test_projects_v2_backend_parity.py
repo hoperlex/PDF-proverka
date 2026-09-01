@@ -15,6 +15,12 @@ sys.path.insert(0, str(_REPO / "scripts" / "projects_v2"))
 import check_backend_parity as P  # noqa: E402
 from backend.app.services.storage.projects_v2_adapter import ProjectsV2Adapter  # noqa: E402
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 OBJF = "213_Mosfilmovskaya_31A_KingSons"
 OID = "0b540226"
 

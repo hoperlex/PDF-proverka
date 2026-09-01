@@ -8,6 +8,8 @@ import json
 
 from backend.app.pipeline.stages.findings_review import deterministic_critic as dc
 
+import pytest
+
 
 def _blocks(*ids_pages):
     """(block_id, page, sheet, finding_text) -> 01_blocks_analysis.json-подобный dict."""
@@ -40,6 +42,7 @@ def _run(coro):
 
 # ─── Проверка 1: evidence_presence ───────────────────────────────────────────
 
+@pytest.mark.unit
 def test_no_evidence():
     findings = {"findings": [{"id": "F-001", "page": 4, "description": "нет ссылок"}]}
     reviews, candidates, result, _ = dc.review_structural(findings, {}, {})
@@ -50,6 +53,7 @@ def test_no_evidence():
 
 # ─── Проверка 2: block_exists ────────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_phantom_block():
     findings = {"findings": [{
         "id": "F-001", "page": 4,
@@ -63,6 +67,7 @@ def test_phantom_block():
 
 # ─── Проверка 4: page_sheet_correct ──────────────────────────────────────────
 
+@pytest.mark.unit
 def test_page_mismatch_tight_evidence():
     findings = {"findings": [{
         "id": "F-001", "page": 14,
@@ -73,6 +78,7 @@ def test_page_mismatch_tight_evidence():
     assert reviews[0]["verdict"] == "page_mismatch"
 
 
+@pytest.mark.unit
 def test_page_mismatch_skipped_when_evidence_is_broad():
     """Широкий разброс evidence (>2 страниц) → НЕ флагуем page_mismatch."""
     evid = [{"type": "image", "block_id": f"B{i}-AAAA-BBB", "page": i} for i in (4, 5, 6, 9)]
@@ -84,6 +90,7 @@ def test_page_mismatch_skipped_when_evidence_is_broad():
     assert len(candidates) == 1
 
 
+@pytest.mark.unit
 def test_page_list_matches_evidence():
     findings = {"findings": [{
         "id": "F-001", "page": [27, 29],
@@ -98,6 +105,7 @@ def test_page_list_matches_evidence():
     assert len(candidates) == 1  # прошёл структурно
 
 
+@pytest.mark.unit
 def test_pass_via_related_block_ids():
     findings = {"findings": [{
         "id": "F-001", "page": 4,
@@ -111,6 +119,7 @@ def test_pass_via_related_block_ids():
 
 # ─── Семантический LLM-проход (3/5) ──────────────────────────────────────────
 
+@pytest.mark.integration
 def test_semantic_flags_weak_evidence(tmp_path):
     findings = {"findings": [{
         "id": "F-001", "page": 4, "description": "claim",
@@ -135,6 +144,7 @@ def test_semantic_flags_weak_evidence(tmp_path):
     assert review["reviews"][0]["finding_id"] == "F-001"
 
 
+@pytest.mark.integration
 def test_semantic_failsoft_on_llm_error(tmp_path):
     findings = {"findings": [{
         "id": "F-001", "page": 4, "related_block_ids": ["B1-AAAA-BBB"],
@@ -155,6 +165,7 @@ def test_semantic_failsoft_on_llm_error(tmp_path):
 
 # ─── Контракт результата / I/O ───────────────────────────────────────────────
 
+@pytest.mark.integration
 def test_review_file_schema_no_llm(tmp_path):
     findings = {"findings": [
         {"id": "F-001", "page": 4, "related_block_ids": ["B1-AAAA-BBB"]},
@@ -177,12 +188,14 @@ def test_review_file_schema_no_llm(tmp_path):
     assert ids == ["F-001", "F-002"]  # сохранён исходный порядок
 
 
+@pytest.mark.unit
 def test_missing_findings_returns_error(tmp_path):
     res = _run(dc.run_deterministic_critic(tmp_path, llm_call=None, write=True))
     assert res.error is not None
     assert not (tmp_path / "03_findings_review.json").exists()
 
 
+@pytest.mark.integration
 def test_chunk_input_filename(tmp_path):
     chunk = {"findings": [{"id": "F-007", "page": 4, "related_block_ids": ["B1-AAAA-BBB"]}]}
     (tmp_path / "03_findings_review_input_001.json").write_text(json.dumps(chunk), encoding="utf-8")

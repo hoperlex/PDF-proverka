@@ -35,6 +35,10 @@ from backend.app.services.storage import read_canary as RC  # noqa: E402
 from backend.app.services.storage import storage_write_facade as swf  # noqa: E402
 from backend.app.services.storage.projects_v2_adapter import ProjectsV2Adapter  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 OBJF = "214_Alia_ASTERUS"
 OBJID = "73a0e59a"

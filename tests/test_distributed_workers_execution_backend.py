@@ -147,6 +147,7 @@ def _cancel(client, job, key=None):
 
 
 # ═══ §1.1 Отмена ещё не выданной попытки (§2.1 задания) ══════════════════════
+@pytest.mark.integration
 def test_assigned_cancel_is_terminal_and_creates_no_command(admin, operator, center_env):
     """`assigned` → `cancelled` напрямую, без WorkerCommand и без занятия слота."""
     from backend.app.services.distributed_workers import repositories
@@ -168,6 +169,7 @@ def test_assigned_cancel_is_terminal_and_creates_no_command(admin, operator, cen
     assert attempt["attempt_disposition"] == "cancelled"
 
 
+@pytest.mark.integration
 def test_assigned_cancel_frees_the_slot(admin, operator, center_env):
     """Отменённая до выдачи попытка слот не занимает — счётчик остаётся честным."""
     from backend.app.services.distributed_workers import repositories, slots
@@ -185,6 +187,7 @@ def test_assigned_cancel_frees_the_slot(admin, operator, center_env):
     assert view["center_free_slots"] == 2
 
 
+@pytest.mark.integration
 def test_assigned_cancel_is_idempotent(admin, operator, center_env):
     """Повтор с тем же ключом возвращает записанный результат, второй раз ничего не делает."""
     from backend.app.services.distributed_workers import repositories
@@ -201,6 +204,7 @@ def test_assigned_cancel_is_idempotent(admin, operator, center_env):
     assert repositories.commands_for_job(job["job_id"], settings=center_env) == []
 
 
+@pytest.mark.integration
 def test_dispatched_attempt_still_uses_cancel_requested(admin, operator, center_env):
     """Как только пакет выдан воркеру, отмена снова становится просьбой."""
     from backend.app.services.distributed_workers import repositories
@@ -219,6 +223,7 @@ def test_dispatched_attempt_still_uses_cancel_requested(admin, operator, center_
     assert len(repositories.commands_for_job(job["job_id"], settings=center_env)) == 1
 
 
+@pytest.mark.integration
 def test_cancel_loses_race_to_dispatch_and_does_not_lie(admin, operator, center_env):
     """Гонка «отмена против выдачи» разрешается транзакционно, а не догадкой.
 
@@ -236,6 +241,7 @@ def test_cancel_loses_race_to_dispatch_and_does_not_lie(admin, operator, center_
     assert body["state"] == "cancel_requested"
 
 
+@pytest.mark.integration
 def test_dispatch_loses_race_and_returns_nothing(admin, operator, center_env):
     """Отмена успела первой → выдача не отдаёт отменённую попытку воркеру."""
     from backend.app.services.distributed_workers import repositories
@@ -252,6 +258,7 @@ def test_dispatch_loses_race_and_returns_nothing(admin, operator, center_env):
 
 
 # ═══ §1.2 Свежесть эффективного лимита (§2.2 задания) ════════════════════════
+@pytest.mark.integration
 def test_revoked_worker_gets_no_work_inside_claim(admin, center_env):
     """Отзыв доступа виден захвату немедленно, а не со следующего вызова."""
     from backend.app.services.distributed_workers import repositories
@@ -267,6 +274,7 @@ def test_revoked_worker_gets_no_work_inside_claim(admin, center_env):
     assert "отозван" in str(excinfo.value).lower()
 
 
+@pytest.mark.integration
 def test_offline_agent_gets_no_work_by_current_time(admin, center_env, monkeypatch):
     """Связь считается по ТЕКУЩЕМУ времени центра, а не по колонке heartbeat."""
     from backend.app.services.distributed_workers import repositories
@@ -285,6 +293,7 @@ def test_offline_agent_gets_no_work_by_current_time(admin, center_env, monkeypat
         repositories.claim_next_job_for_worker(worker_id, settings=center_env)
 
 
+@pytest.mark.integration
 def test_executor_offline_hint_blocks_claim(admin, center_env):
     """Состояние исполнителя из ЗАПРОСА участвует в решении внутри транзакции."""
     from backend.app.services.distributed_workers import repositories
@@ -302,6 +311,7 @@ def test_executor_offline_hint_blocks_claim(admin, center_env):
     ) is not None
 
 
+@pytest.mark.integration
 def test_jobs_next_no_longer_passes_stale_limit(center_env):
     """Маршрут `/jobs/next` не передаёт заранее посчитанный лимит.
 
@@ -321,6 +331,7 @@ def test_jobs_next_no_longer_passes_stale_limit(center_env):
 
 
 # ═══ §1.3 Старт агента при недоступном центре (§2.3 задания) ═════════════════
+@pytest.mark.integration
 def test_center_failures_are_classified_separately():
     """TLS, авторизация и протокол не маскируются под обычный обрыв."""
     import ssl
@@ -345,6 +356,7 @@ def test_center_failures_are_classified_separately():
     ) == registration.CENTER_UNREACHABLE
 
 
+@pytest.mark.integration
 def test_unknown_exception_is_not_swallowed_as_network():
     """Чужая ошибка пробрасывается: классификатор не глотает всё подряд."""
     from audit_worker import registration
@@ -353,6 +365,7 @@ def test_unknown_exception_is_not_swallowed_as_network():
         registration.classify_center_failure(ValueError("не сетевая"))
 
 
+@pytest.mark.integration
 def test_agent_starts_when_center_is_unreachable(tmp_path):
     """`ensure_registered` с токеном на диске не падает при мёртвом центре.
 
@@ -387,6 +400,7 @@ def test_agent_starts_when_center_is_unreachable(tmp_path):
     assert store.load()["center_state"] == CENTER_UNREACHABLE
 
 
+@pytest.mark.integration
 def test_agent_records_recovery_of_connection(tmp_path):
     """Агент отличает восстановление связи от продолжающегося обрыва."""
     from audit_worker.agent import WorkerAgent
@@ -400,6 +414,7 @@ def test_agent_records_recovery_of_connection(tmp_path):
 
 
 # ═══ §1.4 Лимит частоты регистрации (§2.4 задания) ═══════════════════════════
+@pytest.mark.integration
 def test_registration_rate_limit_returns_429_with_retry_after(admin, center_env, monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_WORKERS_REGISTRATION_RATE_MAX_PER_INSTANCE", "2")
     monkeypatch.setenv("DISTRIBUTED_WORKERS_REGISTRATION_RATE_MAX_PER_IP", "100")
@@ -413,6 +428,7 @@ def test_registration_rate_limit_returns_429_with_retry_after(admin, center_env,
     assert int(blocked.headers["Retry-After"]) > 0
 
 
+@pytest.mark.integration
 def test_registration_rate_limit_has_separate_ip_budget(admin, center_env, monkeypatch):
     """Смена instance_id не обходит лимит: отдельный счётчик по адресу."""
     monkeypatch.setenv("DISTRIBUTED_WORKERS_REGISTRATION_RATE_MAX_PER_INSTANCE", "100")
@@ -423,6 +439,7 @@ def test_registration_rate_limit_has_separate_ip_budget(admin, center_env, monke
     assert codes[3:] == [429, 429]
 
 
+@pytest.mark.integration
 def test_registration_rate_limit_counts_wrong_secret(admin, center_env, monkeypatch):
     """Неверный секрет тоже списывает попытку — иначе перебор не ограничен."""
     monkeypatch.setenv("DISTRIBUTED_WORKERS_REGISTRATION_RATE_MAX_PER_INSTANCE", "2")
@@ -436,6 +453,7 @@ def test_registration_rate_limit_counts_wrong_secret(admin, center_env, monkeypa
     assert third.status_code == 429
 
 
+@pytest.mark.integration
 def test_registration_rate_limit_does_not_leak_existence(admin, center_env, monkeypatch):
     """Ответ 429 одинаков для известного и неизвестного instance_id."""
     monkeypatch.setenv("DISTRIBUTED_WORKERS_REGISTRATION_RATE_MAX_PER_INSTANCE", "1")
@@ -454,6 +472,7 @@ def test_registration_rate_limit_does_not_leak_existence(admin, center_env, monk
     assert blocked_known.json()["detail"] == blocked_unknown2.json()["detail"]
 
 
+@pytest.mark.integration
 def test_registration_rate_limit_survives_restart(center_env, admin, monkeypatch):
     """Счётчик персистентный: сброс кэшей соединений его не обнуляет."""
     from backend.app.services.distributed_workers import database, rate_limit
@@ -477,6 +496,7 @@ def _client_admin():
     return _client(ADMIN_USER)
 
 
+@pytest.mark.integration
 def test_registration_rate_limit_stores_only_hashes(center_env, admin, monkeypatch):
     """В базе не лежит ни IP, ни instance_id открытым текстом."""
     from backend.app.services.distributed_workers import rate_limit
@@ -489,6 +509,7 @@ def test_registration_rate_limit_stores_only_hashes(center_env, admin, monkeypat
     assert all(len(row["key"]) == 64 for row in rows)
 
 
+@pytest.mark.integration
 def test_registration_rate_limit_can_be_disabled(center_env, admin, monkeypatch):
     """Оба нуля выключают ограничитель явно — молчаливого «выключено» нет."""
     monkeypatch.setenv("DISTRIBUTED_WORKERS_REGISTRATION_RATE_MAX_PER_INSTANCE", "0")
@@ -498,6 +519,7 @@ def test_registration_rate_limit_can_be_disabled(center_env, admin, monkeypatch)
     assert set(codes) == {201}
 
 
+@pytest.mark.integration
 def test_registration_rate_limit_does_not_double_charge_one_request(center_env, monkeypatch):
     """Отказ по второй корзине не списывает первую: проверка идёт до инкремента."""
     from backend.app.services.distributed_workers import rate_limit
@@ -529,6 +551,7 @@ CONTRACT_METHODS = (
 )
 
 
+@pytest.mark.integration
 def test_contract_declares_eight_operations():
     from backend.app.pipeline.execution.contracts import ExecutionBackend
 
@@ -536,6 +559,7 @@ def test_contract_declares_eight_operations():
         assert callable(getattr(ExecutionBackend, name, None)), name
 
 
+@pytest.mark.integration
 def test_both_backends_implement_the_contract():
     from backend.app.pipeline.execution.local import LocalExecutionBackend
     from backend.app.pipeline.execution.remote import RemoteWorkerExecutionBackend
@@ -553,6 +577,7 @@ def test_both_backends_implement_the_contract():
             assert own is not base, f"{cls.__name__}.{name} не реализован"
 
 
+@pytest.mark.integration
 def test_request_forbids_command_and_path_fields():
     """Через контракт нельзя передать команду, argv, env или путь."""
     import pydantic
@@ -564,6 +589,7 @@ def test_request_forbids_command_and_path_fields():
             ExecutionRequest(project_id="p", job_id="j", **{field: "x"})
 
 
+@pytest.mark.integration
 def test_audit_options_forbid_unknown_fields():
     import pydantic
 
@@ -616,6 +642,7 @@ class _RecordingManager:
         return True
 
 
+@pytest.mark.integration
 def test_local_backend_delegates_with_identical_arguments():
     """LocalExecutionBackend вызывает прежний `_dispatch_action` один раз и как раньше."""
     import asyncio
@@ -646,6 +673,7 @@ def test_local_backend_delegates_with_identical_arguments():
     assert result.success is True and result.cancelled is False
 
 
+@pytest.mark.integration
 def test_local_backend_prepare_has_no_side_effects():
     import asyncio
 
@@ -669,6 +697,7 @@ def test_local_backend_prepare_has_no_side_effects():
     assert item.execution_handle == {}
 
 
+@pytest.mark.integration
 def test_local_backend_reattach_is_noop():
     import asyncio
 
@@ -685,6 +714,7 @@ def test_local_backend_reattach_is_noop():
     assert asyncio.run(backend.reattach(handle)) is None
 
 
+@pytest.mark.integration
 def test_remote_backend_never_calls_local_dispatch():
     """E-02 машинно: в remote.py нет ВЫЗОВА `_dispatch_action` и запуска процессов.
 
@@ -716,6 +746,7 @@ def test_remote_backend_never_calls_local_dispatch():
         assert banned not in ast.dump(tree), banned
 
 
+@pytest.mark.integration
 def test_remote_backend_reuses_existing_handle(center_env, admin, monkeypatch):
     """Повторный prepare не создаёт второе задание (E-04, E-05)."""
     import asyncio
@@ -763,6 +794,7 @@ def test_remote_backend_reuses_existing_handle(center_env, admin, monkeypatch):
     assert len(repositories.list_jobs(worker_id=worker_id, settings=center_env)) == 1
 
 
+@pytest.mark.integration
 def test_remote_backend_requires_explicit_worker(center_env, monkeypatch):
     import asyncio
 
@@ -790,6 +822,7 @@ def test_remote_backend_requires_explicit_worker(center_env, monkeypatch):
         )
 
 
+@pytest.mark.integration
 def test_remote_liveness_never_reports_dead_on_offline(center_env, admin):
     """E-08: потеря связи не превращается в «мертво»."""
     import asyncio
@@ -825,6 +858,7 @@ def test_remote_liveness_never_reports_dead_on_offline(center_env, admin):
     assert not verdict.may_be_reclaimed
 
 
+@pytest.mark.integration
 def test_remote_liveness_dead_only_on_terminal_state(center_env, admin, operator):
     import asyncio
 
@@ -850,6 +884,7 @@ def test_remote_liveness_dead_only_on_terminal_state(center_env, admin, operator
     assert verdict.state is Liveness.DEAD and verdict.may_be_reclaimed
 
 
+@pytest.mark.integration
 def test_remote_reattach_finds_attempt_and_creates_nothing(center_env, admin):
     import asyncio
 
@@ -877,6 +912,7 @@ def test_remote_reattach_finds_attempt_and_creates_nothing(center_env, admin):
     assert before == after == 1
 
 
+@pytest.mark.integration
 def test_remote_reattach_returns_none_for_missing_attempt(center_env):
     import asyncio
 
@@ -897,6 +933,7 @@ def test_remote_reattach_returns_none_for_missing_attempt(center_env):
 
 
 # ═══ §3 Интеграция с PipelineManager ═════════════════════════════════════════
+@pytest.mark.integration
 def test_local_path_goes_straight_to_dispatch_action():
     """Локальный режим не создаёт ни одного объекта backend'а.
 
@@ -924,6 +961,7 @@ def test_local_path_goes_straight_to_dispatch_action():
     assert calls == [{"default_action": "full", "action_override": None}]
 
 
+@pytest.mark.integration
 def test_remote_item_without_flag_is_refused_not_run_locally(monkeypatch):
     """E-03: remote-элемент при выключенном флаге НЕ исполняется локально."""
     import asyncio
@@ -948,6 +986,7 @@ def test_remote_item_without_flag_is_refused_not_run_locally(monkeypatch):
     assert called == [], "remote-элемент исполнился локально — это двойной запуск"
 
 
+@pytest.mark.integration
 def test_remote_mode_without_worker_falls_back_to_local():
     """Персистентный элемент без воркера трактуется как локальный, а не падает."""
     from backend.app.models.audit import BatchQueueItem
@@ -958,6 +997,7 @@ def test_remote_mode_without_worker_falls_back_to_local():
     assert registry.item_execution_mode(item) is ExecutionMode.LOCAL
 
 
+@pytest.mark.integration
 def test_old_queue_json_reads_as_local():
     """Старый batch_queue.json без новых полей — локальный (совместимость)."""
     from backend.app.models.audit import BatchQueueStatus
@@ -975,6 +1015,7 @@ def test_old_queue_json_reads_as_local():
     assert item.worker_id is None
 
 
+@pytest.mark.integration
 def test_queue_item_roundtrips_execution_handle(tmp_path):
     """Ссылка на удалённое исполнение переживает сериализацию очереди (E-05)."""
     from backend.app.models.audit import BatchQueueItem, BatchQueueStatus
@@ -1002,6 +1043,7 @@ def test_queue_item_roundtrips_execution_handle(tmp_path):
     assert handle.attempt_id == "att-1" and handle.remote_job_id == "job-1"
 
 
+@pytest.mark.integration
 def test_broken_handle_does_not_break_the_queue():
     from backend.app.models.audit import BatchQueueItem
     from backend.app.pipeline.execution import registry
@@ -1010,6 +1052,7 @@ def test_broken_handle_does_not_break_the_queue():
     assert registry.handle_from_item(item) is None
 
 
+@pytest.mark.integration
 def test_cleanup_zombies_never_touches_remote_items():
     """E-07: у remote-задания нет локального процесса, и это не делает его зомби."""
     from backend.app.models.audit import (
@@ -1057,6 +1100,7 @@ def test_cleanup_zombies_never_touches_remote_items():
     assert manager._batch_queue.items[0].status == "running"
 
 
+@pytest.mark.integration
 def test_local_zombie_detection_still_works():
     """Обратная сторона: локальный протухший job по-прежнему снимается."""
     from backend.app.models.audit import AuditJob, BatchQueueStatus, JobStatus
@@ -1075,6 +1119,7 @@ def test_local_zombie_detection_still_works():
     assert "ПРО/локальный" not in manager.active_jobs
 
 
+@pytest.mark.integration
 def test_batch_stays_local_only(monkeypatch):
     """§9: batch-очередь остаётся локальной, remote — только одиночный запуск."""
     import inspect
@@ -1158,6 +1203,7 @@ def os_link(src: Path, dst: Path) -> None:
     _os.link(src, dst)
 
 
+@pytest.mark.integration
 def test_package_scan_excludes_secrets_and_regenerables(tmp_path):
     from backend.app.services.distributed_workers import project_package
 
@@ -1177,6 +1223,7 @@ def test_package_scan_excludes_secrets_and_regenerables(tmp_path):
     assert any(".env" in entry for entry in scan.excluded)
 
 
+@pytest.mark.integration
 def test_package_preserves_hardlinks(tmp_path):
     """TAR обязан сохранять жёсткие ссылки: иначе пакет раздувается на 40 %."""
     import tarfile
@@ -1200,6 +1247,7 @@ def test_package_preserves_hardlinks(tmp_path):
     assert all(m.linkname.startswith("payload/projects_v2/") for m in links)
 
 
+@pytest.mark.integration
 def test_package_manifest_has_required_fields(tmp_path):
     from backend.app.services.distributed_workers import project_package
 
@@ -1229,6 +1277,7 @@ def test_package_manifest_has_required_fields(tmp_path):
     assert manifest["package_type"] == "source"
 
 
+@pytest.mark.integration
 def test_package_rejects_symlinks(tmp_path):
     from backend.app.services.distributed_workers import project_package
 
@@ -1240,6 +1289,7 @@ def test_package_rejects_symlinks(tmp_path):
     assert any("симлинк" in entry for entry in scan.excluded)
 
 
+@pytest.mark.integration
 def test_feature_flags_snapshot_drops_secrets():
     from backend.app.services.distributed_workers import project_package
 
@@ -1257,6 +1307,7 @@ def test_feature_flags_snapshot_drops_secrets():
                      "PAID_API_ENABLED": "true"}
 
 
+@pytest.mark.integration
 def test_secret_scanner_catches_known_forms():
     from backend.app.services.distributed_workers import project_package
 
@@ -1272,6 +1323,7 @@ def test_secret_scanner_catches_known_forms():
     assert all(name in "b.env c.json d.txt" for name in (h.split(":")[0] for h in hits))
 
 
+@pytest.mark.integration
 def test_prompt_snapshot_hash_is_stable_and_content_sensitive(tmp_path):
     from backend.app.services.distributed_workers import project_package
 
@@ -1333,6 +1385,7 @@ def _audit_params(**overrides):
     return payload
 
 
+@pytest.mark.integration
 def test_worker_rejects_unknown_fields(tmp_path):
     from audit_worker import audit_runner
 
@@ -1344,6 +1397,7 @@ def test_worker_rejects_unknown_fields(tmp_path):
     assert "command" in str(excinfo.value)
 
 
+@pytest.mark.integration
 def test_worker_rejects_norms_on_worker(tmp_path):
     from audit_worker import audit_runner
 
@@ -1354,6 +1408,7 @@ def test_worker_rejects_norms_on_worker(tmp_path):
         )
 
 
+@pytest.mark.integration
 def test_worker_rejects_unknown_profile_and_action(tmp_path):
     from audit_worker import audit_runner
 
@@ -1366,6 +1421,7 @@ def test_worker_rejects_unknown_profile_and_action(tmp_path):
             audit_runner.validate_params(payload, config=config)
 
 
+@pytest.mark.integration
 def test_worker_rejects_revision_mismatch(tmp_path):
     from audit_worker import audit_runner
 
@@ -1377,6 +1433,7 @@ def test_worker_rejects_revision_mismatch(tmp_path):
     assert "Ревизия" in str(excinfo.value)
 
 
+@pytest.mark.integration
 def test_worker_refuses_audit_when_capability_disabled(tmp_path):
     from audit_worker import audit_runner
 
@@ -1385,6 +1442,7 @@ def test_worker_refuses_audit_when_capability_disabled(tmp_path):
         audit_runner.validate_params(_audit_params(), config=config)
 
 
+@pytest.mark.integration
 def test_worker_refuses_without_installed_platform(tmp_path):
     from audit_worker import audit_runner
 
@@ -1393,6 +1451,7 @@ def test_worker_refuses_without_installed_platform(tmp_path):
         audit_runner.validate_params(_audit_params(), config=config)
 
 
+@pytest.mark.integration
 def test_worker_cannot_shrink_required_artifacts(tmp_path):
     """Задание не может сократить список обязательных артефактов."""
     from audit_worker import audit_runner
@@ -1408,6 +1467,7 @@ def test_worker_cannot_shrink_required_artifacts(tmp_path):
     assert "result/anything.json" not in params.required_result_artifacts
 
 
+@pytest.mark.integration
 def test_worker_builds_fixed_argv(tmp_path):
     """argv фиксирован: интерпретатор + -u + -m + константный модуль + спека."""
     from audit_worker import audit_runner
@@ -1420,6 +1480,7 @@ def test_worker_builds_fixed_argv(tmp_path):
     assert argv[4].endswith("spec.json")
 
 
+@pytest.mark.integration
 def test_worker_env_is_an_allowlist_and_points_inside_job_dir(tmp_path, monkeypatch):
     from audit_worker import audit_runner
 
@@ -1438,6 +1499,7 @@ def test_worker_env_is_an_allowlist_and_points_inside_job_dir(tmp_path, monkeypa
         assert str(job_dir) in env[key], key
 
 
+@pytest.mark.integration
 def test_worker_env_wires_fake_providers(tmp_path):
     from audit_worker import audit_runner
 
@@ -1451,6 +1513,7 @@ def test_worker_env_wires_fake_providers(tmp_path):
     assert env["PATH"].startswith(str(provider_dir))
 
 
+@pytest.mark.network
 def test_fake_providers_are_marked_and_executable(tmp_path):
     import subprocess
 
@@ -1471,6 +1534,7 @@ def test_fake_providers_are_marked_and_executable(tmp_path):
         assert payload["is_error"] is False
 
 
+@pytest.mark.network
 def test_fake_providers_can_simulate_failures(tmp_path):
     import subprocess
 
@@ -1496,6 +1560,7 @@ def test_fake_providers_can_simulate_failures(tmp_path):
         json.loads(broken.stdout)
 
 
+@pytest.mark.integration
 def test_executor_fails_closed_without_fake_providers(tmp_path):
     """Настоящие модели запрещены, подделок нет → задание отвергается."""
     from audit_worker import audit_runner, local_db
@@ -1507,6 +1572,7 @@ def test_executor_fails_closed_without_fake_providers(tmp_path):
         executor._provider_dir()
 
 
+@pytest.mark.integration
 def test_executor_uses_real_providers_only_when_allowed(tmp_path):
     from audit_worker import local_db
     from audit_worker.executor import Executor
@@ -1516,6 +1582,7 @@ def test_executor_uses_real_providers_only_when_allowed(tmp_path):
     assert executor._provider_dir() is None
 
 
+@pytest.mark.integration
 def test_real_audit_and_test_jobs_never_mix(tmp_path):
     """E-22, E-23, E-24: один аудит на воркер и никакого смешивания с тестами."""
     from audit_worker import local_db
@@ -1544,6 +1611,7 @@ def test_real_audit_and_test_jobs_never_mix(tmp_path):
     assert executor.test_slot_conflict(test_c) is None
 
 
+@pytest.mark.integration
 def test_running_test_job_blocks_real_audit(tmp_path):
     from audit_worker import local_db
     from audit_worker.executor import Executor
@@ -1561,6 +1629,7 @@ def test_running_test_job_blocks_real_audit(tmp_path):
     assert conflict is not None and "тестовые" in conflict
 
 
+@pytest.mark.integration
 def test_executor_rejects_unknown_job_type(tmp_path):
     from audit_worker import local_db
     from audit_worker.executor import Executor
@@ -1577,6 +1646,7 @@ def test_executor_rejects_unknown_job_type(tmp_path):
     assert outcome["ok"] is False and outcome["reason"] == "unknown_job_type"
 
 
+@pytest.mark.integration
 def test_worker_job_layout_is_inside_attempt_dir(tmp_path):
     from audit_worker import audit_runner
 
@@ -1586,6 +1656,7 @@ def test_worker_job_layout_is_inside_attempt_dir(tmp_path):
         assert job_dir in path.parents or path == job_dir
 
 
+@pytest.mark.integration
 def test_worker_reports_provider_mode_in_capabilities(tmp_path):
     config_fake = _worker_config(tmp_path / "a")
     config_real = _worker_config(tmp_path / "b", allow_real_llm=True)
@@ -1598,11 +1669,13 @@ def test_worker_reports_provider_mode_in_capabilities(tmp_path):
     assert caps_fake["real_audit_max_slots"] == 1
 
 
+@pytest.mark.integration
 def test_worker_without_audit_flag_hides_capability(tmp_path):
     config = _worker_config(tmp_path, audit_pipeline_enabled=False)
     assert "audit_pipeline_v1" not in config.capabilities()["job_types"]
 
 
+@pytest.mark.integration
 def test_runner_refuses_norms_and_unknown_profile(tmp_path):
     from backend.app.pipeline import remote_audit_runner
 
@@ -1617,6 +1690,7 @@ def test_runner_refuses_norms_and_unknown_profile(tmp_path):
         remote_audit_runner.load_spec(spec)
 
 
+@pytest.mark.integration
 def test_runner_refuses_central_only_stage(tmp_path):
     from backend.app.pipeline import remote_audit_runner
 
@@ -1630,6 +1704,7 @@ def test_runner_refuses_central_only_stage(tmp_path):
         remote_audit_runner.load_spec(spec)
 
 
+@pytest.mark.integration
 def test_runner_refuses_paths_outside_attempt_dir(tmp_path, monkeypatch):
     from backend.app.pipeline import remote_audit_runner
 
@@ -1643,6 +1718,7 @@ def test_runner_refuses_paths_outside_attempt_dir(tmp_path, monkeypatch):
         remote_audit_runner.apply_runtime_paths(spec)
 
 
+@pytest.mark.integration
 def test_runner_accepts_paths_inside_attempt_dir(tmp_path, monkeypatch):
     from backend.app.pipeline import remote_audit_runner
 
@@ -1662,6 +1738,7 @@ def test_runner_accepts_paths_inside_attempt_dir(tmp_path, monkeypatch):
     remote_audit_runner.apply_runtime_paths(spec)      # не бросает
 
 
+@pytest.mark.integration
 def test_runner_rejects_projects_dir_outside_attempt(tmp_path, monkeypatch):
     """`AUDIT_PROJECTS_DIR` наружу — отказ, а не тихая запись в чужой каталог."""
     from backend.app.pipeline import remote_audit_runner
@@ -1683,6 +1760,7 @@ def test_runner_rejects_projects_dir_outside_attempt(tmp_path, monkeypatch):
     assert "AUDIT_PROJECTS_DIR" in str(excinfo.value)
 
 
+@pytest.mark.integration
 def test_runner_detects_snapshot_tampering(tmp_path):
     from backend.app.pipeline import remote_audit_runner
 
@@ -1800,6 +1878,7 @@ def _version_dir(tmp_path: Path) -> Path:
     return version
 
 
+@pytest.mark.integration
 def test_result_import_applies_only_generated_paths(center_env, tmp_path, monkeypatch):
     from backend.app.services.distributed_workers import result_import
 
@@ -1830,6 +1909,7 @@ def test_result_import_applies_only_generated_paths(center_env, tmp_path, monkey
     assert Path(report["journal"]).is_file()
 
 
+@pytest.mark.integration
 def test_worker_package_never_returns_source_files(tmp_path):
     """Первый рубеж: сборщик воркера физически не кладёт исходники в пакет."""
     import tarfile
@@ -1846,6 +1926,7 @@ def test_worker_package_never_returns_source_files(tmp_path):
     assert any("project/03_analysis/" in n for n in names)
 
 
+@pytest.mark.integration
 def test_center_plan_skips_source_and_rejects_unknown(tmp_path):
     """Второй рубеж: даже если исходник придёт, план его не применит."""
     from backend.app.services.distributed_workers import result_import
@@ -1873,6 +1954,7 @@ def test_center_plan_skips_source_and_rejects_unknown(tmp_path):
     assert [r["path"] for r in plan2["rejected"]] == ["чужое.json"]
 
 
+@pytest.mark.integration
 def test_result_import_rejects_central_only_artifact(center_env, tmp_path, monkeypatch):
     """E-19: норм-артефакт из пакета воркера отклоняет ВЕСЬ пакет."""
     from backend.app.services.distributed_workers import result_import
@@ -1898,6 +1980,7 @@ def test_result_import_rejects_central_only_artifact(center_env, tmp_path, monke
     ) == before
 
 
+@pytest.mark.integration
 def test_result_import_rejects_wrong_source_package(center_env, tmp_path, monkeypatch):
     from backend.app.services.distributed_workers import result_import
 
@@ -1915,6 +1998,7 @@ def test_result_import_rejects_wrong_source_package(center_env, tmp_path, monkey
     assert "исходном пакете" in str(excinfo.value)
 
 
+@pytest.mark.integration
 def test_result_import_rejects_revision_mismatch(center_env, tmp_path, monkeypatch):
     import importlib
 
@@ -1940,6 +2024,7 @@ def test_result_import_rejects_revision_mismatch(center_env, tmp_path, monkeypat
         importlib.reload(core_config)
 
 
+@pytest.mark.integration
 def test_result_import_is_idempotent_and_detects_conflict(center_env, tmp_path, monkeypatch):
     """Тот же пакет — `already_applied`; другой hash — конфликт (E-17)."""
     from backend.app.services.distributed_workers import repositories, result_import
@@ -1973,6 +2058,7 @@ def test_result_import_is_idempotent_and_detects_conflict(center_env, tmp_path, 
         )
 
 
+@pytest.mark.integration
 def test_result_import_rolls_back_on_failure(center_env, tmp_path, monkeypatch):
     """Сбой посреди применения откатывает ВСЁ и оставляет staging."""
     import shutil as _shutil
@@ -2020,6 +2106,7 @@ def test_result_import_rolls_back_on_failure(center_env, tmp_path, monkeypatch):
         assert not (version / "03_analysis" / "latest" / name).exists(), name
 
 
+@pytest.mark.integration
 def test_result_import_records_resume_stage_and_usage(center_env, tmp_path, monkeypatch):
     from backend.app.services.distributed_workers import result_import
 
@@ -2036,6 +2123,7 @@ def test_result_import_records_resume_stage_and_usage(center_env, tmp_path, monk
     assert report["stage_completion"] == {"findings_merge": "done"}
 
 
+@pytest.mark.integration
 def test_usage_report_applies_exactly_once(center_env, tmp_path):
     from backend.app.services.distributed_workers import repositories, result_import
 
@@ -2053,6 +2141,7 @@ def test_usage_report_applies_exactly_once(center_env, tmp_path):
     assert second["applied"] is False and second["reason"] == "already_applied"
 
 
+@pytest.mark.integration
 def test_worker_package_omitting_required_artifact_is_not_successful(tmp_path):
     """Пакет без обязательного артефакта не считается полным (§24)."""
     from audit_worker import audit_runner
@@ -2067,6 +2156,7 @@ def test_worker_package_omitting_required_artifact_is_not_successful(tmp_path):
     assert "work/pipeline_log.json" not in missing
 
 
+@pytest.mark.integration
 def test_path_classification_matches_the_contract():
     from backend.app.services.distributed_workers import result_import
 
@@ -2081,6 +2171,7 @@ def test_path_classification_matches_the_contract():
 
 
 # ═══ §7 Безопасность ══════════════════════════════════════════════════════════
+@pytest.mark.integration
 def test_source_package_contains_no_secrets(tmp_path):
     """E-25: собранный пакет проверяется сканером секретов побайтово."""
     import tarfile
@@ -2110,6 +2201,7 @@ def test_source_package_contains_no_secrets(tmp_path):
     assert project_package.find_secrets_in_files(blobs) == []
 
 
+@pytest.mark.integration
 def test_result_package_extraction_rejects_traversal(tmp_path):
     """TAR с `..` отвергается до записи единого байта."""
     import io
@@ -2128,6 +2220,7 @@ def test_result_package_extraction_rejects_traversal(tmp_path):
     assert not (tmp_path / "out").exists()
 
 
+@pytest.mark.integration
 def test_result_package_extraction_rejects_symlink(tmp_path):
     import tarfile
 
@@ -2143,6 +2236,7 @@ def test_result_package_extraction_rejects_symlink(tmp_path):
         package_service.safe_extract(archive, tmp_path / "out")
 
 
+@pytest.mark.integration
 def test_worker_unpacker_allows_hardlinks_but_only_inside_payload(tmp_path):
     """Хардлинки нужны (18 % корпуса), но только на уже распакованные записи."""
     import io
@@ -2171,6 +2265,7 @@ def test_worker_unpacker_allows_hardlinks_but_only_inside_payload(tmp_path):
     assert "ссылка" in str(excinfo.value).lower()
 
 
+@pytest.mark.integration
 def test_worker_token_gives_no_operator_rights_on_audit_routes(center_env, admin):
     """Машинный контур не открывает операторские маршруты аудита."""
     worker_id, headers = _approved_worker(admin, instance_id="inst_exec_sec")
@@ -2189,6 +2284,7 @@ def test_worker_token_gives_no_operator_rights_on_audit_routes(center_env, admin
     ).status_code in (401, 403)
 
 
+@pytest.mark.integration
 def test_audit_launch_requires_operator_and_intent(center_env, admin, operator):
     """Право `operate`, гейт намерения и Idempotency-Key — все три обязательны."""
     from tests.distributed_workers_helpers import SyncASGITransport, make_center_app, session_cookie
@@ -2221,6 +2317,7 @@ def test_audit_launch_requires_operator_and_intent(center_env, admin, operator):
     ).status_code == 400
 
 
+@pytest.mark.integration
 def test_audit_targets_explains_incompatibility(center_env, admin, monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_AUDIT_EXECUTION_ENABLED", "true")
     _approved_worker(admin, instance_id="inst_exec_targets")
@@ -2237,6 +2334,7 @@ def test_audit_targets_explains_incompatibility(center_env, admin, monkeypatch):
     assert "missing_capability" in codes
 
 
+@pytest.mark.integration
 def test_audit_launch_rejects_incompatible_worker(center_env, admin, operator, monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_AUDIT_EXECUTION_ENABLED", "true")
     worker_id, _ = _approved_worker(admin, instance_id="inst_exec_incompat")
@@ -2249,6 +2347,7 @@ def test_audit_launch_rejects_incompatible_worker(center_env, admin, operator, m
     assert response.json()["detail"]["error"] == "worker_incompatible"
 
 
+@pytest.mark.integration
 def test_launch_model_forbids_extra_fields():
     import pydantic
 
@@ -2260,6 +2359,7 @@ def test_launch_model_forbids_extra_fields():
         )
 
 
+@pytest.mark.integration
 def test_audit_params_model_forbids_execution_fields():
     import pydantic
 
@@ -2291,6 +2391,7 @@ def test_audit_params_model_forbids_execution_fields():
 # держатся на честном слове: все эти дефекты были в коде, который уже проходил
 # 447 тестов.
 # ═══════════════════════════════════════════════════════════════════════════
+@pytest.mark.integration
 def test_central_stages_are_blocked_in_the_remote_process():
     """Норм-этап, долги, carryover и Excel на воркере не выполняются.
 
@@ -2335,6 +2436,7 @@ def test_central_stages_are_blocked_in_the_remote_process():
     assert all("на центре" in m for m in logged), logged
 
 
+@pytest.mark.network
 def test_remote_runner_hardens_environment_before_config_import():
     """Гейты выставляются до импорта конфигурации, иначе они бесполезны."""
     import subprocess
@@ -2355,6 +2457,7 @@ def test_remote_runner_hardens_environment_before_config_import():
     assert "ok" in result.stdout
 
 
+@pytest.mark.network
 def test_config_honours_dotenv_kill_switch():
     """`AUDIT_DISABLE_DOTENV=1` не даёт `.env` вернуть окружение центра."""
     import subprocess
@@ -2381,6 +2484,7 @@ def test_config_honours_dotenv_kill_switch():
     assert "clean" in result.stdout, result.stdout
 
 
+@pytest.mark.integration
 def test_fake_mode_removes_provider_keys_and_binds_cli():
     """Поддельный режим гасит платный HTTP и точки резолва мимо PATH."""
     from backend.app.pipeline import remote_audit_runner
@@ -2415,6 +2519,7 @@ def test_fake_mode_removes_provider_keys_and_binds_cli():
                     os.environ[name] = value
 
 
+@pytest.mark.integration
 def test_fake_mode_refuses_directory_without_marker():
     """Существующего каталога недостаточно — нужен подтверждённый маркер."""
     from backend.app.pipeline import remote_audit_runner
@@ -2432,6 +2537,7 @@ def test_fake_mode_refuses_directory_without_marker():
                 os.environ["AUDIT_WORKER_FAKE_PROVIDER_DIR"] = saved
 
 
+@pytest.mark.integration
 def test_executor_rejects_provider_dir_that_is_not_fake():
     """Каталог с настоящими CLI не проходит как поддельный."""
     from audit_worker import audit_runner as worker_runner
@@ -2448,6 +2554,7 @@ def test_executor_rejects_provider_dir_that_is_not_fake():
         assert worker_runner.provider_dir_is_fake(good) is True
 
 
+@pytest.mark.integration
 def test_worker_env_disables_dotenv():
     """Белый список окружения не должен пробиваться `.env` из pipeline_root."""
     from audit_worker import audit_runner as worker_runner
@@ -2463,6 +2570,7 @@ def test_worker_env_disables_dotenv():
     assert env["AUDIT_DISABLE_DOTENV"] == "1"
 
 
+@pytest.mark.integration
 def test_project_id_from_job_is_validated_as_a_path():
     """`project_id` — часть пути; `..` и абсолютный путь отвергаются."""
     from backend.app.pipeline import remote_audit_runner
@@ -2476,6 +2584,7 @@ def test_project_id_from_job_is_validated_as_a_path():
             remote_audit_runner.validate_project_id(bad)
 
 
+@pytest.mark.integration
 def test_runner_writes_process_exit_marker(tmp_path):
     """Второй источник «дошёл до конца сам» — иначе рестарт теряет результат."""
     from backend.app.pipeline import remote_audit_runner
@@ -2489,6 +2598,7 @@ def test_runner_writes_process_exit_marker(tmp_path):
     assert payload["attempt_id"] == "a"
 
 
+@pytest.mark.integration
 def test_pending_remote_item_does_not_freeze_the_queue():
     """Незапущенный удалённый элемент не считается живым аудитом."""
     from backend.app.models.audit import BatchQueueItem, BatchQueueStatus
@@ -2511,6 +2621,7 @@ def test_pending_remote_item_does_not_freeze_the_queue():
     assert manager._remote_items() == {}
 
 
+@pytest.mark.integration
 def test_interrupted_remote_item_is_protected_but_resumable():
     """`interrupted` защищён от зомби-уборки, но resume не блокирует."""
     from backend.app.models.audit import BatchQueueItem, BatchQueueStatus
@@ -2539,6 +2650,7 @@ def test_interrupted_remote_item_is_protected_but_resumable():
     assert manager._has_live_project_audit() is False
 
 
+@pytest.mark.integration
 def test_cancel_does_not_hijack_a_live_local_audit():
     """Отмена живого локального аудита не уходит в удалённый элемент."""
     import asyncio
@@ -2589,6 +2701,7 @@ def test_cancel_does_not_hijack_a_live_local_audit():
     assert remote.status == "pending", "удалённый элемент помечен отменённым напрасно"
 
 
+@pytest.mark.integration
 def test_cancel_in_result_uploading_answers_instead_of_500(center_env, admin, operator):
     """Отмена во время возврата результата — понятный ответ, а не исключение."""
     from backend.app.services.distributed_workers import (
@@ -2623,6 +2736,7 @@ def test_cancel_in_result_uploading_answers_instead_of_500(center_env, admin, op
     assert result["command_id"] is None
 
 
+@pytest.mark.integration
 def test_wait_stops_when_operator_declares_the_attempt_lost(center_env, admin, operator):
     """Ожидание не крутится вечно на попытке, признанной потерянной."""
     import asyncio
@@ -2656,6 +2770,7 @@ def test_wait_stops_when_operator_declares_the_attempt_lost(center_env, admin, o
     assert "потерянной" in (result.error or "")
 
 
+@pytest.mark.integration
 def test_handle_is_not_reused_for_a_lost_attempt(center_env, admin, operator):
     """Ссылка на признанную потерянной попытку не переиспользуется."""
     from backend.app.pipeline.execution.remote import RemoteWorkerExecutionBackend
@@ -2671,6 +2786,7 @@ def test_handle_is_not_reused_for_a_lost_attempt(center_env, admin, operator):
     ) is False
 
 
+@pytest.mark.integration
 def test_usage_report_is_recorded_with_the_real_signature(center_env, admin, monkeypatch):
     """Отчёт о расходе действительно ложится в трекер, а не теряется."""
     from backend.app.services.common import usage_service
@@ -2704,6 +2820,7 @@ def test_usage_report_is_recorded_with_the_real_signature(center_env, admin, mon
     assert seen[0].stage == "block_analysis"
 
 
+@pytest.mark.integration
 def test_usage_report_failure_does_not_mark_applied(center_env, admin, monkeypatch):
     """Провал записи не ставит отметку — иначе расход теряется навсегда."""
     from backend.app.services.common import usage_service
@@ -2728,6 +2845,7 @@ def test_usage_report_failure_does_not_mark_applied(center_env, admin, monkeypat
     assert not fresh.get("usage_applied_at")
 
 
+@pytest.mark.integration
 def test_central_artifacts_never_leave_the_center_in_the_source_package(tmp_path):
     """Асимметрия закрыта: центральные артефакты не уезжают на воркер."""
     from backend.app.services.distributed_workers import project_package
@@ -2752,6 +2870,7 @@ def test_central_artifacts_never_leave_the_center_in_the_source_package(tmp_path
         assert forbidden not in names, f"{forbidden} уехал бы на воркер"
 
 
+@pytest.mark.integration
 def test_expert_review_from_worker_is_treated_as_central():
     """Разметка эксперта не применяется из пакета, даже внутри 03_analysis/."""
     from backend.app.services.distributed_workers import result_import
@@ -2761,6 +2880,7 @@ def test_expert_review_from_worker_is_treated_as_central():
     assert result_import.classify_path("03_analysis/latest/03_findings.json") == "worker"
 
 
+@pytest.mark.integration
 def test_secret_scanner_catches_modern_key_formats():
     """Сканер ловит формы, которые реально встречаются в ключах провайдеров."""
     from backend.app.services.distributed_workers import project_package
@@ -2783,6 +2903,7 @@ def test_secret_scanner_catches_modern_key_formats():
     assert clean == []
 
 
+@pytest.mark.integration
 def test_feature_flags_blob_is_scanned_for_secrets(center_env, admin, tmp_path, monkeypatch):
     """Блоб флагов тоже проверяется — фильтр по именам ловит не всё.
 
@@ -2832,6 +2953,7 @@ def test_feature_flags_blob_is_scanned_for_secrets(center_env, admin, tmp_path, 
     assert leftovers == [], leftovers
 
 
+@pytest.mark.integration
 def test_worker_state_blocks_new_work():
     """Воркер в drain/degraded не получает новую работу."""
     from backend.app.services.distributed_workers import slots
@@ -2856,6 +2978,7 @@ def test_worker_state_blocks_new_work():
         assert state in (limited.blocked_reason or "")
 
 
+@pytest.mark.integration
 def test_precrop_skips_remote_items():
     """Центр не кропает проект, который поедет на воркер со своим пакетом."""
     from backend.app.models.audit import BatchQueueItem, BatchQueueStatus
@@ -2875,6 +2998,7 @@ def test_precrop_skips_remote_items():
     assert manager._select_precrop_candidate(queue, set()) is None
 
 
+@pytest.mark.integration
 def test_second_remote_launch_after_restart_is_refused(monkeypatch):
     """Повторный запуск в окне рестарта не создаёт второй платный аудит."""
     import asyncio
@@ -2931,6 +3055,7 @@ def test_second_remote_launch_after_restart_is_refused(monkeypatch):
     assert "удалённое исполнение" in str(excinfo.value)
 
 
+@pytest.mark.integration
 def test_clear_queue_history_refuses_while_remote_is_alive():
     """Историю нельзя стереть, пока в ней единственная ссылка на живую попытку."""
     from backend.app.models.audit import BatchQueueItem, BatchQueueStatus
@@ -2959,6 +3084,7 @@ def test_clear_queue_history_refuses_while_remote_is_alive():
     assert "продолжаются на воркере" in str(excinfo.value)
 
 
+@pytest.mark.integration
 def test_item_with_handle_is_never_run_locally():
     """Потерянный worker_id при живой ссылке не даёт локального дубля."""
     from backend.app.models.audit import BatchQueueItem
@@ -2978,6 +3104,7 @@ def test_item_with_handle_is_never_run_locally():
     assert registry.item_execution_mode(with_handle) is ExecutionMode.REMOTE_WORKER
 
 
+@pytest.mark.integration
 def test_expired_command_is_not_reused(center_env, admin, operator):
     """Протухшая команда не переиспользуется как «незавершённая»."""
     from backend.app.models.distributed_workers import JobState, WorkerCommandType
@@ -3022,6 +3149,7 @@ def test_expired_command_is_not_reused(center_env, admin, operator):
     assert len(commands) == 2
 
 
+@pytest.mark.integration
 def test_result_import_resume_hint_uses_the_real_detector(monkeypatch):
     """Подсказка возобновления считается детектором, а не всегда None."""
     from backend.app.services.distributed_workers import result_import
@@ -3043,6 +3171,7 @@ def test_result_import_resume_hint_uses_the_real_detector(monkeypatch):
     assert seen == {"project_id": "ПРО/резюме", "version_id": "v3"}
 
 
+@pytest.mark.integration
 def test_forbidden_prefixes_match_the_audit_layout(tmp_path):
     """Первый рубеж валидации видит вложенную раскладку пакета аудита.
 

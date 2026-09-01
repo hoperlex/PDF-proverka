@@ -34,6 +34,9 @@ from backend.app.services.knowledge_base.knowledge_base_service import (  # noqa
     canonical_source_project,
 )
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 # ─── Запись в журнал: одна форма на все пути ───
 

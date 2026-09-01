@@ -24,6 +24,7 @@ def _e(decision, **kw):
     return d
 
 
+@pytest.mark.unit
 def test_precision_basic():
     entries = [_e("accepted"), _e("accepted"), _e("rejected"), _e("rejected"),
                _e("rejected")]
@@ -34,6 +35,7 @@ def test_precision_basic():
     assert m["precision"] == round(2 / 5, 4)
 
 
+@pytest.mark.unit
 def test_other_no_verdict_counted():
     entries = [_e("accepted"), _e(""), _e(None), _e("pending")]
     m = eh.compute_eval_metrics(entries)
@@ -43,6 +45,7 @@ def test_other_no_verdict_counted():
     assert m["precision"] == 1.0
 
 
+@pytest.mark.unit
 def test_empty_dataset_no_crash():
     m = eh.compute_eval_metrics([])
     assert m["total"] == 0
@@ -50,6 +53,7 @@ def test_empty_dataset_no_crash():
     assert m["customer_confirm_rate"] is None
 
 
+@pytest.mark.unit
 def test_breakdown_by_section_and_type():
     entries = [
         _e("accepted", section="AR"), _e("rejected", section="AR"),
@@ -62,6 +66,7 @@ def test_breakdown_by_section_and_type():
     assert m["by_item_type"]["optimization"]["total"] == 1
 
 
+@pytest.mark.unit
 def test_customer_confirm_rate_and_responses():
     entries = [_e("accepted", customer_confirmed=True, customer_response="Внесено"),
                _e("rejected", customer_response="Отклонено"),
@@ -73,6 +78,7 @@ def test_customer_confirm_rate_and_responses():
     assert m["customer_response_distribution"]["—"] == 1  # пустой → «—»
 
 
+@pytest.mark.unit
 def test_top_bottom_projects_respect_min_sample():
     # P_big: 10 замечаний (выборка достаточна), P_small: 1 (отсеивается)
     entries = ([_e("accepted", source_project="P_big") for _ in range(6)]
@@ -84,6 +90,7 @@ def test_top_bottom_projects_respect_min_sample():
     assert "P_small" not in names  # выборка < min_sample
 
 
+@pytest.mark.unit
 def test_top_bottom_no_overlap_mid_range():
     """11-19 ранжированных проектов: top_projects и bottom_projects НЕ
     пересекаются (раньше ranked[-10:] налезал на ranked[:10] — review #96)."""
@@ -100,12 +107,14 @@ def test_top_bottom_no_overlap_mid_range():
     assert not (top & bottom), f"пересечение top/bottom: {top & bottom}"
 
 
+@pytest.mark.unit
 def test_recall_note_is_explicit():
     m = eh.compute_eval_metrics([_e("accepted")])
     assert "recall" in m["recall_note"].lower()
     assert "не вычисляется" in m["recall_note"].lower()
 
 
+@pytest.mark.integration
 def test_load_entries_handles_shapes(tmp_path):
     p = tmp_path / "d.json"
     p.write_text(json.dumps({"entries": [_e("accepted")]}), encoding="utf-8")
@@ -114,6 +123,7 @@ def test_load_entries_handles_shapes(tmp_path):
     assert len(eh.load_entries(p)) == 1
 
 
+@pytest.mark.unit
 def test_format_report_runs():
     m = eh.compute_eval_metrics([_e("accepted"), _e("rejected")])
     txt = eh.format_report(m)
@@ -121,6 +131,7 @@ def test_format_report_runs():
     assert "precision" in txt.lower()
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not (ROOT / "knowledge_base" / "decisions_log.json").exists(),
                     reason="live decisions_log отсутствует")
 def test_smoke_on_live_decisions_log():

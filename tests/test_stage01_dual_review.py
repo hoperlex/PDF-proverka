@@ -27,6 +27,7 @@ def _finding(model: str, ref: str, text: str, **extra):
     }
 
 
+@pytest.mark.unit
 def test_findings_merge_prompts_apply_dual_comparison_contract():
     root = Path(__file__).resolve().parents[1]
     for language in ("ru", "en"):
@@ -39,6 +40,7 @@ def test_findings_merge_prompts_apply_dual_comparison_contract():
         assert "gap_search" in prompt
 
 
+@pytest.mark.unit
 def test_normalize_classifies_match_extension_new_disputed_and_gap():
     findings = [
         _finding("openai/gpt-5.4", "gpt_openrouter:001", "Не указана марка кабеля"),
@@ -104,6 +106,7 @@ def test_normalize_classifies_match_extension_new_disputed_and_gap():
     assert normalized["report"]["gap_search"]["performed"] is True
 
 
+@pytest.mark.unit
 def test_gap_search_rejects_probable_duplicate_of_known_finding():
     findings = [
         _finding("openai/gpt-5.4", "gpt_openrouter:001", "Не указана марка кабеля ЩР-1"),
@@ -134,6 +137,7 @@ def test_gap_search_rejects_probable_duplicate_of_known_finding():
     assert normalized["report"]["counts"]["gap_findings"] == 0
 
 
+@pytest.mark.unit
 def test_apply_review_marks_gap_finding_as_separate_codex_detection():
     findings = [
         _finding("openai/gpt-5.4", "gpt_openrouter:001", "Ошибка GPT"),
@@ -172,6 +176,7 @@ def test_apply_review_marks_gap_finding_as_separate_codex_detection():
     assert gap["_detector_ref"] == "codex_gap:001"
 
 
+@pytest.mark.unit
 def test_fallback_keeps_findings_and_records_review_failure():
     findings = [
         _finding("openai/gpt-5.4", "gpt_openrouter:001", "Не указана марка кабеля"),
@@ -192,6 +197,7 @@ def test_fallback_keeps_findings_and_records_review_failure():
     assert result["report"]["gap_search"]["performed"] is False
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_review_dual_findings_runs_one_combined_review_and_gap_call(monkeypatch, tmp_path):
     findings = [
@@ -255,6 +261,7 @@ async def test_review_dual_findings_runs_one_combined_review_and_gap_call(monkey
     assert "VECTOR CONTEXT" in seen["messages"][1]["content"]
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_stage01_dual_runner_persists_review_contract(monkeypatch, tmp_path):
     from backend.app.core.config import STAGE02_DUAL_MODEL_ID

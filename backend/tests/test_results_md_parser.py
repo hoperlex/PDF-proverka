@@ -22,6 +22,10 @@ from backend.app.services.common.results_md import (
     parse_stamp_line,
 )
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SAMPLES_DIR = REPO_ROOT / "experiments" / "новая структура."
 

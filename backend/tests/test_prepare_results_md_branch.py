@@ -19,6 +19,10 @@ from backend.app.pipeline.stages.prepare.task_builder import (
 )
 import backend.app.pipeline.stages.prepare.codex_targeted_findings as ctf
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 # ── Фикстуры форматов ────────────────────────────────────────────────────────
 

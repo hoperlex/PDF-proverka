@@ -28,6 +28,10 @@ if str(_ROOT) not in sys.path:
 
 from backend.app.core import portal_auth  # noqa: E402
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 _USER = "ivan"
 _PASSWORD = "s3cret-pw"
 _SECRET = "test-secret-" + "x" * 40

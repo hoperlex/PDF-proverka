@@ -11,6 +11,11 @@ from backend.app.pipeline.stages.block_grounding.singleline_graph_geometry impor
     _fmt_lighting_run,
 )
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 PAGE_H = 1000.0  # top-полоса = Y < 0.30·H = 300
 
 

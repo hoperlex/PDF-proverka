@@ -25,6 +25,9 @@ if str(_ROOT) not in sys.path:
 
 from backend.app.pipeline.stages.norms import clause_binding as cb  # noqa: E402
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 class _FakeApi:
     """База знает ГОСТ 21.110-2013 п. 4.2 и ГОСТ Р 21.101-2020 п. 5.1.6."""

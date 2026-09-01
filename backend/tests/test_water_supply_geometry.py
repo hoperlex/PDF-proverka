@@ -23,6 +23,7 @@ def W(x0, y0, x1, y1, text):
     return (x0, y0, x1, y1, text, 0, 0, 0)
 
 
+@pytest.mark.integration
 def test_levels_by_elevation_linear_recovers():
     # этажи с шагом 3.15 м, y убывает при росте отметки (верх листа = высокий этаж)
     words = []
@@ -35,12 +36,14 @@ def test_levels_by_elevation_linear_recovers():
     assert fn(500 - 4 * 30) > fn(500)
 
 
+@pytest.mark.unit
 def test_levels_by_elevation_needs_three():
     words = [W(0, 0, 10, 10, "+3.150"), W(0, 30, 10, 40, "+6.300")]
     fn, q = levels_by_elevation(words)
     assert fn is None and q == 0.0
 
 
+@pytest.mark.unit
 def test_extract_floors_reads_number():
     words = [W(100, 200, 140, 212, "Этаж"), W(145, 200, 160, 212, "16"),
              W(100, 260, 140, 272, "Этаж"), W(145, 260, 160, 272, "15")]
@@ -48,6 +51,7 @@ def test_extract_floors_reads_number():
     assert sorted(f[2] for f in floors) == [15, 16]
 
 
+@pytest.mark.unit
 def test_extract_segments_dia_and_wall():
     words = [W(300, 300, 330, 312, "В2.2"), W(335, 300, 370, 312, "⌀57x"),
              W(375, 300, 400, 312, "3,5")]
@@ -57,6 +61,7 @@ def test_extract_segments_dia_and_wall():
     assert s[2] == "В2.2" and s[3] == "⌀57x" and s[4] == "3,5"
 
 
+@pytest.mark.unit
 def test_dia_mm():
     assert _dia_mm("⌀57x") == 57
     assert _dia_mm("∅100") == 100
@@ -64,12 +69,14 @@ def test_dia_mm():
     assert _dia_mm("abc") is None
 
 
+@pytest.mark.unit
 def test_cluster_by_x():
     items = [(100, 0, "a"), (110, 0, "b"), (500, 0, "c"), (505, 0, "d")]
     cl = _cluster_by_x(items, tol=30)
     assert len(cl) == 2 and len(cl[0]) == 2 and len(cl[1]) == 2
 
 
+@pytest.mark.unit
 def test_water_tokens_gate():
     # электрический текст → НЕТ water-токенов → пусто (fail-soft: электроблок не уйдёт в water)
     assert _water_distinct_tokens("QF3.1 ВА-300 РП1 ГРЩ шинопровод К1.1.6") == []
@@ -83,6 +90,7 @@ _PILOT = ("experiments/блоки разных дисциплин/ВК/"
           "03_13АВ-РД-ВК2-К6_V1__4VEF-CC3P-P7K.pdf")
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not os.path.exists(_PILOT), reason="пилот-PDF отсутствует (experiments/ в gitignore)")
 def test_pilot_block_extraction():
     import fitz

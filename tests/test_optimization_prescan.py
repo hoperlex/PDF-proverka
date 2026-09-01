@@ -5,6 +5,11 @@ from backend.app.pipeline.stages.optimization.prescan import (
     scan_optimization_opportunities,
 )
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_prescan_finds_large_mounting_position_and_repeated_family():
     md_text = """

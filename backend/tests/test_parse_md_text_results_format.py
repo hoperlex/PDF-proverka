@@ -21,6 +21,10 @@ import pytest
 from backend.app.services.common.project_service import parse_md_text
 from backend.app.services.common.results_md import parse_results_md
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SAMPLE_ZIP = REPO_ROOT / "experiments" / "новая структура." / "ПД-00542664-АР1.2-1_V1 (4).zip"
 

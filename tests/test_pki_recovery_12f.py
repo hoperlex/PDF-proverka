@@ -37,6 +37,10 @@ from backend.app.services.distributed_workers.settings import (
 )
 from scripts import manage_distributed_worker_state as state_tool
 
+# Lane §5 по нодам: запуск issuer дочерним процессом — network, работа с
+# деревом PKI на диске — integration. SIGTERM в конце — штатная остановка
+# сервиса, перезапуска и проверки восстановления нет, значит не chaos.
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -150,6 +154,7 @@ def _reset_database_state(monkeypatch):
     database.reset_state_for_tests()
 
 
+@pytest.mark.integration
 def test_shared_gid_setting_is_typed_and_fail_closed(monkeypatch, tmp_path):
     monkeypatch.setenv("DISTRIBUTED_WORKERS_DATA_DIR", str(tmp_path / "state"))
     monkeypatch.setenv("DISTRIBUTED_WORKERS_SHARED_STATE", "true")
@@ -172,6 +177,7 @@ def test_shared_gid_setting_is_typed_and_fail_closed(monkeypatch, tmp_path):
         get_settings()
 
 
+@pytest.mark.integration
 def test_default_state_permissions_remain_private(monkeypatch, tmp_path):
     monkeypatch.setenv("DISTRIBUTED_WORKERS_ENABLED", "true")
     monkeypatch.setenv("DISTRIBUTED_WORKERS_DATA_DIR", str(tmp_path / "private"))
@@ -181,6 +187,7 @@ def test_default_state_permissions_remain_private(monkeypatch, tmp_path):
     assert stat.S_IMODE(settings.db_path.stat().st_mode) == 0o600
 
 
+@pytest.mark.integration
 def test_shared_state_permissions_are_exact_and_idempotent(monkeypatch, tmp_path):
     settings = _configure_shared_state(monkeypatch, tmp_path / "shared")
     database.ensure_ready(settings)
@@ -215,6 +222,7 @@ def test_shared_state_permissions_are_exact_and_idempotent(monkeypatch, tmp_path
     assert stat.S_IMODE(info.st_mode) == 0o660
 
 
+@pytest.mark.integration
 def test_shared_mode_missing_default_acl_fails_closed_without_repair(
     monkeypatch, tmp_path
 ):
@@ -224,6 +232,7 @@ def test_shared_mode_missing_default_acl_fails_closed_without_repair(
         database.ensure_ready(settings)
 
 
+@pytest.mark.integration
 def test_unrepairable_shared_gid_mismatch_fails_closed(monkeypatch, tmp_path):
     settings = _configure_shared_state(monkeypatch, tmp_path / "wrong-gid")
     monkeypatch.setenv("DISTRIBUTED_WORKERS_SHARED_GID", str(os.getgid() + 1))
@@ -236,6 +245,7 @@ def test_unrepairable_shared_gid_mismatch_fails_closed(monkeypatch, tmp_path):
         database.ensure_ready(get_settings())
 
 
+@pytest.mark.network
 def test_complete_partial_run_is_validation_only_and_preserves_ca(tmp_path):
     paths = _material(tmp_path / "partial-production-like-pki")
     before = _sha(paths)
@@ -271,6 +281,7 @@ def test_complete_partial_run_is_validation_only_and_preserves_ca(tmp_path):
     assert json.loads(second.stdout)["private_key_contents_exposed"] is False
 
 
+@pytest.mark.network
 def test_launcher_from_immutable_copy_recovers_after_failed_partial_run_and_signs(
     monkeypatch, tmp_path
 ):
@@ -415,6 +426,7 @@ def test_launcher_from_immutable_copy_recovers_after_failed_partial_run_and_sign
     assert process.returncode == 0, stdout + stderr
 
 
+@pytest.mark.integration
 def test_systemd_sources_pin_module_root_and_shared_umask():
     issuer = (REPO_ROOT / "deploy/systemd/web-ocr-worker-cert-issuer.service").read_text()
     gateway = (REPO_ROOT / "deploy/systemd/web-ocr-agent-gateway.service").read_text()

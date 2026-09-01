@@ -92,6 +92,7 @@ def _reset_pool():
             os.environ[k] = v
 
 
+@pytest.mark.unit
 def test_pool_size_reserves_cores_for_backend(monkeypatch):
     """Авто-размер оставляет ядра под HTTP/WS и не превышает потолок."""
     monkeypatch.delenv("CPU_POOL_WORKERS", raising=False)
@@ -103,6 +104,7 @@ def test_pool_size_reserves_cores_for_backend(monkeypatch):
     assert cpu_pool.pool_workers() == 1
 
 
+@pytest.mark.unit
 def test_env_overrides_pool_size(monkeypatch):
     monkeypatch.setenv("CPU_POOL_WORKERS", "3")
     assert cpu_pool.pool_workers() == 3
@@ -113,6 +115,7 @@ def test_env_overrides_pool_size(monkeypatch):
     assert cpu_pool.pool_workers() == min(cpu_pool.DEFAULT_MAX_WORKERS, 8 - cpu_pool.RESERVED_CORES)
 
 
+@pytest.mark.unit
 def test_single_worker_runs_inline_without_pool(monkeypatch):
     """CPU_POOL_WORKERS=1 → пул не поднимаем, считаем в потоке (как до параллели)."""
     monkeypatch.setenv("CPU_POOL_WORKERS", "1")
@@ -123,6 +126,7 @@ def test_single_worker_runs_inline_without_pool(monkeypatch):
     assert pid == os.getpid()  # тот же процесс — работа не уехала в пул
 
 
+@pytest.mark.unit
 def test_work_spreads_across_processes(monkeypatch):
     """Главное свойство: задачи считаются в РАЗНЫХ процессах, а не под одним GIL."""
     monkeypatch.setenv("CPU_POOL_WORKERS", "4")
@@ -138,6 +142,7 @@ def test_work_spreads_across_processes(monkeypatch):
     assert sorted(m for _, _, m in res) == list(range(12))
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(
     not hasattr(os, "sched_setaffinity"), reason="привязка к ядрам только на Linux"
 )
@@ -161,6 +166,7 @@ def test_pin_cores_gives_each_worker_own_core(monkeypatch):
     assert len(affinities) == 2, f"воркеры сели на одно ядро: {affinities}"
 
 
+@pytest.mark.unit
 def test_broken_pool_falls_back_to_thread(monkeypatch):
     """Сломанный executor не роняет этап — досчитываем в потоке."""
     from concurrent.futures import BrokenExecutor
@@ -192,6 +198,7 @@ def test_broken_pool_falls_back_to_thread(monkeypatch):
     assert cpu_pool._POOL_DISABLED is True
 
 
+@pytest.mark.unit
 def test_pool_info_reports_state(monkeypatch):
     monkeypatch.setenv("CPU_POOL_WORKERS", "2")
     info = cpu_pool.pool_info()
@@ -216,6 +223,7 @@ def test_pool_info_reports_state(monkeypatch):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_normal_completion_frees_the_worker(monkeypatch):
     """Штатный путь: задача досчитала — воркер снова принимает работу."""
     monkeypatch.setenv("CPU_POOL_WORKERS", "2")
@@ -235,6 +243,7 @@ def test_normal_completion_frees_the_worker(monkeypatch):
     assert stats["failed"] == 0
 
 
+@pytest.mark.unit
 def test_task_error_does_not_take_the_pool_down(monkeypatch):
     """Падение задачи — это падение задачи, а не общего бюджета ядер.
 
@@ -259,6 +268,7 @@ def test_task_error_does_not_take_the_pool_down(monkeypatch):
     assert cpu_pool.pool_info()["alive"] is True
 
 
+@pytest.mark.unit
 def test_cancel_returns_immediately_and_is_counted(monkeypatch):
     """Отмена не подвешивает вызывающего — и честно считается.
 
@@ -283,6 +293,7 @@ def test_cancel_returns_immediately_and_is_counted(monkeypatch):
     assert cpu_pool.pool_stats()["cancelled"] == 1
 
 
+@pytest.mark.unit
 def test_shutdown_is_bounded_and_kills_a_hung_worker(monkeypatch):
     """Завершение ограничено временем даже при заведомо зависшем воркере.
 
@@ -316,6 +327,7 @@ def test_shutdown_is_bounded_and_kills_a_hung_worker(monkeypatch):
     assert stats["last_shutdown_sec"] > 0
 
 
+@pytest.mark.unit
 def test_shutdown_leaves_no_worker_processes(monkeypatch):
     """После завершения не остаётся ни одного процесса пула."""
     monkeypatch.setenv("CPU_POOL_WORKERS", "2")
@@ -336,6 +348,7 @@ def test_shutdown_leaves_no_worker_processes(monkeypatch):
     assert not alive, f"после shutdown остались процессы пула: {sorted(alive)}"
 
 
+@pytest.mark.unit
 def test_shutdown_is_idempotent(monkeypatch):
     """Повтор безопасен: второй и третий вызов ничего не ждут и не падают."""
     monkeypatch.setenv("CPU_POOL_WORKERS", "2")
@@ -352,6 +365,7 @@ def test_shutdown_is_idempotent(monkeypatch):
     assert cpu_pool.pool_stats()["shutdowns"] == 1
 
 
+@pytest.mark.unit
 def test_pool_does_not_revive_after_shutdown(monkeypatch):
     """Поздняя задача не поднимает новый пул уже после завершения бэкенда."""
     monkeypatch.setenv("CPU_POOL_WORKERS", "2")
@@ -367,6 +381,7 @@ def test_pool_does_not_revive_after_shutdown(monkeypatch):
     assert info["alive"] is False
 
 
+@pytest.mark.unit
 def test_reset_pool_state_allows_a_new_lifecycle(monkeypatch):
     """Явный сброс — единственный способ снова поднять пул в том же процессе."""
     monkeypatch.setenv("CPU_POOL_WORKERS", "2")
@@ -380,6 +395,7 @@ def test_reset_pool_state_allows_a_new_lifecycle(monkeypatch):
     assert cpu_pool.pool_info()["shutdown"] is False
 
 
+@pytest.mark.network
 def test_backend_process_exits_despite_a_hung_worker(tmp_path):
     """Сквозная проверка: интерпретатор ВЫХОДИТ, а не висит в atexit.
 
@@ -433,6 +449,7 @@ def test_backend_process_exits_despite_a_hung_worker(tmp_path):
     assert elapsed < 30, f"процесс выходил {elapsed:.1f} с — бюджет не соблюдён"
 
 
+@pytest.mark.unit
 def test_shutdown_budget_rejects_nonsense(monkeypatch):
     """Бюджет, который нельзя выдержать, не принимается молча."""
     monkeypatch.delenv("CPU_POOL_SHUTDOWN_SEC", raising=False)
@@ -446,6 +463,7 @@ def test_shutdown_budget_rejects_nonsense(monkeypatch):
     assert cpu_pool.shutdown_budget_sec() == 1.5
 
 
+@pytest.mark.unit
 def test_lifecycle_telemetry_has_no_high_cardinality_labels():
     """Счётчики — скаляры с фиксированным набором имён.
 

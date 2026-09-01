@@ -5,6 +5,12 @@ from types import SimpleNamespace
 
 from backend.app.pipeline.manager import PipelineManager
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _manager_with_log_capture(calls: list[tuple]) -> PipelineManager:
     manager = object.__new__(PipelineManager)

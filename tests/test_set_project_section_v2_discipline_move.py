@@ -19,6 +19,10 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _make_doc(v2_root: Path, code: str, disc: str) -> Path:
     doc_dir = v2_root / "objects" / "OBJ" / "disciplines" / disc / "documents" / code

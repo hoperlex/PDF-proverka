@@ -11,6 +11,9 @@ import pytest
 
 from backend.app.services.common.process_runner import run_command
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 # Дефолтный лимит asyncio.StreamReader — ровно на нём всё и сломалось.
 _ASYNCIO_DEFAULT_LIMIT = 64 * 1024
 

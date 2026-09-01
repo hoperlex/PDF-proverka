@@ -27,6 +27,10 @@ if str(_ROOT) not in sys.path:
 from backend.app.services.common import project_service, version_service  # noqa: E402
 import backend.app.services.storage.storage_write_facade as swf  # noqa: E402
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 
 # ─── facade.remove_project_from_v2: boundary matching + legacy no-op ──────────
 

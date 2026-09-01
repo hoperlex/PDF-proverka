@@ -10,6 +10,9 @@ from backend.app.services.text_analysis.cross_section_rules import (
     is_cross_section_item,
 )
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 # ---------------------------------------------------------------------------
 # has_cross_section_context.

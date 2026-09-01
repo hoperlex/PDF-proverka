@@ -7,6 +7,11 @@ from backend.scripts.run_codex_subscription_vision_benchmark import (
 )
 from backend.scripts.run_stage02_codex_block_ab import extract_codex_tokens
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_token_parser_does_not_append_following_iso_year():
     text = "tokens used\n5,185\n2026-07-11T12:00:00Z"

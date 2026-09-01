@@ -12,6 +12,10 @@ import pytest
 from backend.app.pipeline.stages.norms.runner import _optimization_intact
 from backend.app.core.config import OPTIMIZATION_NORM_FIX_TASK_TEMPLATE
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write(path, items):
     path.write_text(

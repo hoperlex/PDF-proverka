@@ -13,6 +13,9 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 _ROOT = Path(__file__).resolve().parents[2]
 _TEMPLATES = {
     "ru": _ROOT / "prompts" / "pipeline" / "ru" / "text_analysis_task.md",

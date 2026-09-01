@@ -4,6 +4,9 @@ import pytest
 
 from backend.app.services.stage_comparison import text_differences as td
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def fragment(fragment_id: str, text: str, page: int = 1) -> dict:
     return {

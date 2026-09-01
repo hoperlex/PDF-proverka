@@ -18,6 +18,10 @@ from backend.app.services.common import version_service
 from backend.app.pipeline.stages.block_grounding.block_profile_registry import (
     load_prepared_package)
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 FULL_MD = "\n".join(
     ["# План потолков и освещения — поквартирное описание", ""]
     + [f"## Квартира {n}\n\nтекст квартиры {n}" for n in range(700, 710)]

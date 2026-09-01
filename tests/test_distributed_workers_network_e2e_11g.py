@@ -240,6 +240,7 @@ def _docstring_ids(tree: ast.AST) -> set[int]:
 
 
 # ═════════════ A. Способность переживает провод ══════════════════════════════
+@pytest.mark.integration
 def test_a_capability_survives_the_center_to_worker_roundtrip():
     """Способность не теряется ни на одном стыке «центр → провод → воркер».
 
@@ -272,6 +273,7 @@ def test_a_capability_survives_the_center_to_worker_roundtrip():
 
 
 # ═════════════ B. Обратная совместимость ═════════════════════════════════════
+@pytest.mark.integration
 def test_b_pre_11g_payload_without_capability_still_parses():
     """Нагрузка, сохранённая ДО 11G, обязана разбираться всеми тремя рубежами.
 
@@ -292,6 +294,7 @@ def test_b_pre_11g_payload_without_capability_still_parses():
     assert requirement is not None and requirement.capability is None
 
 
+@pytest.mark.integration
 def test_b_params_without_provider_requirement_still_parse(tmp_path):
     """Задание без требования — это «как раньше», а не негодное задание.
 
@@ -308,6 +311,7 @@ def test_b_params_without_provider_requirement_still_parse(tmp_path):
 
 
 # ═════════════ C. Fail closed на трёх валидаторах ════════════════════════════
+@pytest.mark.integration
 def test_c_provider_required_without_capability_is_refused_by_all_three(tmp_path):
     """«Зови модель, но чем — не скажу» отвергается КАЖДЫМ из трёх рубежей.
 
@@ -367,6 +371,7 @@ def _version_with_blocks(root: Path, *, graphic_blocks: int) -> Path:
     return version
 
 
+@pytest.mark.integration
 def test_d_backend_passes_the_requirement_into_create_audit_job(
     center_env, admin, tmp_path, monkeypatch
 ):
@@ -451,6 +456,7 @@ def test_d_backend_passes_the_requirement_into_create_audit_job(
 
 
 # ═════════════ E. Хранение в БД ══════════════════════════════════════════════
+@pytest.mark.integration
 def test_e_pipeline_params_survive_the_json_round_trip():
     """Нагрузка задания хранится в БД строкой JSON — способность обязана выжить.
 
@@ -474,6 +480,7 @@ def test_e_pipeline_params_survive_the_json_round_trip():
 
 
 # ═════════════ F. Сериализация выдачи задания ════════════════════════════════
+@pytest.mark.integration
 def test_f_assignment_params_keep_the_capability():
     """`JobAssignment.params` — объединение двух моделей, и оно теряет поля молча.
 
@@ -518,6 +525,7 @@ def test_f_assignment_params_keep_the_capability():
 
 
 # ═════════════ G. Разбор нагрузки на воркере ═════════════════════════════════
+@pytest.mark.integration
 def test_g_worker_parses_full_central_params_with_capability(tmp_path):
     """Полная нагрузка центра принимается воркером, и способность доезжает в spec.
 
@@ -552,6 +560,7 @@ def test_g_worker_parses_full_central_params_with_capability(tmp_path):
 
 
 # ═════════════ H/I. Неизвестный провайдер и неизвестная способность ══════════
+@pytest.mark.integration
 def test_h_unsupported_provider_is_refused_on_both_sides():
     """Провайдер вне закрытого набора отвергается и на центре, и на воркере.
 
@@ -578,6 +587,7 @@ def test_h_unsupported_provider_is_refused_on_both_sides():
         )
 
 
+@pytest.mark.integration
 def test_i_unsupported_capability_is_refused_on_both_sides():
     """Незнакомая способность — отказ, а не «возьмём модель по умолчанию».
 
@@ -602,6 +612,7 @@ def test_i_unsupported_capability_is_refused_on_both_sides():
         )
 
 
+@pytest.mark.integration
 def test_center_capabilities_are_a_subset_of_the_worker_policy():
     """Центр не вправе заказать способность, которую ни один воркер не разрешит.
 
@@ -621,6 +632,7 @@ def test_center_capabilities_are_a_subset_of_the_worker_policy():
 
 
 # ═════════════ J. Точную модель называет ЛОКАЛЬНАЯ политика ══════════════════
+@pytest.mark.integration
 def test_j_same_capability_resolves_to_different_models_per_machine(tmp_path,
                                                                     monkeypatch):
     """Одна способность на двух машинах даёт РАЗНЫЕ модели — и это правильно.
@@ -654,6 +666,7 @@ def test_j_same_capability_resolves_to_different_models_per_machine(tmp_path,
 
 
 # ═════════════ K. Запрет на точную модель от центра ══════════════════════════
+@pytest.mark.integration
 def test_k_payload_carrying_an_exact_model_is_refused():
     """Требование с `model` отвергается всеми тремя валидаторами.
 
@@ -681,6 +694,7 @@ def test_k_payload_carrying_an_exact_model_is_refused():
 _MODEL_MARKERS = ("claude-opus", "opus", "sonnet", "gpt-", "codex/")
 
 
+@pytest.mark.integration
 def test_k_no_model_identifier_reaches_the_requirement_or_its_builders(tmp_path):
     """Ни в требовании, ни в строящем его коде центра нет идентификатора модели.
 
@@ -772,6 +786,7 @@ def _auto_grant_config(worker_root: Path, exe: Path, tmp_path: Path):
     return config
 
 
+@pytest.mark.network
 def test_l_binding_is_written_without_any_operator_grant_file(worker_root, tmp_path):
     """Привязка выписывается САМА, без файла, созданного человеком.
 
@@ -805,6 +820,7 @@ def test_l_binding_is_written_without_any_operator_grant_file(worker_root, tmp_p
     assert binding["job_id"] == "job-11g" and binding["attempt_id"] == "att-11g"
 
 
+@pytest.mark.integration
 def test_m_auto_grant_records_its_provenance_and_stays_private(worker_root):
     """У автоматического разрешения обязан быть читаемый след и режим 0600.
 
@@ -836,6 +852,7 @@ def test_m_auto_grant_records_its_provenance_and_stays_private(worker_root):
 
 
 # ═════════════ N. Несовместимый воркер ═══════════════════════════════════════
+@pytest.mark.integration
 def test_n_requirement_is_not_built_for_a_worker_the_center_cannot_run_on(
     center_env, monkeypatch
 ):
@@ -920,6 +937,7 @@ def _command_head_literals(call: ast.Call) -> list[str]:
     return heads
 
 
+@pytest.mark.integration
 def test_ac_ssh_is_not_a_job_transport():
     """Задание не переносится по SSH ни на воркер, ни обратно.
 
@@ -954,6 +972,7 @@ def test_ac_ssh_is_not_a_job_transport():
 
 
 # ═════════════ AD. Воркер не открывает входящих портов ═══════════════════════
+@pytest.mark.integration
 def test_ad_worker_opens_no_inbound_port():
     """Воркер только ЗВОНИТ центру и никогда не слушает сам.
 
@@ -994,6 +1013,7 @@ def test_ad_worker_opens_no_inbound_port():
 
 
 # ═════════════ AE. TLS ═══════════════════════════════════════════════════════
+@pytest.mark.integration
 def test_ae_client_verifies_tls_and_never_follows_redirects():
     """Проверка сертификата включена всегда, редиректы не выполняются никогда.
 
@@ -1041,6 +1061,7 @@ def test_ae_client_verifies_tls_and_never_follows_redirects():
     assert "AUDIT_WORKER_VERIFY_TLS" not in source
 
 
+@pytest.mark.integration
 def test_ae_http_to_a_foreign_host_is_refused(tmp_path):
     """HTTP к внешнему хосту роняет агента на старте, а не работает молча.
 
@@ -1074,6 +1095,7 @@ def test_ae_http_to_a_foreign_host_is_refused(tmp_path):
 
 
 # ═════════════ AF. Секреты и приватные пути ══════════════════════════════════
+@pytest.mark.integration
 def test_af_requirement_and_binding_carry_no_credentials_or_paths(tmp_path):
     """Ни в требовании, ни в публичном виде привязки нет секретов и путей.
 
@@ -1107,6 +1129,7 @@ def test_af_requirement_and_binding_carry_no_credentials_or_paths(tmp_path):
         assert banned not in public
 
 
+@pytest.mark.integration
 def test_af_environment_secrets_do_not_leak_into_the_requirement(tmp_path,
                                                                  monkeypatch):
     """Снимок окружения не имеет права попасть в требование через чёрный ход.
@@ -1136,6 +1159,7 @@ def test_af_environment_secrets_do_not_leak_into_the_requirement(tmp_path,
 
 
 # ═════════════ Дефект, найденный ПЕРВЫМ сетевым прогоном ═════════════════════
+@pytest.mark.integration
 def test_md_prescan_report_path_is_portable(tmp_path):
     """Пакет результата не должен отвергаться из-за `01_text_prescan.json`.
 

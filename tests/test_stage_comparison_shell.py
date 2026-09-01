@@ -11,6 +11,12 @@ from fastapi.testclient import TestClient
 from backend.app.api.routers import stage_comparison as router_mod
 from backend.app.services.stage_comparison import store
 
+import pytest
+
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 
 def _pdf_pages_bytes(*labels: str) -> bytes:
     document = fitz.open()

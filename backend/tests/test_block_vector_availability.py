@@ -5,6 +5,11 @@ from backend.app.pipeline.stages.block_context.contract import (
     source_has_vector_text,
 )
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_only_real_pdf_vector_sources_enable_txt():
     assert source_has_vector_text("structured_hvac") is True

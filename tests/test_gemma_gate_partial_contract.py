@@ -8,6 +8,11 @@ from __future__ import annotations
 
 from backend.app.pipeline.stages.gemma_enrichment import gemma_gate as gg
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_dead_partial_flag_function_removed():
     # функция-пустышка удалена (была 0 эффективных потребителей)

@@ -27,6 +27,12 @@ from backend.app.services.common.md_resolver import (  # noqa: E402
     STATUS_NOT_FOUND,
 )
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _mkdir(p: Path) -> Path:
     p.mkdir(parents=True, exist_ok=True)

@@ -20,6 +20,9 @@ from backend.app.pipeline.manager import PipelineManager
 from backend.app.services.storage import storage_write_facade as swf
 from backend.app.services.storage.storage_write_facade import StorageWriteFacade
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def _job(job_id="run-123"):
     return types.SimpleNamespace(job_id=job_id)

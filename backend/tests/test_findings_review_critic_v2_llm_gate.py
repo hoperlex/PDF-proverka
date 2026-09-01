@@ -79,6 +79,7 @@ def _make_decision(
 # ─── Prompt loader ────────────────────────────────────────────────────────────
 
 class TestPromptLoader:
+    @pytest.mark.unit
     def test_loads_taxonomy_prompt_by_default(self):
         """Taxonomy prompt takes priority over experimental prompt."""
         text, label = load_prompt()
@@ -91,12 +92,14 @@ class TestPromptLoader:
             or "Experiments_Kuldyaev" in label
         ), f"Unexpected prompt label: {label}"
 
+    @pytest.mark.unit
     def test_fallback_when_path_not_found(self, tmp_path):
         nonexistent = tmp_path / "nonexistent.md"
         text, label = load_prompt(nonexistent)
         assert text  # fallback is non-empty
         assert len(text) > 50
 
+    @pytest.mark.integration
     def test_uses_custom_path(self, tmp_path):
         custom = tmp_path / "custom_prompt.md"
         custom.write_text("Custom critic prompt text", encoding="utf-8")
@@ -108,6 +111,10 @@ class TestPromptLoader:
 # ─── Candidate selection ─────────────────────────────────────────────────────
 
 class TestSelectCandidates:
+    # Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни
+    # сокетов.
+    pytestmark = pytest.mark.unit
+
     def test_reject_not_selected(self):
         decisions = [
             _make_decision("F-1", decision="reject", evidence_quality=EVIDENCE_VALID),
@@ -175,6 +182,8 @@ class TestSelectCandidates:
 # ─── Evidence cap enforcement ─────────────────────────────────────────────────
 
 class TestEvidenceCap:
+    pytestmark = pytest.mark.unit
+
     def test_weak_evidence_accept_becomes_borderline(self):
         """LLM accept on weak evidence must be capped to borderline."""
         llm = LLMCriticDecision(
@@ -246,6 +255,8 @@ class TestEvidenceCap:
 # ─── Response parser ─────────────────────────────────────────────────────────
 
 class TestResponseParser:
+    pytestmark = pytest.mark.unit
+
     def test_parses_valid_json_array(self):
         text = json.dumps([{
             "finding_id": "F-001",
@@ -342,6 +353,8 @@ class TestResponseParser:
 # ─── Mock provider ────────────────────────────────────────────────────────────
 
 class TestMockProvider:
+    pytestmark = pytest.mark.unit
+
     def test_returns_valid_json(self):
         provider = MockProvider()
         candidates = [
@@ -389,6 +402,8 @@ class TestMockProvider:
 # ─── LLM gate: main function ─────────────────────────────────────────────────
 
 class TestRunLLMGate:
+    pytestmark = pytest.mark.unit
+
     def test_empty_candidates_returns_empty_result(self):
         decisions = [
             _make_decision("F-1", decision="reject", evidence_quality=EVIDENCE_NONE),
@@ -477,6 +492,8 @@ class TestRunLLMGate:
 # ─── Merge logic ─────────────────────────────────────────────────────────────
 
 class TestMergeLLMDecisions:
+    pytestmark = pytest.mark.unit
+
     def _raw_by_id(self, ids: list[str]) -> dict:
         return {fid: {"id": fid} for fid in ids}
 
@@ -583,6 +600,8 @@ class TestMergeLLMDecisions:
 
 class TestFullPipelineWithMock:
     """Integration tests: run_critic_v2_offline → run_llm_gate → merge."""
+    pytestmark = pytest.mark.unit
+
 
     def _run_full(self, fixture_file: str, inject_decision: Optional[str] = None):
         findings = _input_findings(fixture_file)
@@ -706,6 +725,9 @@ class TestFullPipelineWithMock:
 
 class TestCLIWithLLMGate:
     """Test the --llm-gate CLI flag via subprocess."""
+    # Primary lane §5: network — запускает настоящие дочерние процессы.
+    pytestmark = pytest.mark.network
+
 
     def test_cli_llm_gate_mock_good_findings(self, tmp_path):
         """CLI --run-critic-v2 --llm-gate --llm-provider mock must succeed."""

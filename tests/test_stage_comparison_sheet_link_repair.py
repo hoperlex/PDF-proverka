@@ -4,6 +4,9 @@ import pytest
 
 from backend.app.services.stage_comparison import sheet_link_repair as repair
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def index(*titles: str) -> list[dict]:
     return [

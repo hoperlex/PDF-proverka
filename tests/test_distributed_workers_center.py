@@ -25,6 +25,10 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: integration — фикстура settings у каждой ноды создаёт sqlite центра в
+# tmp_path.
+pytestmark = pytest.mark.integration
+
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))

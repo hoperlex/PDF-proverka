@@ -12,6 +12,12 @@ from backend.app.pipeline.stages.gemma_enrichment.gemma_enrichment_contract impo
     validate_gemma_summary,
 )
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 _WMODE = "AUDIT_PROJECTS_V2_WRITE_MODE"
 
 

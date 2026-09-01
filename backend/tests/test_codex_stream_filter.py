@@ -15,6 +15,9 @@ from backend.app.services.common.codex_stream_filter import (
 )
 from backend.app.pipeline.stages.optimization.ensemble import _make_provider_on_output
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 # ─── Подавление транскрипта ─────────────────────────────────────────
 

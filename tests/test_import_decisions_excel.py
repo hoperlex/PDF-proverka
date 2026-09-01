@@ -13,6 +13,10 @@ import pytest
 import backend.app.services.common.project_service as project_service
 import backend.app.services.knowledge_base.knowledge_base_service as kb
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def fake_projects(tmp_path, monkeypatch):

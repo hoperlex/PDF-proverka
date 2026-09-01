@@ -6,6 +6,11 @@ from backend.app.services.distributed_workers import job_service
 from backend.app.services.distributed_workers import settings as worker_settings
 from tools import physical_12e_harness
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_sequential_job_label_obeys_test_job_contract():
     from backend.app.models.distributed_workers import TestJobParams

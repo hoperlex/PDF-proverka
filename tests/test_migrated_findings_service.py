@@ -22,6 +22,10 @@ if str(_ROOT) not in sys.path:
 
 from backend.app.services.findings import migrated_findings_service as svc
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 
 # ─── Fixtures ────────────────────────────────────────────────────────────
 

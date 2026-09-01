@@ -76,6 +76,7 @@ def _bundle(pdf=True, md=True, result=True, ocr=True, pdf_count=1):
 # ─── happy path ──────────────────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_full_bundle_creates_legacy_and_triggers_v2(env):
     projects_dir, shadow_calls = env
     res = project_service.save_uploaded_project_folder(
@@ -98,6 +99,7 @@ def test_full_bundle_creates_legacy_and_triggers_v2(env):
     assert shadow_calls == [str(dest)]
 
 
+@pytest.mark.integration
 def test_v2_primary_upload_stages_to_temp_and_skips_legacy(env, monkeypatch):
     """В v2-primary загрузка НЕ пишет в legacy projects/, а мигрирует из temp-staging."""
     projects_dir, shadow_calls = env
@@ -137,6 +139,7 @@ def test_v2_primary_upload_stages_to_temp_and_skips_legacy(env, monkeypatch):
     assert res["dest"] == "EOM/PRJ-V2"
 
 
+@pytest.mark.integration
 def test_ocr_html_is_saved(env):
     projects_dir, _ = env
     res = project_service.save_uploaded_project_folder(
@@ -148,6 +151,7 @@ def test_ocr_html_is_saved(env):
 # ─── недостающие файлы — не блокируют, дают warning ───────────────────────────
 
 
+@pytest.mark.integration
 def test_missing_ocr_does_not_block(env):
     res = project_service.save_uploaded_project_folder(
         object_id="obj-1", discipline="EOM", project_name="NO-OCR",
@@ -156,6 +160,7 @@ def test_missing_ocr_does_not_block(env):
     assert any("ocr" in w.lower() for w in res["warnings"])
 
 
+@pytest.mark.integration
 def test_missing_result_warns_not_block(env):
     res = project_service.save_uploaded_project_folder(
         object_id="obj-1", discipline="EOM", project_name="NO-RES",
@@ -167,6 +172,7 @@ def test_missing_result_warns_not_block(env):
 # ─── PDF-валидация ───────────────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_no_pdf_raises(env):
     with pytest.raises(project_service.UploadFolderError, match="не найден PDF"):
         project_service.save_uploaded_project_folder(
@@ -174,6 +180,7 @@ def test_no_pdf_raises(env):
             files=_bundle(pdf=False))
 
 
+@pytest.mark.integration
 def test_multiple_pdf_raises(env):
     with pytest.raises(project_service.UploadFolderError, match="несколько PDF"):
         project_service.save_uploaded_project_folder(
@@ -184,6 +191,7 @@ def test_multiple_pdf_raises(env):
 # ─── дубли ───────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_duplicate_legacy_raises_conflict(env):
     project_service.save_uploaded_project_folder(
         object_id="obj-1", discipline="EOM", project_name="DUP", files=_bundle())
@@ -192,6 +200,7 @@ def test_duplicate_legacy_raises_conflict(env):
             object_id="obj-1", discipline="EOM", project_name="DUP", files=_bundle())
 
 
+@pytest.mark.integration
 def test_duplicate_v2_raises_conflict(env, monkeypatch):
     monkeypatch.setattr(project_service, "_v2_document_exists", lambda *a, **k: True)
     with pytest.raises(project_service.UploadFolderConflict, match="projects_v2"):
@@ -202,24 +211,28 @@ def test_duplicate_v2_raises_conflict(env, monkeypatch):
 # ─── имена / path-traversal ──────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_project_name_underscore_prefix_rejected(env):
     with pytest.raises(project_service.UploadFolderError, match="не может начинаться"):
         project_service.save_uploaded_project_folder(
             object_id="obj-1", discipline="EOM", project_name="_hidden", files=_bundle())
 
 
+@pytest.mark.integration
 def test_project_name_with_slash_rejected(env):
     with pytest.raises(project_service.UploadFolderError, match="Недопустимое название"):
         project_service.save_uploaded_project_folder(
             object_id="obj-1", discipline="EOM", project_name="a/b", files=_bundle())
 
 
+@pytest.mark.integration
 def test_unknown_object_rejected(env):
     with pytest.raises(project_service.UploadFolderError, match="Объект не найден"):
         project_service.save_uploaded_project_folder(
             object_id="nope", discipline="EOM", project_name="X", files=_bundle())
 
 
+@pytest.mark.integration
 def test_path_traversal_degenerate_name_rejected(env):
     """Имя, схлопывающееся в '..'/пусто (нет валидного basename) — отклоняется."""
     for bad in ("..", "foo/..", "C:\\\\"):
@@ -229,6 +242,7 @@ def test_path_traversal_degenerate_name_rejected(env):
                 files=[(bad, _PDF)])
 
 
+@pytest.mark.integration
 def test_path_traversal_filename_sanitized_to_basename(env):
     """`../../evil.pdf` не выходит за dest — пишется плоско как evil.pdf."""
     projects_dir, _ = env
@@ -242,6 +256,7 @@ def test_path_traversal_filename_sanitized_to_basename(env):
     assert not (projects_dir / "evil.pdf").exists()
 
 
+@pytest.mark.integration
 def test_webkit_relative_path_sanitized_to_basename(env):
     projects_dir, _ = env
     files = [("PRJ/sub/doc.pdf", _PDF), ("PRJ/sub/doc_document.md", _MD)]
@@ -256,6 +271,7 @@ def test_webkit_relative_path_sanitized_to_basename(env):
 # ─── fail-soft v2-shadow ─────────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_v2_shadow_failure_is_failsoft_legacy_authoritative(env, monkeypatch):
     projects_dir, _ = env
 
@@ -273,6 +289,7 @@ def test_v2_shadow_failure_is_failsoft_legacy_authoritative(env, monkeypatch):
 # ─── register_external_project теперь копирует *_ocr.html ─────────────────────
 
 
+@pytest.mark.integration
 def test_register_external_copies_ocr_html(tmp_path, monkeypatch):
     projects_dir = tmp_path / "projects"
     projects_dir.mkdir()
@@ -317,6 +334,7 @@ def _multipart(pdf=True, md=True, result=True, ocr=True, pdf_count=1):
     return parts
 
 
+@pytest.mark.integration
 def test_http_success(http):
     client, projects_dir = http
     r = client.post("/api/projects/upload-folder",
@@ -329,6 +347,7 @@ def test_http_success(http):
     assert (projects_dir / "EOM" / "HTTP-OK" / "doc.pdf").exists()
 
 
+@pytest.mark.integration
 def test_http_no_pdf_422(http):
     client, _ = http
     r = client.post("/api/projects/upload-folder",
@@ -337,6 +356,7 @@ def test_http_no_pdf_422(http):
     assert r.status_code == 422, r.text
 
 
+@pytest.mark.integration
 def test_http_multiple_pdf_422(http):
     client, _ = http
     r = client.post("/api/projects/upload-folder",
@@ -345,6 +365,7 @@ def test_http_multiple_pdf_422(http):
     assert r.status_code == 422, r.text
 
 
+@pytest.mark.integration
 def test_http_duplicate_409(http):
     client, _ = http
     payload = dict(data={"object_id": "obj-1", "discipline": "EOM", "project_name": "HTTP-DUP"},
@@ -357,6 +378,7 @@ def test_http_duplicate_409(http):
     assert r.status_code == 409, r.text
 
 
+@pytest.mark.integration
 def test_http_missing_object_422(http):
     client, _ = http
     r = client.post("/api/projects/upload-folder",
@@ -368,6 +390,7 @@ def test_http_missing_object_422(http):
 # ─── projects_v2/ не отслеживается git ───────────────────────────────────────
 
 
+@pytest.mark.network
 def test_projects_v2_not_tracked_in_git():
     out = subprocess.run(
         ["git", "ls-files", "projects_v2/"], cwd=str(_ROOT),

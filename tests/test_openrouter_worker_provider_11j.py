@@ -73,6 +73,9 @@ from backend.app.services.audit_routing import (           # noqa: E402
 from tests.distributed_audit_e2e import openrouter_stub    # noqa: E402
 from tests.test_audit_routing_plan import build_plan       # noqa: E402
 
+# Lane §5 по нодам: настоящий сокет поднимает только фикстура stub, и её
+# берут 8 нод из 48; остальным достаётся файл ключа и чистые проверки.
+
 #: ТЕСТОВОЕ значение. Настоящий ключ в автоматических тестах недопустим (§25):
 #: он попал бы в историю Git через первый же зафиксированный артефакт прогона.
 #: Строка нарочно узнаваемая — по ней ищутся утечки.
@@ -162,6 +165,7 @@ PNG = b"\x89PNG\r\n\x1a\n" + bytes(range(256)) * 4
 
 
 # ═════════════ §37 A–H. Провайдер, объявление, вход ══════════════════════════
+@pytest.mark.integration
 def test_a_provider_recognized_by_both_registries():
     """A. Провайдер существует ВЕЗДЕ, где существуют остальные.
 
@@ -180,6 +184,7 @@ def test_a_provider_recognized_by_both_registries():
     )
 
 
+@pytest.mark.integration
 def test_a2_center_registry_knows_provider_and_all_capabilities():
     """A2. Контракт ЦЕНТРА выражает и провайдера, и все шесть способностей."""
     from backend.app.models.distributed_workers import (
@@ -199,6 +204,7 @@ def test_a2_center_registry_knows_provider_and_all_capabilities():
     assert payload.provider == "openrouter"
 
 
+@pytest.mark.integration
 def test_b_capability_advertised_only_when_key_configured(worker_root, or_home, monkeypatch):
     """B. Способность объявляется ТОЛЬКО при настроенном ключе.
 
@@ -242,6 +248,7 @@ def test_b_capability_advertised_only_when_key_configured(worker_root, or_home, 
     assert config.capabilities()["http_providers_v1"] is True
 
 
+@pytest.mark.integration
 def test_c_missing_openrouter_makes_worker_incompatible():
     """C. Воркер без шлюза НЕ совместим с точным пресетом — до создания задания."""
     plan = build_plan(presets.PRESET_FULL_CODEX)
@@ -267,6 +274,7 @@ def test_c_missing_openrouter_makes_worker_incompatible():
     assert "openrouter" in requirements.explain(verdict)
 
 
+@pytest.mark.integration
 def test_c2_missing_claude_also_makes_full_codex_incompatible():
     """C2. «Full Codex» без Claude тоже НЕ совместим.
 
@@ -290,6 +298,7 @@ def test_c2_missing_claude_also_makes_full_codex_incompatible():
     assert any(m.provider == "claude" for m in verdict.missing)
 
 
+@pytest.mark.integration
 def test_d_no_silent_degradation_route_missing_is_refused(provisioned, worker_root):
     """D. Нет маршрута — отказ, а не подмена другим провайдером."""
     from audit_worker.providers.resolver import ProviderBinding, RouteBinding
@@ -312,6 +321,7 @@ def test_d_no_silent_degradation_route_missing_is_refused(provisioned, worker_ro
     assert "Подмена другим провайдером запрещена" in str(exc.value)
 
 
+@pytest.mark.network
 def test_e_visual_input_reaches_the_gateway(provisioned, stub):
     """E. Картинка доезжает до шлюза — data-URL в теле запроса, без файла."""
     log = stub()
@@ -324,6 +334,7 @@ def test_e_visual_input_reaches_the_gateway(provisioned, stub):
     assert rows[0]["reasoning_effort"] == "low"
 
 
+@pytest.mark.network
 def test_f_g_h_same_semantic_input_across_detector_legs(provisioned, stub):
     """F+G+H. Один блок — один отпечаток входа, независимо от ноги.
 
@@ -356,6 +367,7 @@ def _scan(blob: object) -> bool:
     return TEST_KEY in text or "sk-or-v1-" in text
 
 
+@pytest.mark.integration
 def test_i_j_secret_absent_from_job_and_package(provisioned):
     """I+J. Ключ невыразим в задании и не проходит сканер пакета.
 
@@ -404,6 +416,7 @@ def test_i_j_secret_absent_from_job_and_package(provisioned):
     ])
 
 
+@pytest.mark.integration
 def test_k_secret_absent_from_binding_written_to_disk(provisioned, worker_root, tmp_path):
     """K. Привязка провайдера — файл в каталоге попытки — ключа не несёт.
 
@@ -429,6 +442,7 @@ def test_k_secret_absent_from_binding_written_to_disk(provisioned, worker_root, 
     assert not _scan(binding.as_public_dict()), "ключ оказался в виде для центра"
 
 
+@pytest.mark.network
 def test_l_secret_absent_from_provider_result_and_logs(provisioned, stub):
     """L. Ключа нет ни в результате вызова, ни в его диагностике.
 
@@ -446,6 +460,7 @@ def test_l_secret_absent_from_provider_result_and_logs(provisioned, stub):
     assert not _scan(bad.as_dict()), "ключ уехал в detail отказа"
 
 
+@pytest.mark.integration
 def test_m_secret_absent_from_heartbeat_and_center_payload(provisioned, worker_root):
     """M. heartbeat сообщает ФАКТ настройки, но не значение.
 
@@ -464,6 +479,7 @@ def test_m_secret_absent_from_heartbeat_and_center_payload(provisioned, worker_r
     assert not _scan(manager.warnings())
 
 
+@pytest.mark.network
 def test_n_secret_absent_from_stub_call_log(provisioned, stub):
     """N. Даже журнал самого шлюза не хранит ключ — только его отпечаток."""
     log = stub()
@@ -475,6 +491,7 @@ def test_n_secret_absent_from_stub_call_log(provisioned, stub):
     assert len(row["authorization_sha256"]) == 64
 
 
+@pytest.mark.integration
 def test_n2_secret_fixture_is_removed_after_test(tmp_path):
     """N2. Тестовый ключ живёт в каталоге теста и исчезает вместе с ним (§25.11)."""
     home = paths.provider_home(tmp_path / "wr", paths.PROVIDER_OPENROUTER)
@@ -486,6 +503,7 @@ def test_n2_secret_fixture_is_removed_after_test(tmp_path):
     )
 
 
+@pytest.mark.integration
 def test_n3_key_name_forbidden_in_subprocess_env():
     """N3. Имя ключа остаётся в чёрном списке окружения ПОДПРОЦЕССА.
 
@@ -507,6 +525,7 @@ def test_n3_key_name_forbidden_in_subprocess_env():
     )
 
 
+@pytest.mark.integration
 def test_n4_endpoint_cannot_be_moved_off_the_official_host_silently(monkeypatch):
     """N4. Ключ нельзя увести на чужой хост переменной окружения (I-H4)."""
     monkeypatch.delenv(STUBBED_ENDPOINTS_ENV, raising=False)
@@ -525,6 +544,7 @@ def test_n4_endpoint_cannot_be_moved_off_the_official_host_silently(monkeypatch)
 
 
 # ═════════════ §37 O–S. Отказы, расход, журнал ═══════════════════════════════
+@pytest.mark.network
 @pytest.mark.parametrize(
     "behaviour,expected",
     [
@@ -545,6 +565,7 @@ def test_o_p_q_errors_are_classified(provisioned, stub, behaviour, expected):
     assert not _scan(result.as_dict())
 
 
+@pytest.mark.integration
 def test_p2_status_map_is_explicit():
     """P2. Карта статусов задана явно: 402 — не «нет авторизации»."""
     assert classify_http_status(401) == errors.ERR_AUTH_REQUIRED
@@ -556,6 +577,7 @@ def test_p2_status_map_is_explicit():
     assert classify_http_status(500) == errors.ERR_PROVIDER_UNAVAILABLE
 
 
+@pytest.mark.network
 def test_r_usage_is_normalized_to_the_common_shape(provisioned, stub):
     """R. Расход приводится к именам, которые читают счётчики этапа.
 
@@ -575,6 +597,7 @@ def test_r_usage_is_normalized_to_the_common_shape(provisioned, stub):
     )
 
 
+@pytest.mark.network
 def test_s_ledger_entry_carries_provider_and_action(provisioned, worker_root, tmp_path, stub):
     """S. Журнал попытки различает ноги ансамбля по действию, а не по промпту.
 
@@ -604,6 +627,7 @@ def _detector_actions(plan):
     return [a for a in stage.actions if a.is_model]
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "preset_id", [presets.PRESET_CLAUDE_GPT_CODEX, presets.PRESET_FULL_CODEX]
 )
@@ -624,6 +648,7 @@ def test_t_u_block_stage_is_exactly_four_model_actions(preset_id):
     )
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "preset_id", [presets.PRESET_CLAUDE_GPT_CODEX, presets.PRESET_FULL_CODEX]
 )
@@ -656,6 +681,7 @@ def test_v_w_three_detectors_are_one_parallel_group_judge_after(preset_id):
     )
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "preset_id", [presets.PRESET_CLAUDE_GPT_CODEX, presets.PRESET_FULL_CODEX]
 )
@@ -666,6 +692,7 @@ def test_x_judge_is_not_a_center_action(preset_id):
     assert stage.execution_scope == registry.SCOPE_WORKER
 
 
+@pytest.mark.integration
 def test_y_full_codex_targeted_merge_is_planned_and_executable():
     """Y. Targeted-проходы «Full Codex» ЕСТЬ в плане и исполняются мостом.
 
@@ -696,6 +723,7 @@ def test_y_full_codex_targeted_merge_is_planned_and_executable():
     assert "_run_targeted_findings_merge_via_provider" in body
 
 
+@pytest.mark.integration
 def test_z_claude_preset_has_no_targeted_passes():
     """Z. На Claude-маршруте targeted-проходов нет — и код их не добавит.
 
@@ -708,6 +736,7 @@ def test_z_claude_preset_has_no_targeted_passes():
     assert roles == {registry.ROLE_MERGE}
 
 
+@pytest.mark.integration
 def test_aa_full_codex_absence_guard_is_worker_claude():
     """AA. Страж отсутствия «Full Codex» — Claude, и он на ВОРКЕРЕ."""
     plan = build_plan(presets.PRESET_FULL_CODEX)
@@ -721,6 +750,7 @@ def test_aa_full_codex_absence_guard_is_worker_claude():
     assert guard.capability == registry.CAP_CHEAP_REVIEW
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "preset_id", [presets.PRESET_CLAUDE_GPT_CODEX, presets.PRESET_FULL_CODEX]
 )
@@ -744,6 +774,7 @@ def test_ab_ac_optimization_is_dual_provider_on_the_worker(preset_id):
     assert merge.provider is None
 
 
+@pytest.mark.integration
 def test_ab2_visual_leg_effort_actually_reaches_the_cli():
     """AB2. `xhigh` доезжает до argv мультимодального вызова Codex.
 
@@ -760,6 +791,7 @@ def test_ab2_visual_leg_effort_actually_reaches_the_cli():
     assert "--image=/tmp/x.png" in argv
 
 
+@pytest.mark.integration
 def test_ad_ae_optimization_critic_follows_the_preset():
     """AD+AE. Критик оптимизации: Codex на «Full Codex», Claude на пресете A."""
     for preset_id, provider in (
@@ -774,6 +806,7 @@ def test_ad_ae_optimization_critic_follows_the_preset():
         assert critic.provider == provider, preset_id
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "preset_id", [presets.PRESET_CLAUDE_GPT_CODEX, presets.PRESET_FULL_CODEX]
 )
@@ -788,6 +821,7 @@ def test_af_ag_deterministic_stages_make_zero_model_calls(preset_id):
     assert all(not a.is_model for a in critic_stage.actions)
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "preset_id", [presets.PRESET_CLAUDE_GPT_CODEX, presets.PRESET_FULL_CODEX]
 )
@@ -800,6 +834,7 @@ def test_ah_norm_stage_stays_central(preset_id):
     assert "block_batch" in worker and "optimization" in worker
 
 
+@pytest.mark.integration
 def test_ah2_norm_database_never_enters_the_worker_package():
     """AH2. Тяжёлая нормативная база на воркер не переносится (§19)."""
     from backend.app.services.distributed_workers import project_package
@@ -813,6 +848,7 @@ def test_ah2_norm_database_never_enters_the_worker_package():
         )
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "preset_id,expected",
     [
@@ -833,6 +869,7 @@ def test_ai_central_norm_tail_reads_the_frozen_plan(preset_id, expected, monkeyp
     assert cfg.get_stage_model("norm_verify") == "claude-opus-5"
 
 
+@pytest.mark.integration
 def test_aj_global_preset_switch_cannot_change_a_running_job(monkeypatch):
     """AJ. Переключение пресета в интерфейсе не меняет уже идущее задание.
 
@@ -857,6 +894,7 @@ def test_aj_global_preset_switch_cannot_change_a_running_job(monkeypatch):
         assert cfg.get_stage_model("norm_verify") == "claude-opus-5"
 
 
+@pytest.mark.integration
 def test_aj2_bound_plan_is_isolated_between_concurrent_tasks():
     """AJ2. Планы двух ЗАДАЧ в одном процессе не затирают друг друга.
 
@@ -886,6 +924,7 @@ def test_aj2_bound_plan_is_isolated_between_concurrent_tasks():
     assert seen["a"] != seen["b"], "план одной задачи протёк в другую"
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "preset_id", [presets.PRESET_CLAUDE_GPT_CODEX, presets.PRESET_FULL_CODEX]
 )
@@ -899,6 +938,7 @@ def test_ak_al_plan_hash_survives_serialization(preset_id):
 
 
 # ═════════════ Исправления по состязательному ревью 11J ══════════════════════
+@pytest.mark.integration
 def test_rev1_symlinked_credential_is_refused(or_home, tmp_path):
     """Ревью-1. Файл ключа не может быть символьной ссылкой.
 
@@ -922,6 +962,7 @@ def test_rev1_symlinked_credential_is_refused(or_home, tmp_path):
         openrouter_secret.read_secret(or_home.credential_path)
 
 
+@pytest.mark.integration
 def test_rev2_world_writable_credential_is_refused(provisioned):
     """Ревью-2. Проверяется ВСЯ маска прав, а не только биты чтения.
 
@@ -939,6 +980,7 @@ def test_rev2_world_writable_credential_is_refused(provisioned):
     assert openrouter_secret.probe(provisioned.credential_path).configured
 
 
+@pytest.mark.integration
 def test_rev3_endpoint_error_reaching_the_center_is_redacted(or_home, monkeypatch):
     """Ревью-3. Сообщение об отвергнутом адресе шлюза проходит редактор.
 
@@ -955,6 +997,7 @@ def test_rev3_endpoint_error_reaching_the_center_is_redacted(or_home, monkeypatc
     assert "sk-or-v1-SECRETVALUE" not in json.dumps(snapshot, ensure_ascii=False)
 
 
+@pytest.mark.integration
 def test_rev4_credential_facts_describe_the_file_actually_read(
     or_home, tmp_path, monkeypatch,
 ):
@@ -984,6 +1027,7 @@ def test_rev4_credential_facts_describe_the_file_actually_read(
     assert str(external) not in json.dumps(payload, ensure_ascii=False)
 
 
+@pytest.mark.integration
 def test_rev5_non_ascii_key_is_refused_before_the_request(or_home):
     """Ревью-5. Ключ вне ASCII отвергается ДО запроса.
 
@@ -999,6 +1043,7 @@ def test_rev5_non_ascii_key_is_refused_before_the_request(or_home):
     assert "КИРИЛЛИЦА" not in str(exc.value), "ключ попал в текст ошибки"
 
 
+@pytest.mark.integration
 def test_rev6_feature_flags_cannot_inject_provider_env(monkeypatch):
     """Ревью-6 (критическое). Центр не может через план подменить адрес шлюза.
 
@@ -1040,6 +1085,7 @@ def test_rev6_feature_flags_cannot_inject_provider_env(monkeypatch):
     assert os.environ["PATH"] == "/usr/bin", "PATH подменён нагрузкой задания"
 
 
+@pytest.mark.integration
 def test_rev7_bridge_refuses_ambient_mode_for_the_http_provider(tmp_path):
     """Ревью-7. Мост тоже отвергает ambient у провайдера без CLI.
 
@@ -1067,6 +1113,7 @@ def test_rev7_bridge_refuses_ambient_mode_for_the_http_provider(tmp_path):
     assert "ambient_user" in str(exc.value)
 
 
+@pytest.mark.network
 def test_rev8_request_shape_matches_the_central_leg(provisioned, stub):
     """Ревью-8. Запрос несёт потолок ответа и требование JSON-объекта.
 
@@ -1102,6 +1149,7 @@ def test_rev8_request_shape_matches_the_central_leg(provisioned, stub):
     assert parts[1]["image_url"]["url"].startswith("data:image/png;base64,")
 
 
+@pytest.mark.integration
 def test_rev9_rejected_endpoint_message_carries_no_url_credentials(monkeypatch):
     """Ревью-9. Сообщение об отвергнутом адресе НЕ несёт значение переменной.
 
@@ -1131,6 +1179,7 @@ def test_rev9_rejected_endpoint_message_carries_no_url_credentials(monkeypatch):
         assert ".internal" in message or ".local" in message
 
 
+@pytest.mark.integration
 def test_rev10_dead_primary_role_entries_are_absent():
     """Ревью-10. В карте основных ролей нет заведомо недостижимых записей.
 
@@ -1157,6 +1206,7 @@ def test_rev10_dead_primary_role_entries_are_absent():
     assert not unreachable, f"недостижимые записи карты: {unreachable}"
 
 
+@pytest.mark.integration
 def test_rev11_transport_failure_exposes_only_safe_host(
     provisioned, monkeypatch,
 ):
@@ -1199,6 +1249,7 @@ def test_rev11_transport_failure_exposes_only_safe_host(
             assert fragment not in detail, (url, fragment, detail)
 
 
+@pytest.mark.integration
 def test_rev12_gateway_error_body_cannot_echo_secret_url(
     provisioned, monkeypatch,
 ):

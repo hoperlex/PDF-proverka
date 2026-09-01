@@ -19,6 +19,12 @@ if str(_ROOT) not in sys.path:
 from backend.app.services.common import version_service as vs  # noqa: E402
 from backend.scripts import migrate_versions_to_container as mig  # noqa: E402
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _make_legacy_project(projects_dir: Path, base: str = "M31A") -> Path:
     """Создать legacy-проект `<disc>/<base>` с `_versions/v2` и manifest."""

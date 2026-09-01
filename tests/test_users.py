@@ -37,6 +37,7 @@ def tmp_users(tmp_path, monkeypatch):
     return f
 
 
+@pytest.mark.unit
 def test_crud_lifecycle(tmp_users):
     assert user_service.list_users() == []
 
@@ -64,6 +65,7 @@ def test_crud_lifecycle(tmp_users):
     assert len(user_service.list_users()) == 1
 
 
+@pytest.mark.unit
 def test_id_collision_resolution(tmp_users):
     a = user_service.add_user("Иванов", "А. А.")
     b = user_service.add_user("Иванов", "Б. Б.")
@@ -71,11 +73,13 @@ def test_id_collision_resolution(tmp_users):
     assert b["id"] == "ivanov_2"
 
 
+@pytest.mark.unit
 def test_empty_surname_rejected(tmp_users):
     with pytest.raises(ValueError):
         user_service.add_user("   ")
 
 
+@pytest.mark.unit
 def test_activity_attribution(tmp_users, monkeypatch):
     user_service.add_user("Узун", "А. И.", role="admin")
 
@@ -103,6 +107,7 @@ def test_activity_attribution(tmp_users, monkeypatch):
     assert proj["items"][0]["item_id"] == "OPT-002"
 
 
+@pytest.mark.unit
 def test_activity_matches_by_id_and_surname(tmp_users, monkeypatch):
     user_service.add_user("Репников", "И. А.")
     log = [
@@ -117,11 +122,13 @@ def test_activity_matches_by_id_and_surname(tmp_users, monkeypatch):
     assert act["totals"]["decisions"] == 2
 
 
+@pytest.mark.unit
 def test_unknown_user_activity_raises(tmp_users):
     with pytest.raises(ValueError):
         user_service.get_user_activity("nobody")
 
 
+@pytest.mark.unit
 def test_get_user_by_login(tmp_users):
     user_service.add_user("Узун", "А. И.", role="admin", login="uzun")
     user_service.add_user("Репников", "И. А.")  # login defaults to id
@@ -132,6 +139,7 @@ def test_get_user_by_login(tmp_users):
     assert user_service.get_user_by_login(None) is None
 
 
+@pytest.mark.unit
 def test_add_user_login_defaults_to_id(tmp_users):
     u = user_service.add_user("Оларь", "М. И.")
     assert u["login"] == u["id"] == "olar"
@@ -139,6 +147,7 @@ def test_add_user_login_defaults_to_id(tmp_users):
     assert u2["login"] == "griv_custom"
 
 
+@pytest.mark.unit
 def test_router_active_user_follows_login(tmp_users, monkeypatch):
     """При включённой авторизации current_id = залогиненный сотрудник.
 
@@ -169,6 +178,7 @@ def test_router_active_user_follows_login(tmp_users, monkeypatch):
     assert d2["logged_in_matched"] is False
 
 
+@pytest.mark.integration
 def test_router_endpoints(tmp_users, monkeypatch):
     from fastapi.testclient import TestClient
     import backend.app.main as main

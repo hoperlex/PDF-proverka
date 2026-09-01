@@ -194,11 +194,13 @@ def _activate(monkeypatch, binding: resolver.ProviderBinding, job_dir: Path) -> 
 class TestPipelineRouting:
     """Штатная точка вызова CLI конвейера уходит в провайдерский слой."""
 
+    @pytest.mark.integration
     def test_bridge_is_inactive_without_binding(self, monkeypatch):
         """На центре переменной нет — и поведение обязано остаться прежним."""
         monkeypatch.delenv(resolver.BINDING_ENV, raising=False)
         assert pipeline_bridge.active() is False
 
+    @pytest.mark.integration
     def test_binding_pointing_nowhere_is_an_error(self, monkeypatch, tmp_path):
         """Переменная без файла — ошибка развёртывания, и она ПАДАЕТ.
 
@@ -211,6 +213,7 @@ class TestPipelineRouting:
         with pytest.raises(pipeline_bridge.ProviderBridgeError):
             pipeline_bridge.active()
 
+    @pytest.mark.network
     @pytest.mark.asyncio
     async def test_run_cli_routes_through_the_adapter(self, monkeypatch, tmp_path,
                                                       job_dir):
@@ -234,6 +237,7 @@ class TestPipelineRouting:
         assert cli.input_tokens == 120 and cli.output_tokens == 40
         assert journal.is_file()
 
+    @pytest.mark.integration
     @pytest.mark.asyncio
     async def test_stage_outside_the_whitelist_is_refused(self, monkeypatch,
                                                           tmp_path, job_dir):
@@ -265,6 +269,7 @@ class TestProviderSelection:
         manager.refresh(force=True)
         return manager
 
+    @pytest.mark.network
     def test_resolver_picks_the_requested_provider(self, worker_root, tmp_path,
                                                    job_dir):
         exe = _fake_claude(tmp_path / "bin" / "claude", tmp_path / "j.txt")
@@ -286,6 +291,7 @@ class TestProviderSelection:
         assert binding.model == "claude-opus-5"
         assert binding.capability == "strong_audit"
 
+    @pytest.mark.network
     def test_binding_without_a_model_is_refused(self, worker_root, tmp_path, job_dir):
         """Привязка без модели при разрешённых вызовах — отказ (11G).
 
@@ -305,6 +311,7 @@ class TestProviderSelection:
                 provider_root=resolver.ambient_root_for_attempt(job_dir, "claude"),
             )
 
+    @pytest.mark.network
     def test_unauthorized_provider_is_refused(self, worker_root, tmp_path, job_dir):
         exe = _write_exe(tmp_path / "bin" / "claude", """
 case "$1" in --version) echo "2.1.220 (Claude Code)"; exit 0 ;; esac
@@ -319,16 +326,19 @@ exit 1
                 provider_root=job_dir / "providers" / "claude",
             )
 
+    @pytest.mark.integration
     def test_requirement_rejects_unknown_fields(self):
         with pytest.raises(resolver.ProviderResolutionError):
             resolver.ProviderRequirement.from_payload(
                 {"provider": "claude", "temperature": 0.7}
             )
 
+    @pytest.mark.integration
     def test_requirement_rejects_unknown_provider(self):
         with pytest.raises(resolver.ProviderResolutionError):
             resolver.ProviderRequirement.from_payload({"provider": "gpt"})
 
+    @pytest.mark.integration
     def test_absent_requirement_is_not_an_error(self):
         """Отсутствие требования — это «как раньше», а не негодное задание."""
         assert resolver.ProviderRequirement.from_payload(None) is None
@@ -336,6 +346,10 @@ exit 1
 
 # ═════════════ C. ambient_user ═══════════════════════════════════════════════
 class TestAmbientUser:
+    # Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+    # память».
+    pytestmark = pytest.mark.integration
+
     def test_binding_carries_the_declared_auth_mode(self, tmp_path, job_dir):
         binding = _binding(job_dir, executable=tmp_path / "claude")
         assert binding.auth_mode == AUTH_MODE_AMBIENT_USER
@@ -362,22 +376,26 @@ class TestAmbientUser:
 
 # ═════════════ D/E. Разрешение оператора ═════════════════════════════════════
 class TestInferenceGrant:
+    @pytest.mark.integration
     def test_missing_grant_file_is_refused(self, worker_root):
         with pytest.raises(inference_grant.InferenceGrantError):
             inference_grant.consume(worker_root, provider="claude", task_id="job-1")
 
+    @pytest.mark.integration
     def test_grant_is_bound_to_the_task(self, worker_root):
         inference_grant.issue(worker_root, grant_id="g1", provider="claude",
                               task_id="job-1", ttl_sec=600)
         with pytest.raises(inference_grant.InferenceGrantError):
             inference_grant.consume(worker_root, provider="claude", task_id="job-2")
 
+    @pytest.mark.integration
     def test_grant_is_bound_to_the_provider(self, worker_root):
         inference_grant.issue(worker_root, grant_id="g1", provider="claude",
                               task_id="job-1", ttl_sec=600)
         with pytest.raises(inference_grant.InferenceGrantError):
             inference_grant.consume(worker_root, provider="codex", task_id="job-1")
 
+    @pytest.mark.integration
     def test_expired_grant_is_refused(self, worker_root):
         inference_grant.issue(worker_root, grant_id="g1", provider="claude",
                               task_id="job-1", ttl_sec=-1)
@@ -385,6 +403,7 @@ class TestInferenceGrant:
             inference_grant.consume(worker_root, provider="claude", task_id="job-1")
         assert "просроч" in str(exc.value)
 
+    @pytest.mark.integration
     def test_single_use_budget_is_consumed_once(self, worker_root):
         inference_grant.issue(worker_root, grant_id="g1", provider="claude",
                               task_id="job-1", ttl_sec=600, max_uses=1)
@@ -394,6 +413,7 @@ class TestInferenceGrant:
         with pytest.raises(inference_grant.InferenceGrantError):
             inference_grant.consume(worker_root, provider="claude", task_id="job-1")
 
+    @pytest.mark.integration
     def test_consumption_survives_a_crash(self, worker_root):
         """Списание попадает на диск ДО вызова модели.
 
@@ -406,6 +426,7 @@ class TestInferenceGrant:
         reread = inference_grant.read_records(worker_root)
         assert reread[0].used == 1
 
+    @pytest.mark.integration
     def test_world_readable_grant_is_rejected(self, worker_root):
         inference_grant.issue(worker_root, grant_id="g1", provider="claude",
                               task_id="job-1", ttl_sec=600)
@@ -413,6 +434,7 @@ class TestInferenceGrant:
         with pytest.raises(inference_grant.InferenceGrantError):
             inference_grant.consume(worker_root, provider="claude", task_id="job-1")
 
+    @pytest.mark.integration
     def test_symlink_is_rejected(self, worker_root, tmp_path):
         real = tmp_path / "real_grant"
         real.write_text('{"schema_version": 1, "grants": []}', encoding="utf-8")
@@ -421,6 +443,7 @@ class TestInferenceGrant:
         with pytest.raises(inference_grant.InferenceGrantError):
             inference_grant.consume(worker_root, provider="claude", task_id="job-1")
 
+    @pytest.mark.integration
     def test_malformed_file_is_an_error_not_an_empty_list(self, worker_root):
         path = inference_grant.grant_path(worker_root)
         path.write_text("{не json}", encoding="utf-8")
@@ -428,6 +451,7 @@ class TestInferenceGrant:
         with pytest.raises(inference_grant.InferenceGrantError):
             inference_grant.read_records(worker_root)
 
+    @pytest.mark.integration
     def test_unknown_schema_version_is_refused(self, worker_root):
         path = inference_grant.grant_path(worker_root)
         path.write_text(json.dumps({"schema_version": 99, "grants": []}),
@@ -436,6 +460,7 @@ class TestInferenceGrant:
         with pytest.raises(inference_grant.InferenceGrantError):
             inference_grant.read_records(worker_root)
 
+    @pytest.mark.network
     def test_concurrent_consumption_yields_a_single_winner(self, worker_root):
         """Атомарность списания — на РАЗНЫХ процессах, а не на потоках.
 
@@ -468,11 +493,13 @@ class TestExactlyOnceInference:
         return inference_ledger.InferenceLedger(job_dir, attempt_id="attempt-1",
                                                 job_id="job-1")
 
+    @pytest.mark.integration
     def test_first_entry_is_allowed(self, job_dir):
         ledger = self._ledger(job_dir)
         entry = ledger.inspect("k1")
         assert entry.state == inference_ledger.STATE_ALLOWED
 
+    @pytest.mark.integration
     def test_claim_blocks_the_second_call(self, job_dir):
         ledger = self._ledger(job_dir)
         assert ledger.begin("k1", provider="claude", purpose="p",
@@ -480,6 +507,7 @@ class TestExactlyOnceInference:
         second = ledger.begin("k1", provider="claude", purpose="p", prompt_sha256="x")
         assert second.state == inference_ledger.STATE_INDETERMINATE
 
+    @pytest.mark.integration
     def test_saved_result_is_replayed_not_recomputed(self, job_dir):
         ledger = self._ledger(job_dir)
         ledger.begin("k1", provider="claude", purpose="p", prompt_sha256="x")
@@ -491,6 +519,7 @@ class TestExactlyOnceInference:
         assert entry.state == inference_ledger.STATE_REPLAY
         assert entry.result.result == {"a": 1}
 
+    @pytest.mark.integration
     def test_error_result_is_also_recorded(self, job_dir):
         """Ошибочный ответ — тоже израсходованная попытка."""
         ledger = self._ledger(job_dir)
@@ -501,6 +530,7 @@ class TestExactlyOnceInference:
         ))
         assert self._ledger(job_dir).inspect("k1").state == inference_ledger.STATE_REPLAY
 
+    @pytest.mark.network
     def test_bridge_replays_instead_of_calling_the_model(self, monkeypatch,
                                                         tmp_path, job_dir):
         """Второй проход НЕ запускает подпроцесс — это видно по журналу."""
@@ -522,6 +552,7 @@ class TestExactlyOnceInference:
         assert second.provider_result.raw_sha256 == first.provider_result.raw_sha256
         assert journal.read_text(encoding="utf-8").count("ARGV:") == calls_after_first
 
+    @pytest.mark.integration
     def test_crash_after_call_forbids_an_automatic_retry(self, monkeypatch,
                                                         tmp_path, job_dir):
         """Заявка без результата = исход неизвестен → повтор запрещён.
@@ -545,6 +576,7 @@ class TestExactlyOnceInference:
             )
         assert "I-P9" in str(exc.value)
 
+    @pytest.mark.network
     def test_ceiling_of_calls_per_attempt(self, monkeypatch, tmp_path, job_dir):
         exe = _fake_claude(tmp_path / "bin" / "claude", tmp_path / "j.txt")
         _activate(monkeypatch, _binding(job_dir, executable=exe, max_inferences=1),
@@ -558,6 +590,7 @@ class TestExactlyOnceInference:
             )
         assert "потолок" in str(exc.value)
 
+    @pytest.mark.integration
     def test_binding_without_grant_id_refuses_the_call(self, monkeypatch,
                                                        tmp_path, job_dir):
         exe = _fake_claude(tmp_path / "bin" / "claude", tmp_path / "j.txt")
@@ -571,6 +604,7 @@ class TestExactlyOnceInference:
                 job_dir=job_dir, stage="provider_selfcheck", prompt="ф",
             )
 
+    @pytest.mark.network
     def test_ledger_survives_a_process_restart(self, monkeypatch, tmp_path, job_dir):
         """Журнал — файлы, а не память: новый процесс видит то же состояние."""
         journal = tmp_path / "journal.txt"
@@ -594,6 +628,8 @@ class TestExactlyOnceInference:
 
 # ═════════════ I/J/K. Проверка результата ════════════════════════════════════
 class TestResultValidation:
+    pytestmark = pytest.mark.integration
+
     def _result(self, **kwargs):
         base = dict(provider="claude", model="claude-opus-5[1m]",
                     status=inference.STATUS_SUCCESS, exit_code=0,
@@ -701,6 +737,7 @@ class TestResultValidation:
 
 # ═════════════ L/M/N/O. Плохие ответы провайдера ═════════════════════════════
 class TestProviderFailures:
+    @pytest.mark.network
     def test_invalid_json_is_an_error_not_an_empty_success(self, monkeypatch,
                                                            tmp_path, job_dir):
         exe = _fake_claude(tmp_path / "bin" / "claude", tmp_path / "j.txt",
@@ -712,6 +749,7 @@ class TestProviderFailures:
         assert outcome.provider_result.status == inference.STATUS_ERROR
         assert outcome.provider_result.error_code == errors.ERR_MALFORMED_STATUS
 
+    @pytest.mark.network
     def test_nonzero_exit_code_is_reported(self, monkeypatch, tmp_path, job_dir):
         exe = _fake_claude(tmp_path / "bin" / "claude", tmp_path / "j.txt",
                            exit_code=7)
@@ -722,6 +760,7 @@ class TestProviderFailures:
         assert outcome.provider_result.exit_code == 7
         assert outcome.provider_result.status == inference.STATUS_ERROR
 
+    @pytest.mark.network
     def test_timeout_kills_the_process_group(self, monkeypatch, tmp_path, job_dir):
         exe = _fake_claude(tmp_path / "bin" / "claude", tmp_path / "j.txt", stall=30)
         binding = resolver.ProviderBinding.from_dict(
@@ -733,12 +772,14 @@ class TestProviderFailures:
         )
         assert outcome.provider_result.error_code == errors.ERR_TIMEOUT
 
+    @pytest.mark.integration
     def test_rate_limit_text_is_classified(self):
         """Отказ по лимиту обязан отличаться от «сломался»."""
         assert errors.classify_text("Claude usage limit reached") == (
             errors.ERR_RATE_LIMITED
         )
 
+    @pytest.mark.network
     def test_timed_out_call_is_still_recorded_in_the_ledger(self, monkeypatch,
                                                             tmp_path, job_dir):
         """Таймаут — израсходованная попытка: запрос мог уйти и быть оплачен."""
@@ -754,6 +795,7 @@ class TestProviderFailures:
 
 # ═════════════ U/V/W. Форма запуска CLI ══════════════════════════════════════
 class TestInvocationShape:
+    @pytest.mark.integration
     def test_tools_are_disabled_and_personal_context_neutralized(self):
         argv = _inference_argv()
         assert "--tools=" in argv
@@ -763,6 +805,7 @@ class TestInvocationShape:
         assert "--no-session-persistence" in argv
         assert any(a.startswith("--disallowed-tools=") for a in argv)
 
+    @pytest.mark.integration
     def test_no_variadic_flag_takes_a_separate_value(self):
         """Регрессия I-P8: вариадические флаги только в форме `--флаг=значение`.
 
@@ -774,6 +817,7 @@ class TestInvocationShape:
         for name in variadic:
             assert name not in argv, f"{name} записан отдельным токеном"
 
+    @pytest.mark.network
     def test_prompt_never_appears_in_argv(self, monkeypatch, tmp_path, job_dir):
         """I-P5 дословно: argv состоит только из констант модуля.
 
@@ -793,6 +837,7 @@ class TestInvocationShape:
         assert secret_prompt not in argv_line
         assert f"STDIN:{secret_prompt}" in text
 
+    @pytest.mark.network
     def test_worker_secrets_do_not_reach_the_subprocess(self, monkeypatch,
                                                         tmp_path, job_dir):
         """I-P2 на живом процессе и по НЕредактированному каналу."""
@@ -811,6 +856,7 @@ class TestInvocationShape:
         assert "center.example" not in dump
         assert "AUDIT_WORKER_PROVIDER_BINDING" not in dump
 
+    @pytest.mark.network
     def test_stdin_is_devnull_for_status_calls(self, tmp_path):
         """I-P8: там, где своего ввода нет, подпроцесс получает /dev/null.
 
@@ -834,6 +880,8 @@ exit 0
 # ═════════════ X. SSH не участвует в вызове модели ═══════════════════════════
 class TestNoSshInference:
     #: Модули, через которые проходит вызов модели этапа 11C.
+    pytestmark = pytest.mark.integration
+
     RUNTIME_MODULES = (
         "audit_worker/providers/pipeline_bridge.py",
         "audit_worker/providers/resolver.py",
@@ -904,6 +952,8 @@ class TestNoSshInference:
 
 # ═════════════ Контракты задания и границы модулей ═══════════════════════════
 class TestJobContract:
+    pytestmark = pytest.mark.integration
+
     def test_binding_env_name_matches_provider_layer(self):
         """Литерал в `audit_runner` и константа слоя обязаны совпадать.
 
@@ -1137,6 +1187,7 @@ class TestJobContract:
 
 # ═════════════ Heartbeat ═════════════════════════════════════════════════════
 class TestHeartbeat:
+    @pytest.mark.network
     def test_capability_reports_bridge_and_grant(self, worker_root, tmp_path):
         exe = _fake_claude(tmp_path / "bin" / "claude", tmp_path / "j.txt")
         inference_grant.issue(worker_root, grant_id="g1", provider="claude",
@@ -1154,6 +1205,7 @@ class TestHeartbeat:
         assert capability["pipeline_inference_grant"]["remaining_total"] == 1
         assert capability["real_inference_allowed"] is True
 
+    @pytest.mark.network
     def test_real_inference_stays_forbidden_without_a_grant(self, worker_root,
                                                             tmp_path):
         exe = _fake_claude(tmp_path / "bin" / "claude", tmp_path / "j.txt")
@@ -1167,6 +1219,7 @@ class TestHeartbeat:
         payload = {row["provider"]: row for row in manager.heartbeat_payload()}
         assert payload["claude"]["capability"]["real_inference_allowed"] is False
 
+    @pytest.mark.network
     def test_heartbeat_carries_no_paths_or_task_ids(self, worker_root, tmp_path):
         """Ни домашнего каталога, ни имени задания, ни пути к учётным данным."""
         exe = _fake_claude(tmp_path / "bin" / "claude", tmp_path / "j.txt")
@@ -1186,6 +1239,7 @@ class TestHeartbeat:
         assert "заметка оператора" not in dump
         assert str(worker_root) not in dump
 
+    @pytest.mark.integration
     def test_pipeline_status_marker_roundtrip(self, worker_root):
         pipeline_status.record(worker_root, provider="claude", calls_started=1,
                                calls_completed=1)
@@ -1196,6 +1250,8 @@ class TestHeartbeat:
 
 # ═════════════ Синтетическая фикстура ════════════════════════════════════════
 class TestSyntheticFixture:
+    pytestmark = pytest.mark.integration
+
     def test_fragment_is_extracted_from_the_version_markdown(self):
         from backend.app.pipeline.stages import provider_selfcheck as stage
 

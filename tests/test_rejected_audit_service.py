@@ -12,6 +12,10 @@ if str(_ROOT) not in sys.path:
 import backend.app.services.findings.rejected_audit_service as service
 import backend.scripts.audit_rejected_findings_codex as audit_cli
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)

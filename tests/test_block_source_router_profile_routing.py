@@ -13,6 +13,7 @@ from backend.app.pipeline.stages.block_grounding import low_voltage_geometry as 
 FLAG = "STAGE01_PER_BLOCK_PROFILE_ROUTING_ENABLED"
 
 
+@pytest.mark.unit
 def test_per_block_profile_flag_is_default_off(monkeypatch):
     monkeypatch.delenv(FLAG, raising=False)
     assert router.per_block_profile_routing_enabled() is False
@@ -20,6 +21,7 @@ def test_per_block_profile_flag_is_default_off(monkeypatch):
     assert router.per_block_profile_routing_enabled() is True
 
 
+@pytest.mark.unit
 def test_prepared_packages_are_separated_between_ab_modes(monkeypatch):
     output = "/tmp/objects/O/disciplines/AI/documents/D/versions/v1/out"
     old_package = {
@@ -56,6 +58,7 @@ def test_prepared_packages_are_separated_between_ab_modes(monkeypatch):
 
 
 
+@pytest.mark.unit
 def test_per_block_profile_flag_is_scoped_to_ai(monkeypatch):
     monkeypatch.setenv(FLAG, "true")
     ai = "/tmp/objects/O/disciplines/AI/documents/D/versions/v1/out"
@@ -64,6 +67,7 @@ def test_per_block_profile_flag_is_scoped_to_ai(monkeypatch):
     assert router._per_block_profile_routing_applies(ar_path) is False
 
 
+@pytest.mark.unit
 def test_parking_plan_overrides_generic_plan_profile():
     decision = router._per_block_profile_route(
         block_type="План",
@@ -80,6 +84,7 @@ def test_parking_plan_overrides_generic_plan_profile():
     assert decision["reason"] == "parking_geometry"
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ("sheet_name", "block_type", "classification_text"),
     [
@@ -103,6 +108,7 @@ def test_interior_blocks_keep_structured_architecture(
     assert decision["selected_source_kind"] == "structured_architecture"
 
 
+@pytest.mark.unit
 def test_reference_sheet_and_sheet_0_1_route_to_raw_vector():
     by_name = router._per_block_profile_route(
         sheet_name="Ведомость ссылочных документов",
@@ -120,6 +126,7 @@ def test_reference_sheet_and_sheet_0_1_route_to_raw_vector():
     assert by_number["reason"] == "title_or_reference_sheet_0_1"
 
 
+@pytest.mark.unit
 def test_multiple_decimal_angles_are_geometry_fallback():
     decision = router._per_block_profile_route(
         block_type="План",
@@ -129,6 +136,7 @@ def test_multiple_decimal_angles_are_geometry_fallback():
     assert decision["signal_source"] == "block_text_geometry"
 
 
+@pytest.mark.integration
 def test_resolver_routes_specialized_low_voltage_graph_to_ctx_profile(
     tmp_path, monkeypatch
 ):
@@ -205,6 +213,7 @@ def _chandra(block_type: str, text: str):
     )
 
 
+@pytest.mark.integration
 def test_resolver_produces_mixed_sources_and_off_keeps_legacy(
     tmp_path, monkeypatch
 ):

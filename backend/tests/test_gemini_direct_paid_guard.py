@@ -22,6 +22,9 @@ from backend.app.services.llm import gemini_direct_runner as gdr
 from backend.app.services.llm import paid_api_guard as pag
 from backend.app.services.common import usage_service
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def _batch():
     return {"batch_id": 7, "blocks": [{"block_id": "b1"}]}

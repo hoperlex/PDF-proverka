@@ -11,6 +11,12 @@ import json
 
 from backend.app.services.common import project_service as ps
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _mk_project(d, name):
     p = d / name

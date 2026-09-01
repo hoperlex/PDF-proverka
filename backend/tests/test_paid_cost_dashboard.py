@@ -32,6 +32,7 @@ def dashboard_module():
 # ─── 1. Empty sources ────────────────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_empty_sources_returns_empty_days(dashboard_module, tmp_path):
     """Когда нет paid_cost.json и нет jsonl — endpoint не падает, days=[]."""
     res = dashboard_module.build_paid_cost_daily_dashboard(
@@ -44,6 +45,7 @@ def test_empty_sources_returns_empty_days(dashboard_module, tmp_path):
     assert res["totals"] == {"period_total_usd": 0.0, "period_calls": 0}
 
 
+@pytest.mark.integration
 def test_paid_cost_present_no_events_aggregated_only(dashboard_module, tmp_path):
     """paid_cost.json есть, jsonl нет → aggregated_only=true, events=[]."""
     today = datetime(2026, 5, 16, 14, 0, 0)
@@ -79,6 +81,7 @@ def test_paid_cost_present_no_events_aggregated_only(dashboard_module, tmp_path)
 # ─── 2. Events-only ───────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_events_only_synthesizes_aggregates(dashboard_module, tmp_path):
     """Только jsonl, без daily_breakdown → агрегаты собираются из events."""
     today = datetime(2026, 5, 16, 12, 0, 0)
@@ -117,6 +120,7 @@ def test_events_only_synthesizes_aggregates(dashboard_module, tmp_path):
 # ─── 3. Both sources ─────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_both_sources_breakdown_wins_for_totals_events_for_details(dashboard_module, tmp_path):
     """Если есть и breakdown, и events за тот же день — breakdown даёт total,
     events дают детализацию (UI может показать события)."""
@@ -161,6 +165,7 @@ def test_both_sources_breakdown_wins_for_totals_events_for_details(dashboard_mod
 # ─── 4. Window filter ────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_days_window_filters_old_dates(dashboard_module, tmp_path):
     """days=7 не включает даты старше 7 дней назад."""
     today = datetime(2026, 5, 16, 12, 0, 0)
@@ -193,6 +198,7 @@ def test_days_window_filters_old_dates(dashboard_module, tmp_path):
     assert res30["totals"]["period_calls"] == 102
 
 
+@pytest.mark.integration
 def test_future_dates_filtered_out(dashboard_module, tmp_path):
     """Будущие даты (если вдруг попали из-за clock skew) не возвращаются."""
     today = datetime(2026, 5, 16, 12, 0, 0)
@@ -216,6 +222,7 @@ def test_future_dates_filtered_out(dashboard_module, tmp_path):
 # ─── 5. Broken jsonl ─────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_broken_jsonl_lines_are_skipped(dashboard_module, tmp_path):
     """Битые строки в jsonl не должны ронять endpoint."""
     today = datetime(2026, 5, 16, 12, 0, 0)
@@ -242,6 +249,7 @@ def test_broken_jsonl_lines_are_skipped(dashboard_module, tmp_path):
 # ─── 6. Events grouping by date ──────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_events_grouped_across_multiple_days(dashboard_module, tmp_path):
     """Events с разных дат корректно группируются."""
     today = datetime(2026, 5, 16, 12, 0, 0)
@@ -270,6 +278,7 @@ def test_events_grouped_across_multiple_days(dashboard_module, tmp_path):
 # ─── 7. Events truncation ────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_events_truncation_respects_max_per_day(dashboard_module, tmp_path):
     """Если событий > max_events_per_day, флаг truncated=true."""
     today = datetime(2026, 5, 16, 12, 0, 0)

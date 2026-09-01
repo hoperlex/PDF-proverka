@@ -37,6 +37,9 @@ from backend.app.pipeline.stages.findings_review.critic_v2.normalize import norm
 from backend.app.pipeline.stages.findings_review.critic_v2.rule_filter import apply_rule_filter
 from backend.app.pipeline.stages.findings_review.critic_v2.scorer import score_finding
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "findings_review"
 
 

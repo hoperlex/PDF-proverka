@@ -13,6 +13,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root
 from backend.app.services.storage import projects_v2_adapter as A  # noqa: E402
 from backend.app.services.storage.projects_v2_adapter import ProjectsV2Adapter  # noqa: E402
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 OBJF = "213_Mosfilmovskaya_31A_KingSons"
 
 

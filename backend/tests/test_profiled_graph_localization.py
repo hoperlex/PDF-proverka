@@ -11,6 +11,11 @@ from backend.app.pipeline.stages.block_grounding.alia_remaining_geometry import 
     render_remaining_markdown,
 )
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_equipotential_graph_is_localized_without_changing_machine_codes():
     package = {

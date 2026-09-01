@@ -9,6 +9,8 @@ import fitz
 
 from backend.app.services.stage_comparison import text_comparison as tc
 
+import pytest
+
 
 def _fragment(
     side: str, page: int, text: str, index: int = 0,
@@ -43,6 +45,7 @@ def _link(left_pages=(1,), right_pages=(1,)) -> dict:
     }
 
 
+@pytest.mark.unit
 def test_canonical_exact_text_is_formatting_only() -> None:
     assert tc.canonicalize_text(" **Площадь 15,000 м²** — План ") == tc.canonicalize_text(
         "площадь 15.000 м² - план"
@@ -56,6 +59,7 @@ def test_canonical_exact_text_is_formatting_only() -> None:
     assert tc.canonicalize_text("12.4 м²") != tc.canonicalize_text("12. 4 м²")
 
 
+@pytest.mark.integration
 def test_repeated_technical_markdown_bullet_is_not_document_text() -> None:
     single = """## Page 1
 ### BLOCK #1 [TEXT]: one
@@ -68,6 +72,7 @@ def test_repeated_technical_markdown_bullet_is_not_document_text() -> None:
     assert left[0]["canonical_text"] == right[0]["canonical_text"]
 
 
+@pytest.mark.unit
 def test_numbered_notes_split_without_blank_lines_and_drop_duplicate_marker() -> None:
     markdown = """## Page 1
 ### BLOCK #1 [TEXT]: notes
@@ -85,6 +90,7 @@ def test_numbered_notes_split_without_blank_lines_and_drop_duplicate_marker() ->
     ]
 
 
+@pytest.mark.unit
 def test_same_text_inside_linked_pair_is_excluded() -> None:
     left = [_fragment("left", 1, "Кладочный план первого этажа")]
     right = [_fragment("right", 1, "Кладочный план первого этажа")]
@@ -93,6 +99,7 @@ def test_same_text_inside_linked_pair_is_excluded() -> None:
     assert result["remaining"] == {"left": [], "right": []}
 
 
+@pytest.mark.unit
 def test_different_numeric_value_remains() -> None:
     left = [_fragment("left", 1, "Электрощитовая — 12.4 м²")]
     right = [_fragment("right", 1, "Электрощитовая — 13.1 м²")]
@@ -101,6 +108,7 @@ def test_different_numeric_value_remains() -> None:
     assert result["remaining"] == {"left": [left[0]["id"]], "right": [right[0]["id"]]}
 
 
+@pytest.mark.unit
 def test_exact_pdf_text_can_prove_match_when_structured_text_has_typo() -> None:
     left = [_fragment("left", 1, "Адрес: улица Летняя")]
     right = [_fragment("right", 1, "Адрес: улица Лётная")]
@@ -113,6 +121,7 @@ def test_exact_pdf_text_can_prove_match_when_structured_text_has_typo() -> None:
     assert result["remaining"] == {"left": [], "right": []}
 
 
+@pytest.mark.integration
 def test_markdown_table_is_fragmented_and_compared_by_rows() -> None:
     left_md = """## Page 1
 ### BLOCK #1 [TEXT]: block_left
@@ -134,6 +143,7 @@ def test_markdown_table_is_fragmented_and_compared_by_rows() -> None:
     assert all("01.24" not in item for item in matched)
 
 
+@pytest.mark.unit
 def test_remaining_text_found_elsewhere_has_actual_page_and_is_excluded() -> None:
     phrase = "Маркировка помещений общего пользования"
     left = [_fragment("left", 1, phrase)]
@@ -149,6 +159,7 @@ def test_remaining_text_found_elsewhere_has_actual_page_and_is_excluded() -> Non
     assert left[0]["id"] not in result["remaining"]["left"]
 
 
+@pytest.mark.unit
 def test_found_elsewhere_target_is_not_left_as_linked_side_remaining() -> None:
     phrase = "Длинная уникальная строка вынесена на соседний лист"
     left = [_fragment("left", 1, phrase)]
@@ -159,6 +170,7 @@ def test_found_elsewhere_target_is_not_left_as_linked_side_remaining() -> None:
     assert result["remaining"]["left"] == []
 
 
+@pytest.mark.unit
 def test_short_generic_text_does_not_create_cross_sheet_hint() -> None:
     left = [_fragment("left", 1, "План")]
     right = [_fragment("right", 1, "Иное"), _fragment("right", 2, "План")]
@@ -166,6 +178,7 @@ def test_short_generic_text_does_not_create_cross_sheet_hint() -> None:
     assert result["matches"] == []
 
 
+@pytest.mark.unit
 def test_frequent_phrase_does_not_create_false_cross_sheet_link() -> None:
     phrase = "Условные обозначения для проекта"
     left = [_fragment("left", 1, phrase)]
@@ -175,6 +188,7 @@ def test_frequent_phrase_does_not_create_false_cross_sheet_link() -> None:
     assert not [item for item in result["matches"] if item["status"] == "found_on_other_sheet"]
 
 
+@pytest.mark.unit
 def test_sheet_link_hint_is_advisory_and_does_not_mutate_manual_links() -> None:
     link = _link()
     original = copy.deepcopy(link)
@@ -194,6 +208,7 @@ def test_sheet_link_hint_is_advisory_and_does_not_mutate_manual_links() -> None:
     assert link == original
 
 
+@pytest.mark.unit
 def test_one_p_to_multiple_rd_pages_remains_supported() -> None:
     common = "Общая площадь квартиры без учета лоджий"
     left = [_fragment("left", 1, common)]
@@ -203,6 +218,7 @@ def test_one_p_to_multiple_rd_pages_remains_supported() -> None:
     assert result["matches"][0]["expected_right_pages"] == [2, 3]
 
 
+@pytest.mark.unit
 def test_rerun_is_deterministic() -> None:
     left = [_fragment("left", 1, "Детерминированная строка проекта")]
     right = [_fragment("right", 1, "Детерминированная строка проекта")]
@@ -212,6 +228,7 @@ def test_rerun_is_deterministic() -> None:
     assert first["remaining"] == second["remaining"]
 
 
+@pytest.mark.unit
 def test_overlay_contains_both_pages_and_found_elsewhere_marker() -> None:
     phrase = "Текст перенесен на другой лист проекта"
     left = [_fragment("left", 1, phrase)]
@@ -223,6 +240,7 @@ def test_overlay_contains_both_pages_and_found_elsewhere_marker() -> None:
     assert "другом листе" in overlays["left"]["1"][0]["title"]
 
 
+@pytest.mark.unit
 def test_overlay_is_rendered_in_paged_and_continuous_pdf_viewer() -> None:
     root = Path(__file__).resolve().parents[1]
     template = (root / "frontend" / "index.html").read_text(encoding="utf-8")
@@ -236,6 +254,7 @@ def test_overlay_is_rendered_in_paged_and_continuous_pdf_viewer() -> None:
     assert "style.clipPath = `polygon(${polygon})`" in javascript
 
 
+@pytest.mark.unit
 def test_pdf_text_location_is_read_only(tmp_path: Path) -> None:
     pdf_path = tmp_path / "source.pdf"
     document = fitz.open()
@@ -264,6 +283,7 @@ def test_pdf_text_location_is_read_only(tmp_path: Path) -> None:
     assert before == after
 
 
+@pytest.mark.unit
 def test_pdf_line_comparison_masks_only_exact_visual_lines(tmp_path: Path) -> None:
     paths = {}
     for side, changed in (("left", "Площадь 15,2 м2"), ("right", "Площадь 15,8 м2")):
@@ -286,6 +306,7 @@ def test_pdf_line_comparison_masks_only_exact_visual_lines(tmp_path: Path) -> No
     assert comparison["summary"]["linked_percent"] < 100
 
 
+@pytest.mark.unit
 def test_pdf_line_metrics_drive_the_displayed_percentages() -> None:
     metrics = [{
         "link_id": "manual_link",
@@ -320,6 +341,7 @@ def test_pdf_line_metrics_drive_the_displayed_percentages() -> None:
     assert summary["remaining_percent"] == 0.0
 
 
+@pytest.mark.unit
 def test_pdf_line_overlays_replace_fragment_masks_but_keep_elsewhere_marker() -> None:
     structured = {
         "left": {"1": [
@@ -338,6 +360,7 @@ def test_pdf_line_overlays_replace_fragment_masks_but_keep_elsewhere_marker() ->
     assert [item["id"] for item in result["left"]["1"]] == ["line", "elsewhere"]
 
 
+@pytest.mark.integration
 def test_whole_exact_text_block_uses_uploaded_polygon(tmp_path: Path) -> None:
     left = [
         _fragment("left", 1, "Первая строка блока", index=0),
@@ -386,6 +409,7 @@ def test_whole_exact_text_block_uses_uploaded_polygon(tmp_path: Path) -> None:
     ) == []
 
 
+@pytest.mark.unit
 def test_exact_block_overlay_replaces_only_masks_inside_block() -> None:
     current = {
         "left": {"1": [
@@ -404,6 +428,7 @@ def test_exact_block_overlay_replaces_only_masks_inside_block() -> None:
     assert {item["id"] for item in result["left"]["1"]} == {"block", "outside"}
 
 
+@pytest.mark.unit
 def test_exclusion_contract_contains_only_unmasked_downstream_text() -> None:
     structured = {
         "used_left": {"left_matched"},

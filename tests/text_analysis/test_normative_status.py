@@ -13,6 +13,9 @@ from backend.app.services.text_analysis.normative_status import (
     severity_for_status,
 )
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_allowed_statuses_contain_all_enum_values():
     assert ALLOWED_STATUSES == {s.value for s in NormativeStatus}

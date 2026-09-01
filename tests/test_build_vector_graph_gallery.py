@@ -7,6 +7,10 @@ from PIL import Image
 
 from backend.scripts import build_vector_graph_gallery as gallery
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)

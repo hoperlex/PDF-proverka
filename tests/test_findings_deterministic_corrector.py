@@ -10,6 +10,8 @@ import json
 from backend.app.pipeline.stages.findings_review import deterministic_critic as dc
 from backend.app.pipeline.stages.findings_review import deterministic_corrector as dcorr
 
+import pytest
+
 
 def _blocks(*ids_pages):
     return {
@@ -39,6 +41,7 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+@pytest.mark.unit
 def test_no_finding_is_ever_deleted():
     findings = {"findings": [
         {"id": "F-001", "severity": "КРИТИЧЕСКОЕ", "page": 4},
@@ -59,6 +62,7 @@ def test_no_finding_is_ever_deleted():
     assert result.findings_total == 3
 
 
+@pytest.mark.unit
 def test_no_evidence_critical_flagged_not_downgraded():
     # reserc.md #31: критичное замечание без доказательств НЕ понижаем молча —
     # помечаем на ручную проверку, severity сохраняем.
@@ -74,6 +78,7 @@ def test_no_evidence_critical_flagged_not_downgraded():
     assert "no_evidence" in f["corrector_note"]
 
 
+@pytest.mark.unit
 def test_no_evidence_economic_flagged_not_downgraded():
     findings = {"findings": [{"id": "F-001", "severity": "ЭКОНОМИЧЕСКОЕ", "page": 4}]}
     review = _review(("F-001", "no_evidence", "нет"))
@@ -84,6 +89,7 @@ def test_no_evidence_economic_flagged_not_downgraded():
     assert result.flagged_human == 1
 
 
+@pytest.mark.unit
 def test_cross_check_severity_is_canonical_config_form():
     # #32: понижаемая severity должна совпадать с production-каноном из
     # SEVERITY_CONFIG (форма С ПРОБЕЛОМ), иначе цвет/порядок/фильтры её не видят.
@@ -92,6 +98,7 @@ def test_cross_check_severity_is_canonical_config_form():
     assert dcorr.CROSS_CHECK_SEVERITY in SEVERITY_CONFIG
 
 
+@pytest.mark.unit
 def test_no_evidence_noncritical_downgraded():
     # Непротектированные severity (эксплуатационное/рекомендательное) — понижаем
     # в ПРОВЕРИТЬ_ПО_СМЕЖНЫМ как раньше.
@@ -105,6 +112,7 @@ def test_no_evidence_noncritical_downgraded():
     assert "no_evidence" in f["corrector_note"]
 
 
+@pytest.mark.unit
 def test_phantom_block_cleaned():
     findings = {"findings": [{
         "id": "F-001", "severity": "КРИТИЧЕСКОЕ", "page": 4,
@@ -124,6 +132,7 @@ def test_phantom_block_cleaned():
     assert result.phantom_cleaned == 1
 
 
+@pytest.mark.unit
 def test_phantom_block_all_removed_critical_flagged():
     # Фантом-блоки убраны, evidence не осталось → no_evidence. Критичное —
     # помечаем на ручную проверку, не понижаем (#31).
@@ -142,6 +151,7 @@ def test_phantom_block_all_removed_critical_flagged():
     assert result.phantom_cleaned == 1
 
 
+@pytest.mark.unit
 def test_phantom_block_all_removed_noncritical_downgrades():
     findings = {"findings": [{
         "id": "F-001", "severity": "РЕКОМЕНДАТЕЛЬНОЕ", "page": 4,
@@ -156,6 +166,7 @@ def test_phantom_block_all_removed_noncritical_downgrades():
     assert result.downgraded == 1
 
 
+@pytest.mark.unit
 def test_page_mismatch_fixed_from_evidence():
     findings = {"findings": [{
         "id": "F-001", "severity": "КРИТИЧЕСКОЕ", "page": 99,
@@ -170,6 +181,7 @@ def test_page_mismatch_fixed_from_evidence():
     assert result.page_fixed == 1
 
 
+@pytest.mark.unit
 def test_pass_untouched():
     findings = {"findings": [{"id": "F-001", "severity": "КРИТИЧЕСКОЕ", "page": 4,
                               "related_block_ids": ["B1-AAAA-BBB"]}]}
@@ -181,6 +193,7 @@ def test_pass_untouched():
     assert result.corrected == 0
 
 
+@pytest.mark.unit
 def test_norm_quote_preserved():
     findings = {"findings": [{
         "id": "F-001", "severity": "КРИТИЧЕСКОЕ", "page": 4,
@@ -194,6 +207,7 @@ def test_norm_quote_preserved():
 
 # ─── Сквозной critic → corrector ─────────────────────────────────────────────
 
+@pytest.mark.integration
 def test_critic_then_corrector_roundtrip(tmp_path):
     findings = {"findings": [
         {"id": "F-001", "severity": "КРИТИЧЕСКОЕ", "page": 4, "related_block_ids": ["B1-AAAA-BBB"]},
@@ -226,6 +240,7 @@ def test_critic_then_corrector_roundtrip(tmp_path):
     assert len(final["findings"]) == 3  # ничего не потеряно
 
 
+@pytest.mark.integration
 def test_missing_review_returns_error(tmp_path):
     (tmp_path / "03_findings.json").write_text(json.dumps({"findings": []}), encoding="utf-8")
     res = _run(dcorr.run_deterministic_corrector(tmp_path, write=True))

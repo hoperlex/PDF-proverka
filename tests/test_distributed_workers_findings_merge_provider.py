@@ -61,6 +61,10 @@ from backend.app.pipeline.stages.text_analysis import (                    # noq
     provider_transport as text_provider_transport,
 )
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 # ═════════════════════════ Подставной CLI и фикстуры ═════════════════════════
 

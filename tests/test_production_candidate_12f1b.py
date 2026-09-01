@@ -40,6 +40,7 @@ def _pending_worker(settings):
     )
 
 
+@pytest.mark.unit
 def test_production_default_state_root_is_external(monkeypatch):
     monkeypatch.delenv("DISTRIBUTED_WORKERS_DATA_DIR", raising=False)
     from backend.app.services.distributed_workers.settings import get_settings
@@ -47,6 +48,7 @@ def test_production_default_state_root_is_external(monkeypatch):
     assert str(get_settings().data_dir) == "/var/lib/auditmanager/distributed_workers"
 
 
+@pytest.mark.integration
 def test_state_root_permissions_and_wal(settings):
     assert stat.S_IMODE(settings.data_dir.stat().st_mode) == 0o700
     assert stat.S_IMODE(settings.db_path.stat().st_mode) == 0o600
@@ -72,6 +74,7 @@ def test_state_root_permissions_and_wal(settings):
         assert versions == list(range(1, schema.SCHEMA_VERSION + 1))
 
 
+@pytest.mark.integration
 def test_new_worker_is_durably_drained_and_heartbeat_cannot_resume(settings):
     from backend.app.services.distributed_workers import (
         registration_service,
@@ -108,6 +111,7 @@ def test_new_worker_is_durably_drained_and_heartbeat_cannot_resume(settings):
     assert slots.effective_limit(after).value == 0
 
 
+@pytest.mark.integration
 def test_operator_intake_toggle_is_persistent(settings):
     from backend.app.services.distributed_workers import repositories
 
@@ -132,6 +136,7 @@ def test_operator_intake_toggle_is_persistent(settings):
     assert drained["intake_enabled"] == 0
 
 
+@pytest.mark.integration
 def test_human_intake_api_enforces_production_roles_and_appends_audit(
     settings, monkeypatch
 ):
@@ -189,6 +194,7 @@ def test_human_intake_api_enforces_production_roles_and_appends_audit(
     assert all(row["permission"] == "distributed_workers.operate" for row in actions)
 
 
+@pytest.mark.integration
 def test_human_intake_state_rolls_back_if_audit_append_fails(
     settings, monkeypatch
 ):
@@ -222,6 +228,7 @@ def test_human_intake_state_rolls_back_if_audit_append_fails(
     assert unchanged["intake_enabled"] == 0
 
 
+@pytest.mark.unit
 def test_approved_portal_mapping_and_role_boundaries(monkeypatch):
     from backend.app.services.distributed_workers import authorization as az
 
@@ -242,6 +249,7 @@ def test_approved_portal_mapping_and_role_boundaries(monkeypatch):
     }
 
 
+@pytest.mark.integration
 def test_registration_accepts_only_one_time_instance_scoped_token(settings):
     from backend.app.services.worker_bootstrap import store
 
@@ -290,6 +298,7 @@ def test_registration_accepts_only_one_time_instance_scoped_token(settings):
         )
 
 
+@pytest.mark.unit
 def test_no_reusable_bootstrap_fallback_in_runtime_source():
     from pathlib import Path
 
@@ -306,6 +315,7 @@ def test_no_reusable_bootstrap_fallback_in_runtime_source():
     assert "verify_bootstrap_secret" not in joined
 
 
+@pytest.mark.unit
 def test_candidate_service_definitions_pin_release_and_stable_endpoint():
     from pathlib import Path
 
@@ -322,6 +332,7 @@ def test_candidate_service_definitions_pin_release_and_stable_endpoint():
     assert "AUDIT_WORKER_ALLOW_REAL_LLM=false" in env
 
 
+@pytest.mark.unit
 def test_portal_exposes_role_gated_human_drain_controls():
     root = Path(__file__).resolve().parents[1]
     source = (root / "frontend/static/js/audit-workers.js").read_text()

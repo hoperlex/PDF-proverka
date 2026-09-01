@@ -10,6 +10,10 @@ from typing import Any, Iterator
 
 import pytest
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 JOB_ID = "f4f2f214-3ab4-431b-894a-de75813f0326"
 DOCUMENT_CODE = "13АВ-РД-КМ-К2"

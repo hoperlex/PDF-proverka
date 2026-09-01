@@ -6,6 +6,11 @@ import inspect
 import backend.app.core.config as config
 from backend.app.pipeline.stages.gemma_enrichment import runner
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_gemma_parallelism_is_not_used_by_runtime_runner():
     assert "GEMMA_BASE_PARALLELISM" not in inspect.getsource(runner)

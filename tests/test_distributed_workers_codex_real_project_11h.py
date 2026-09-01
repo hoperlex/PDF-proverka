@@ -36,6 +36,10 @@ from audit_worker.providers.codex_adapter import CodexProviderAdapter, _inferenc
 from audit_worker.providers.paths import ProviderHome
 from backend.app.pipeline.execution import provider_bridge_stub
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 #: Минимальный настоящий PNG (1×1). Байты, а не заглушка-строка: адаптер их
 #: пишет на диск и сверяет по sha256, а заглушка CLI — читает.
 PNG_1X1 = bytes.fromhex(

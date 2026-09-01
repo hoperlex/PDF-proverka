@@ -21,6 +21,10 @@ if str(_ROOT) not in sys.path:
 
 from backend.app.services.findings import migrated_findings_service as mfs
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 # ─── Fixtures (переиспользуем паттерн carryover-тестов) ──────────────────
 

@@ -50,6 +50,7 @@ def _block_text(path) -> str:
         return doc[0].get_text()
 
 
+@pytest.mark.unit
 def test_classify_legend_by_description_subject(legend_pdf):
     assert classify_legend_profile(
         _block_text(legend_pdf),
@@ -57,11 +58,13 @@ def test_classify_legend_by_description_subject(legend_pdf):
     ) == PROFILE_LEGEND
 
 
+@pytest.mark.unit
 def test_classify_legend_by_own_title(legend_pdf):
     """Заголовок в самом блоке достаточен, когда описания блока нет."""
     assert classify_legend_profile(_block_text(legend_pdf), description="") == PROFILE_LEGEND
 
 
+@pytest.mark.unit
 def test_legend_is_subject_not_detail():
     """«Схема ... с условными обозначениями» — это схема, а не легенда."""
     text = "План квартиры\n- вывод электрический\n- розетка\n"
@@ -71,6 +74,7 @@ def test_legend_is_subject_not_detail():
     ) is None
 
 
+@pytest.mark.unit
 def test_json_description_does_not_promote_to_legend():
     """Старое описание-JSON темы блока не несёт и легендой блок не делает."""
     assert classify_legend_profile(
@@ -79,18 +83,21 @@ def test_json_description_does_not_promote_to_legend():
     ) is None
 
 
+@pytest.mark.unit
 def test_large_block_with_legend_in_corner_is_not_legend():
     """Крупный чертёж с легендой в углу остаётся чертежом."""
     body = "Условные обозначения\n" + "\n".join(f"стена {i} длиной {1000 + i}" for i in range(200))
     assert classify_legend_profile(body, description="") is None
 
 
+@pytest.mark.unit
 def test_axes_block_legend_classification_rejected():
     """Осевые марки — признак чертежа, а не самостоятельной легенды."""
     body = "Условные обозначения\n3.Б\n3.В\n3.Г\n" + "\n".join(f"- строка {i}" for i in range(6))
     assert classify_legend_profile(body, description="") is None
 
 
+@pytest.mark.unit
 def test_legend_rows_bind_code_value_and_meaning(legend_pdf):
     graph = build_legend_graph(legend_pdf, block_id="TEST-LEGEND")
     assert graph is not None
@@ -104,6 +111,7 @@ def test_legend_rows_bind_code_value_and_meaning(legend_pdf):
     assert validation["edges_total"] == 2 * len(ROWS)
 
 
+@pytest.mark.unit
 def test_legend_value_binding_is_marked_when_text_disagrees(tmp_path):
     """Размер, которого нет в расшифровке, помечается как привязанный только геометрией."""
     doc = fitz.open()
@@ -125,6 +133,7 @@ def test_legend_value_binding_is_marked_when_text_disagrees(tmp_path):
     assert states == {"legend_value_geometry_only"}
 
 
+@pytest.mark.unit
 def test_legend_markdown_renders_decoding_table(legend_pdf):
     graph = build_legend_graph(legend_pdf, block_id="TEST-LEGEND")
     markdown = render_legend_markdown(graph)
@@ -136,6 +145,7 @@ def test_legend_markdown_renders_decoding_table(legend_pdf):
         assert text in markdown
 
 
+@pytest.mark.unit
 def test_legend_gate_requires_two_rows(tmp_path):
     doc = fitz.open()
     page = doc.new_page(width=520, height=80)
@@ -151,6 +161,7 @@ def test_legend_gate_requires_two_rows(tmp_path):
     assert "строк легенды меньше двух" in gate["reasons"]
 
 
+@pytest.mark.unit
 def test_legend_graph_is_none_without_text_layer(tmp_path):
     doc = fitz.open()
     doc.new_page(width=200, height=100)
@@ -160,6 +171,7 @@ def test_legend_graph_is_none_without_text_layer(tmp_path):
     assert build_legend_graph(path, block_id="TEST-EMPTY") is None
 
 
+@pytest.mark.integration
 def test_router_sends_legend_block_to_legend_profile(tmp_path, monkeypatch, legend_pdf):
     """Легенда на листе плана не должна наследовать профиль листа."""
     from types import SimpleNamespace
@@ -197,6 +209,7 @@ def test_router_sends_legend_block_to_legend_profile(tmp_path, monkeypatch, lege
         assert code in package["markdown"]
 
 
+@pytest.mark.integration
 def test_router_does_not_hijack_plan_block_into_legend(tmp_path, monkeypatch, legend_pdf):
     """Чертёж, лишь упоминающий условные обозначения, легендой не становится."""
     from types import SimpleNamespace

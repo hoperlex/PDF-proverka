@@ -31,6 +31,7 @@ from backend.app.pipeline.stages.norms.runner import _norm_fix_left_findings_unt
 
 # ── 1. F-ID от максимального номера ──────────────────────────────────────────
 
+@pytest.mark.unit
 def test_combine_next_id_from_max_not_len():
     base = {"findings": [{"id": "F-001", "problem": "а"}, {"id": "F-003", "problem": "б"}]}
     targeted = [("ar", {"findings": [{"problem": "новое targeted-замечание про кладку"}]})]
@@ -42,6 +43,7 @@ def test_combine_next_id_from_max_not_len():
     assert ids == ["F-001", "F-003", "F-004"]
 
 
+@pytest.mark.unit
 def test_combine_keeps_base_findings():
     base = {"findings": [{"id": "F-001", "problem": "база"}]}
     targeted = [("eom", {"findings": [{"problem": "targeted"}]})]
@@ -54,6 +56,7 @@ def test_combine_keeps_base_findings():
 
 # ── 2. evidence_text_refs для Верификатора ──────────────────────────────────
 
+@pytest.mark.unit
 def test_targeted_finding_gets_text_refs_from_evidence_page():
     item = {
         "problem": "x",
@@ -63,6 +66,7 @@ def test_targeted_finding_gets_text_refs_from_evidence_page():
     assert item["evidence_text_refs"] == ["page_7_text"]
 
 
+@pytest.mark.unit
 def test_targeted_finding_gets_text_refs_from_top_level_page():
     item = {"problem": "x", "page": "12", "evidence": [
         {"type": "text", "block_id": None, "page": None, "md_lines": "3-4"},
@@ -71,12 +75,14 @@ def test_targeted_finding_gets_text_refs_from_top_level_page():
     assert item["evidence_text_refs"] == ["page_12_text"]
 
 
+@pytest.mark.unit
 def test_targeted_finding_with_block_id_untouched():
     item = {"problem": "x", "evidence": [{"type": "image", "block_id": "b1", "page": 2}]}
     _ensure_text_evidence_refs(item)
     assert "evidence_text_refs" not in item
 
 
+@pytest.mark.unit
 def test_targeted_finding_without_page_gets_no_refs():
     item = {"problem": "x", "evidence": [
         {"type": "text", "block_id": None, "page": None, "md_lines": "1-2"},
@@ -85,6 +91,7 @@ def test_targeted_finding_without_page_gets_no_refs():
     assert "evidence_text_refs" not in item
 
 
+@pytest.mark.unit
 def test_combine_applies_text_refs_to_added_when_observer_enabled(monkeypatch):
     from backend.app.core import config
 
@@ -101,6 +108,7 @@ def test_combine_applies_text_refs_to_added_when_observer_enabled(monkeypatch):
     assert combined["findings"][0]["evidence_text_refs"] == ["page_5_text"]
 
 
+@pytest.mark.unit
 def test_combine_leaves_text_refs_unchanged_when_observer_disabled(monkeypatch):
     from backend.app.core import config
 
@@ -123,6 +131,7 @@ def test_combine_leaves_text_refs_unchanged_when_observer_disabled(monkeypatch):
 
 # ── 3. norm_fix: детектор «ничего не изменилось» ─────────────────────────────
 
+@pytest.mark.integration
 def test_norm_fix_untouched_true_when_identical(tmp_path):
     f = tmp_path / "03_findings.json"
     b = tmp_path / "03_findings_pre_norm.json"
@@ -131,6 +140,7 @@ def test_norm_fix_untouched_true_when_identical(tmp_path):
     assert _norm_fix_left_findings_untouched(f, b) is True
 
 
+@pytest.mark.integration
 def test_norm_fix_untouched_false_when_changed(tmp_path):
     f = tmp_path / "03_findings.json"
     b = tmp_path / "03_findings_pre_norm.json"
@@ -141,6 +151,7 @@ def test_norm_fix_untouched_false_when_changed(tmp_path):
     assert _norm_fix_left_findings_untouched(f, b) is False
 
 
+@pytest.mark.integration
 def test_norm_fix_untouched_false_when_backup_missing(tmp_path):
     f = tmp_path / "03_findings.json"
     f.write_text("{}", encoding="utf-8")
@@ -149,6 +160,7 @@ def test_norm_fix_untouched_false_when_backup_missing(tmp_path):
 
 # ── 4. codex_runner: stdout-JSON при exit!=0 не доверяем, stderr не парсим ───
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_json_mode_rejects_stdout_json_on_nonzero_exit(monkeypatch):
     import backend.app.services.llm.codex_runner as codex_runner
@@ -168,6 +180,7 @@ async def test_json_mode_rejects_stdout_json_on_nonzero_exit(monkeypatch):
     assert result.json_data is None
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_json_mode_ignores_stderr_error_body(monkeypatch):
     import backend.app.services.llm.codex_runner as codex_runner
@@ -189,6 +202,7 @@ async def test_json_mode_ignores_stderr_error_body(monkeypatch):
 
 # ── 5. targeted merge: base-массив ремонтируется, а не выбрасывается ─────────
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_targeted_merge_repairs_list_base(monkeypatch, tmp_path):
     import backend.app.services.llm.claude_runner as claude_runner

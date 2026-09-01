@@ -37,6 +37,7 @@ def _review(pairs):
 
 # ─── guard: неотрецензированные не теряются ──────────────────────────────────
 
+@pytest.mark.unit
 def test_unreviewed_items_kept_as_pass():
     """Критик обрёк 3 из 5 — остальные 2 ДОЛЖНЫ сохраниться (не удаляться)."""
     items = _items(5)
@@ -55,6 +56,7 @@ def test_unreviewed_items_kept_as_pass():
     assert ids == {f"OPT-{i:03d}" for i in range(1, 6)}
 
 
+@pytest.mark.unit
 def test_never_deletes_on_negative_verdicts():
     items = _items(4)
     review = _review([
@@ -73,6 +75,7 @@ def test_never_deletes_on_negative_verdicts():
 
 # ─── конкретные правки ───────────────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_unrealistic_savings_capped_not_deleted():
     items = [{"id": "OPT-001", "savings_pct": 70, "savings_basis": "экспертная оценка"}]
     review = _review([("OPT-001", "unrealistic_savings", {})])
@@ -85,6 +88,7 @@ def test_unrealistic_savings_capped_not_deleted():
     assert "corrector_note" in it
 
 
+@pytest.mark.unit
 def test_conflict_blocks_savings_and_links_finding():
     items = [{"id": "OPT-001", "savings_pct": 15}]
     review = _review([("OPT-001", "conflicts_with_finding",
@@ -99,6 +103,7 @@ def test_conflict_blocks_savings_and_links_finding():
     assert res.conflicts_blocked == 1
 
 
+@pytest.mark.unit
 def test_vendor_violation_flags_review():
     items = [{"id": "OPT-001", "savings_pct": 10}]
     review = _review([("OPT-001", "vendor_violation", {})])
@@ -109,6 +114,7 @@ def test_vendor_violation_flags_review():
     assert res.flagged_review == 1
 
 
+@pytest.mark.unit
 def test_pass_item_unchanged():
     items = [{"id": "OPT-001", "savings_pct": 10, "proposed": "x"}]
     new_items, res = correct_items(items, build_verdict_map(_review([("OPT-001", "pass", {})])))
@@ -116,6 +122,7 @@ def test_pass_item_unchanged():
     assert "corrected_by" not in new_items[0]
 
 
+@pytest.mark.unit
 def test_note_idempotent():
     """Повторный прогон не дублирует corrector_note."""
     items = [{"id": "OPT-001", "savings_pct": 70}]
@@ -129,6 +136,7 @@ def test_note_idempotent():
 
 # ─── I/O ─────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
 def test_run_writes_and_backs_up(tmp_path):
     opt = {"meta": {"total_items": 3}, "items": _items(3)}
     (tmp_path / "optimization.json").write_text(json.dumps(opt), encoding="utf-8")
@@ -151,6 +159,7 @@ def test_run_writes_and_backs_up(tmp_path):
     assert out["meta"]["corrector"]["deleted"] == 0
 
 
+@pytest.mark.unit
 def test_missing_files_failsoft(tmp_path):
     res = asyncio.run(run_deterministic_corrector(tmp_path))
     assert res.error is not None

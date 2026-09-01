@@ -21,6 +21,9 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: contract — сверяет схемы/proto из `contracts/**` с источником.
+pytestmark = pytest.mark.contract
+
 ROOT = Path(__file__).resolve().parents[1]
 MARKDOWN = ROOT / "docs" / "architecture" / "DOMAIN_CONTRACT_V1.md"
 GLOSSARY = ROOT / "docs" / "architecture" / "GLOSSARY.md"

@@ -24,6 +24,10 @@ from backend.app.pipeline.stages.gemma_enrichment.gemma_enrichment_contract impo
     STAGE02_BLOCKS_DIRNAME,
 )
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def layout(tmp_path):

@@ -11,6 +11,11 @@ from backend.app.pipeline.stages.block_grounding.block_text_clustering import (
 )
 from backend.app.pipeline.stages.block_grounding.block_source_router import _extract_block
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def _w(x0, y0, x1, y1, word, bno, lno, wno):
     return (x0, y0, x1, y1, word, bno, lno, wno)

@@ -9,6 +9,12 @@ from types import SimpleNamespace
 from backend.app.services.distributed_workers import database
 from backend.app.services.distributed_workers.state_permissions import SHARED_FILE_MODE
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def test_shared_mode_normalizes_runtime_sqlite_sidecars(tmp_path):
     data_dir = tmp_path / "shared"

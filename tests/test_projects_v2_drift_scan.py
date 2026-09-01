@@ -14,6 +14,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "projec
 import v2lib                     # noqa: E402
 import scan_migrated_drift as sd  # noqa: E402
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 DOC = "DOC-X"
 VER = "v002"
 

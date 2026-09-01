@@ -18,6 +18,10 @@ import pytest
 import backend.app.pipeline.manager as mgr
 from backend.app.pipeline.manager import PipelineManager
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _run(monkeypatch, *, gemma_status, gemma_ready, block_ctx_valid,
          has_text, has_blocks, has_findings, stage):

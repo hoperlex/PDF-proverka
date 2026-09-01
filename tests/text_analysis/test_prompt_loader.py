@@ -55,10 +55,12 @@ EXPECTED_PLACEHOLDERS: dict[str, set[str]] = {
 # Module-level invariants.
 # ---------------------------------------------------------------------------
 
+@pytest.mark.unit
 def test_known_prompts_set_matches_manifest():
     assert KNOWN_PROMPTS == frozenset(EXPECTED_PROMPTS)
 
 
+@pytest.mark.unit
 def test_phase1_prompts_dir_resolves_under_prompts_pipeline_ru():
     # Guards against someone repointing PROMPTS_DIR and silently breaking
     # the loader. The path must end with `prompts/pipeline/ru/phase1`.
@@ -73,12 +75,14 @@ def test_phase1_prompts_dir_resolves_under_prompts_pipeline_ru():
 # Per-file integrity.
 # ---------------------------------------------------------------------------
 
+@pytest.mark.unit
 @pytest.mark.parametrize("name", sorted(EXPECTED_PROMPTS))
 def test_each_prompt_file_exists(name):
     path = PHASE1_PROMPTS_DIR / f"{name}.md"
     assert path.is_file(), f"missing: {path}"
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("name", sorted(EXPECTED_PROMPTS))
 def test_each_prompt_file_is_nonempty_and_utf8(name):
     path = PHASE1_PROMPTS_DIR / f"{name}.md"
@@ -91,6 +95,7 @@ def test_each_prompt_file_is_nonempty_and_utf8(name):
     assert text.strip(), f"{path.name} is whitespace-only"
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("name", sorted(EXPECTED_PROMPTS))
 def test_each_prompt_file_starts_with_markdown_heading(name):
     text = load_prompt(name)
@@ -100,6 +105,7 @@ def test_each_prompt_file_starts_with_markdown_heading(name):
     )
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("name", sorted(EXPECTED_PROMPTS))
 def test_each_prompt_has_expected_placeholders(name):
     got = set(extract_placeholders(load_prompt(name)))
@@ -114,12 +120,14 @@ def test_each_prompt_has_expected_placeholders(name):
 # Loader behaviour.
 # ---------------------------------------------------------------------------
 
+@pytest.mark.unit
 def test_load_prompt_returns_raw_text():
     text = load_prompt("completeness_lens_production_prompt")
     assert isinstance(text, str)
     assert text.startswith("# ")
 
 
+@pytest.mark.unit
 def test_load_prompt_is_case_sensitive():
     # The existing prompts/pipeline/ru/*_task.md convention is lower_snake;
     # case matters because filenames carry meaning. Upper-case must fail.
@@ -127,26 +135,31 @@ def test_load_prompt_is_case_sensitive():
         load_prompt("Stage01_Production_Prompt")
 
 
+@pytest.mark.unit
 def test_load_prompt_rejects_unknown():
     with pytest.raises(ValueError, match="unknown prompt"):
         load_prompt("completeness_v999")
 
 
+@pytest.mark.unit
 def test_load_prompt_rejects_empty_string():
     with pytest.raises(ValueError):
         load_prompt("")
 
 
+@pytest.mark.unit
 def test_load_prompt_rejects_whitespace_only():
     with pytest.raises(ValueError):
         load_prompt("   ")
 
 
+@pytest.mark.unit
 def test_load_prompt_rejects_non_string():
     with pytest.raises(ValueError):
         load_prompt(None)  # type: ignore[arg-type]
 
 
+@pytest.mark.unit
 def test_load_prompt_raises_specific_subclass_when_file_missing(tmp_path, monkeypatch):
     from backend.app.services.text_analysis import prompt_loader as pl
 
@@ -155,6 +168,7 @@ def test_load_prompt_raises_specific_subclass_when_file_missing(tmp_path, monkey
         pl.load_prompt("stage01_production_prompt")
 
 
+@pytest.mark.integration
 def test_load_prompt_raises_when_file_is_empty(tmp_path, monkeypatch):
     from backend.app.services.text_analysis import prompt_loader as pl
 
@@ -164,10 +178,12 @@ def test_load_prompt_raises_when_file_is_empty(tmp_path, monkeypatch):
         pl.load_prompt("stage01_production_prompt")
 
 
+@pytest.mark.unit
 def test_available_prompts_returns_full_set():
     assert sorted(available_prompts()) == sorted(EXPECTED_PROMPTS)
 
 
+@pytest.mark.unit
 def test_available_prompts_subset_of_known():
     assert set(available_prompts()) <= KNOWN_PROMPTS
 
@@ -176,16 +192,19 @@ def test_available_prompts_subset_of_known():
 # extract_placeholders semantics.
 # ---------------------------------------------------------------------------
 
+@pytest.mark.unit
 def test_extract_placeholders_finds_simple_names():
     assert extract_placeholders("hello {NAME} and {OTHER_NAME}") == [
         "NAME", "OTHER_NAME"
     ]
 
 
+@pytest.mark.unit
 def test_extract_placeholders_dedups_and_sorts():
     assert extract_placeholders("{B} {A} {A} {B} {A}") == ["A", "B"]
 
 
+@pytest.mark.unit
 def test_extract_placeholders_ignores_lowercase_and_curly_pairs():
     # Lower case = not a placeholder per convention.
     # `{{X}}` (double braces) is also not the convention.
@@ -193,10 +212,12 @@ def test_extract_placeholders_ignores_lowercase_and_curly_pairs():
     assert extract_placeholders(text) == ["OK_NAME"]
 
 
+@pytest.mark.unit
 def test_extract_placeholders_empty_text_returns_empty_list():
     assert extract_placeholders("") == []
 
 
+@pytest.mark.unit
 def test_extract_placeholders_rejects_non_string():
     with pytest.raises(ValueError):
         extract_placeholders(None)  # type: ignore[arg-type]
@@ -208,6 +229,7 @@ def test_extract_placeholders_rejects_non_string():
 # detector type without updating the prompts, this fails.
 # ---------------------------------------------------------------------------
 
+@pytest.mark.unit
 def test_prompt_routing_block_mentions_all_detector_types():
     from backend.app.services.text_analysis.document_type_detector import ALLOWED
 

@@ -62,6 +62,7 @@ def _seed(store_path: Path) -> None:
     )
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("module_path", _SERVICE_MODULES)
 def test_store_contains_only_norm_strings(module_path, isolated_vault):
     _seed(isolated_vault[module_path])
@@ -73,6 +74,7 @@ def test_store_contains_only_norm_strings(module_path, isolated_vault):
     assert all(isinstance(item, str) for item in raw)
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("module_path", _SERVICE_MODULES)
 def test_only_pending_filter_has_entries(module_path, isolated_vault):
     _seed(isolated_vault[module_path])
@@ -88,6 +90,7 @@ def test_only_pending_filter_has_entries(module_path, isolated_vault):
     assert mod.get_missing_norms(status="dismissed") == []
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("module_path", _SERVICE_MODULES)
 def test_stats_only_count_active_missing_norms(module_path, isolated_vault):
     _seed(isolated_vault[module_path])
@@ -95,6 +98,7 @@ def test_stats_only_count_active_missing_norms(module_path, isolated_vault):
     assert mod.get_stats() == {"pending": 2, "added": 0, "dismissed": 0, "total": 2}
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("module_path", _SERVICE_MODULES)
 def test_reconcile_removes_known_cancelled_replaced_and_unsupported(module_path, isolated_vault):
     store = isolated_vault[module_path]
@@ -111,6 +115,7 @@ def test_reconcile_removes_known_cancelled_replaced_and_unsupported(module_path,
     assert json.loads(store.read_text(encoding="utf-8")) == ["СП 100.13330.2020"]
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("module_path", _SERVICE_MODULES)
 def test_accumulate_accepts_only_missing_non_cancelled(module_path, isolated_vault, tmp_path):
     _seed(isolated_vault[module_path])
@@ -129,6 +134,7 @@ def test_accumulate_accepts_only_missing_non_cancelled(module_path, isolated_vau
     assert raw == ["ГОСТ 11.22.2021", "СП 100.13330.2020", "СП 200.13330.2024"]
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("module_path", _SERVICE_MODULES)
 def test_reviewed_errors_are_normalized_or_excluded(
     module_path, isolated_vault, tmp_path, monkeypatch
@@ -159,6 +165,7 @@ def test_reviewed_errors_are_normalized_or_excluded(
     assert json.loads(store.read_text(encoding="utf-8")) == ["СП 10.13330.2020"]
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("module_path", _SERVICE_MODULES)
 def test_mark_added_and_dismissed_remove_norms(module_path, isolated_vault):
     _seed(isolated_vault[module_path])
@@ -170,6 +177,7 @@ def test_mark_added_and_dismissed_remove_norms(module_path, isolated_vault):
     assert json.loads(isolated_vault[module_path].read_text(encoding="utf-8")) == []
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("module_path", _SERVICE_MODULES)
 def test_legacy_schema_is_migrated_without_metadata(module_path, isolated_vault):
     store = isolated_vault[module_path]
@@ -197,6 +205,7 @@ _CSS_FILES = [
 ]
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("css_path", _CSS_FILES)
 def test_mn_doc_number_uses_theme_color(css_path):
     """Текст нормы должен наследоваться от темы (var(--text)), а не быть
@@ -214,6 +223,7 @@ def test_mn_doc_number_uses_theme_color(css_path):
     )
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("html_path", _INDEX_HTML_FILES)
 def test_pending_action_button_label_is_action_not_status(html_path):
     """Кнопка для pending-нормы должна выглядеть как действие («+ Добавить»),

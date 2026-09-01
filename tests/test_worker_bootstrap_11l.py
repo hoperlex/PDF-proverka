@@ -7,6 +7,11 @@ from backend.app.services.worker_bootstrap.remote import SSHBootstrapRemote
 from backend.app.services.worker_bootstrap import manager as bootstrap_manager
 from scripts import deploy_audit_worker as deploy
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 class _RecordingRemote:
     root = "/home/auditworker_11l/audit-worker-11l"

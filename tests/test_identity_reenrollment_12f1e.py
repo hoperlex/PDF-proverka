@@ -24,6 +24,10 @@ from tests.distributed_workers_helpers import (
     portal_client,
 )
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 
 EXACT_WORKER_ID = "wrk_19c87718"
 EXACT_INSTANCE_ID = "inst_boot_e129036dddf5c59049080ddd15624e72"

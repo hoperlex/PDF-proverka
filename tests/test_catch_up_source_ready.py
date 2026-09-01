@@ -6,6 +6,10 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: integration — database.ensure_ready создаёт каталоги и sqlite в
+# tmp_path.
+pytestmark = pytest.mark.integration
+
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))

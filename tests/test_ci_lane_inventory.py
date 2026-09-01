@@ -30,6 +30,11 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: network — `run_cli` запускает инвентарь настоящим дочерним
+# процессом (§5: «реальный … process lifecycle», разрешено process spawn/cleanup).
+# Слово `uvicorn` ниже встречается только как синтетический вход для инструмента.
+pytestmark = pytest.mark.network
+
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT_PATH = ROOT / "scripts" / "ci_lane_inventory.py"
 
@@ -725,8 +730,16 @@ def test_real_repository_scan_is_fast_and_non_trivial():
     # §5.1 называет оба корня: `pytest tests backend/tests`.
     assert scanned == {"tests", "backend"}
     assert set(report["lanes"]) == set(inventory.PRIMARY_LANES) | {inventory.LANE_UNKNOWN}
-    # Разметка §5 ещё не сделана — иначе доказывать было бы нечего.
-    assert report["totals"]["functions_without_primary_marker"] > 1000
+    # До W0-INT-01 здесь доказывалось обратное («разметки ещё нет, > 1000 нод без
+    # маркера»). Разметка сделана, и утверждать про её отсутствие больше нечего;
+    # ценность у живого дерева осталась ровно одна — §5 называет непомеченную и
+    # дважды помеченную ноду inventory failure, значит обеих быть не должно.
+    assert report["totals"]["functions_without_primary_marker"] == 0
+    assert report["totals"]["double_marked_functions"] == 0
+    # Сумма по lanes обязана сойтись с общим числом функций: нода не может ни
+    # потеряться между полосами, ни попасть сразу в две.
+    marked = report["markers"]["primary_marker_functions"]
+    assert sum(marked.values()) == report["totals"]["test_functions"]
 
 
 def test_module_without_test_functions_is_flagged(tmp_path):

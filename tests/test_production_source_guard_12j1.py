@@ -29,6 +29,9 @@ from scripts.production_source_guard import (  # noqa: E402
     verify_production_source,
 )
 
+# Primary lane §5: network — запускает настоящие дочерние процессы.
+pytestmark = pytest.mark.network
+
 #: Каноническая ветка прод-истины. С 19.08.2026 — `main`; фикстуры создают
 #: ветку именно с этим именем, чтобы тест ломался, если умолчание стража
 #: разъедется с реальностью.

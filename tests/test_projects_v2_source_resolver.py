@@ -9,6 +9,12 @@ from backend.app.services.storage.projects_v2_source_resolver import (
     resolve_version_source_files,
 )
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write(path: Path, data: str = "x") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)

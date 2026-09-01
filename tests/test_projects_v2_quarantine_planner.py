@@ -7,6 +7,10 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 _SCRIPT = (Path(__file__).resolve().parents[1]
            / "scripts" / "projects_v2" / "plan_legacy_quarantine.py")
 _spec = importlib.util.spec_from_file_location("plan_legacy_quarantine", _SCRIPT)

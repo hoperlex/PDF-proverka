@@ -13,6 +13,12 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO))
 from backend.app.services.storage import storage_read_facade as F  # noqa: E402
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 OBJF = "213_Mosfilmovskaya_31A_KingSons"
 
 

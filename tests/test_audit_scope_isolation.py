@@ -39,6 +39,9 @@ if str(_ROOT) not in sys.path:
 
 from backend.app.services.common import audit_scope  # noqa: E402
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 @pytest.mark.asyncio
 async def test_parallel_tasks_keep_own_paths_across_await():

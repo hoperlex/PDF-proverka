@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from backend.app.services.stage_comparison import document_matching
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def _document(name: str, side: str) -> dict:
     return {"filename": name, "pdf_path": f"/{side}/{name}"}

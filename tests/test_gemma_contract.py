@@ -10,6 +10,12 @@ import json
 
 from backend.app.pipeline.stages.gemma_enrichment import gemma_enrichment_contract as c
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _setup(tmp_path):
     """Собрать валидную фикстуру: base index (2 image-блока) + MD + canonical summary."""

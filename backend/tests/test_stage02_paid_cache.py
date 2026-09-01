@@ -47,6 +47,7 @@ def _make_key(**overrides) -> str:
     return cache_mod.compute_cache_key(**base)
 
 
+@pytest.mark.unit
 def test_same_inputs_produce_same_key():
     k1 = _make_key()
     k2 = _make_key()
@@ -54,24 +55,28 @@ def test_same_inputs_produce_same_key():
     assert len(k1) == 64  # sha256 hex
 
 
+@pytest.mark.unit
 def test_different_model_invalidates_key():
     k1 = _make_key()
     k2 = _make_key(model="openai/gpt-4o")
     assert k1 != k2
 
 
+@pytest.mark.unit
 def test_different_image_invalidates_key():
     k1 = _make_key()
     k2 = _make_key(image_identity="block_id=block_007_1|page=4|crop_px=[0, 0, 50, 50]")
     assert k1 != k2
 
 
+@pytest.mark.unit
 def test_different_system_prompt_invalidates_key():
     k1 = _make_key()
     k2 = _make_key(system_prompt="OTHER SYSTEM PROMPT")
     assert k1 != k2
 
 
+@pytest.mark.unit
 def test_enrichment_dict_order_doesnt_change_key():
     """Каноническая сериализация: dict ordering не должен ломать hash."""
     k1 = _make_key(enrichment={"a": 1, "b": 2, "c": 3})
@@ -79,6 +84,7 @@ def test_enrichment_dict_order_doesnt_change_key():
     assert k1 == k2
 
 
+@pytest.mark.unit
 def test_different_enrichment_value_invalidates_key():
     k1 = _make_key(enrichment={"label": "lighting"})
     k2 = _make_key(enrichment={"label": "power"})
@@ -88,16 +94,19 @@ def test_different_enrichment_value_invalidates_key():
 # ─── Cache enable flag ───────────────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_cache_enabled_default_true(monkeypatch):
     monkeypatch.delenv("STAGE02_PAID_CACHE_ENABLED", raising=False)
     assert cache_mod.cache_enabled() is True
 
 
+@pytest.mark.unit
 def test_cache_disabled_via_env(monkeypatch):
     monkeypatch.setenv("STAGE02_PAID_CACHE_ENABLED", "false")
     assert cache_mod.cache_enabled() is False
 
 
+@pytest.mark.unit
 def test_cache_enabled_via_env_truthy(monkeypatch):
     monkeypatch.setenv("STAGE02_PAID_CACHE_ENABLED", "yes")
     assert cache_mod.cache_enabled() is True
@@ -106,6 +115,7 @@ def test_cache_enabled_via_env_truthy(monkeypatch):
 # ─── try_load / save round-trip ─────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_save_and_load_round_trip(tmp_path):
     cache_key = _make_key()
     response = {
@@ -138,10 +148,12 @@ def test_save_and_load_round_trip(tmp_path):
     assert loaded["input_tokens"] == 40517
 
 
+@pytest.mark.unit
 def test_load_returns_none_on_cache_miss(tmp_path):
     assert cache_mod.try_load_cached(tmp_path, "deadbeef" * 8) is None
 
 
+@pytest.mark.integration
 def test_load_returns_none_on_corrupted_json(tmp_path):
     cache_key = "abc" + "1" * 61
     file_path = cache_mod.cache_file_for_key(tmp_path, cache_key)
@@ -150,6 +162,7 @@ def test_load_returns_none_on_corrupted_json(tmp_path):
     assert cache_mod.try_load_cached(tmp_path, cache_key) is None
 
 
+@pytest.mark.integration
 def test_load_returns_none_on_wrong_schema_version(tmp_path):
     cache_key = "abc" + "2" * 61
     file_path = cache_mod.cache_file_for_key(tmp_path, cache_key)
@@ -161,6 +174,7 @@ def test_load_returns_none_on_wrong_schema_version(tmp_path):
     assert cache_mod.try_load_cached(tmp_path, cache_key) is None
 
 
+@pytest.mark.unit
 def test_save_is_atomic_no_tmp_leftover(tmp_path):
     """save_to_cache использует tmp + os.replace — в каталоге не должно остаться .tmp."""
     cache_key = _make_key()
@@ -179,6 +193,7 @@ def test_save_is_atomic_no_tmp_leftover(tmp_path):
 # ─── Sanity: повторный hit того же блока не платит ──────────────────
 
 
+@pytest.mark.unit
 def test_double_hit_simulates_retry_savings(tmp_path):
     """Симуляция инцидента M31A: тот же блок отвечает 2 раза.
 
@@ -222,6 +237,7 @@ def test_double_hit_simulates_retry_savings(tmp_path):
 # run-каталоге; всего по корпусу так заперто 22 219 ответов в 428 каталогах).
 
 
+@pytest.mark.integration
 def test_cache_dir_is_shared_across_v2_runs(tmp_path):
     """Два прогона одной версии видят один каталог кэша."""
     analysis = tmp_path / "versions" / "v001" / "03_analysis"
@@ -239,6 +255,7 @@ def test_cache_dir_is_shared_across_v2_runs(tmp_path):
     assert run_a not in dir_a.parents
 
 
+@pytest.mark.integration
 def test_cache_survives_run_change(tmp_path):
     """Ответ, оплаченный в упавшем прогоне, поднимается в следующем."""
     analysis = tmp_path / "versions" / "v001" / "03_analysis"
@@ -263,6 +280,7 @@ def test_cache_survives_run_change(tmp_path):
     assert restored["cost_usd"] == 0.0
 
 
+@pytest.mark.integration
 def test_legacy_output_layout_keeps_cache_in_place(tmp_path):
     """Legacy <project>/_output/ трогать нельзя — там кэш и так per-project."""
     legacy_output = tmp_path / "projects" / "DOC-1" / "_output"
@@ -273,6 +291,7 @@ def test_legacy_output_layout_keeps_cache_in_place(tmp_path):
     )
 
 
+@pytest.mark.integration
 def test_runs_dir_outside_03_analysis_is_not_hoisted(tmp_path):
     """Совпадение имени «runs» вне 03_analysis не должно уводить кэш вверх."""
     unrelated = tmp_path / "что-то" / "runs" / "r1"

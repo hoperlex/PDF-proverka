@@ -12,6 +12,11 @@ if str(_PROJECT_ROOT) not in sys.path:
 from backend.app.pipeline.stages.findings_review.critic_v2 import kb_gate
 from backend.app.pipeline.stages.findings_review.critic_v2.kb_gate import KBGate, _parse_response
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 class DummyRetriever:
     def find_similar(self, finding: dict, top_k: int = 5):

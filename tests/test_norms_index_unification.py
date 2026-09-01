@@ -16,6 +16,9 @@ import pytest
 from backend.app.pipeline.stages.norms import _native_verify as nv
 from backend.app.pipeline.stages.norms import external_provider as ep
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _NORMS_VAULT = _REPO_ROOT / "norms" / "vault"
 

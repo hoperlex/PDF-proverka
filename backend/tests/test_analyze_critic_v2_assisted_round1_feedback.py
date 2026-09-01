@@ -21,6 +21,10 @@ from types import ModuleType
 
 import pytest
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = REPO_ROOT / "backend/scripts/analyze_critic_v2_assisted_round1_feedback.py"
 

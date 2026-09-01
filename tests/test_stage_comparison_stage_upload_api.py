@@ -5,6 +5,12 @@ from fastapi.testclient import TestClient
 
 from backend.app.api.routers import stage_comparison as router_mod
 
+import pytest
+
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 
 def test_folder_upload_forwards_intermediate_backup_flag(monkeypatch):
     captured: dict[str, object] = {}

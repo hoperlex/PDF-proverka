@@ -7,6 +7,10 @@ import pytest
 
 from backend.app.services.stage_comparison import sheet_matching, store
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _record(page: int, sheet: str | None, title: str | None) -> dict:
     display = f"Sheet {sheet}" if sheet else f"Page {page}"

@@ -12,6 +12,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "projects_v2"))
 import generate_final_acceptance_report as fa  # noqa: E402
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _doc(obj_root: Path, folder: str, disc: str, code: str, *, kind="plain",
          versions=None, statuses=None, migration_kind=None, findings=False,

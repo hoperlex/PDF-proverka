@@ -10,6 +10,9 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 PROMPT_RULES_DIR = (
     Path(__file__).resolve().parents[2]
     / "backend"

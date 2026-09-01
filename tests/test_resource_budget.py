@@ -32,6 +32,9 @@ if str(_ROOT) not in sys.path:
 
 from backend.app.services.common import resource_budget  # noqa: E402
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture(autouse=True)
 def _clean_budget():

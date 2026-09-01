@@ -40,10 +40,12 @@ REQUIRED_TIER_HEADERS = (
 # Module-level invariants.
 # ---------------------------------------------------------------------------
 
+@pytest.mark.unit
 def test_known_disciplines_set_matches_design():
     assert KNOWN_DISCIPLINES == frozenset(EXPECTED_DISCIPLINES)
 
 
+@pytest.mark.unit
 def test_checklist_dir_resolves_inside_app_data():
     # Must resolve to backend/app/data/discipline_checklists/ — guards against
     # someone repointing APP_DATA_DIR and accidentally leaking data path.
@@ -56,12 +58,14 @@ def test_checklist_dir_resolves_inside_app_data():
 # Per-file integrity.
 # ---------------------------------------------------------------------------
 
+@pytest.mark.unit
 @pytest.mark.parametrize("discipline", sorted(EXPECTED_DISCIPLINES))
 def test_each_discipline_file_exists(discipline):
     path = CHECKLIST_DIR / f"{discipline}.md"
     assert path.is_file(), f"missing: {path}"
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("discipline", sorted(EXPECTED_DISCIPLINES))
 def test_each_discipline_file_is_nonempty_and_utf8(discipline):
     path = CHECKLIST_DIR / f"{discipline}.md"
@@ -74,6 +78,7 @@ def test_each_discipline_file_is_nonempty_and_utf8(discipline):
     assert text.strip(), f"{path.name} is whitespace-only"
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("discipline", sorted(EXPECTED_DISCIPLINES))
 def test_each_discipline_file_starts_with_checklist_header(discipline):
     text = load_checklist(discipline)
@@ -83,6 +88,7 @@ def test_each_discipline_file_starts_with_checklist_header(discipline):
     )
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("discipline", sorted(EXPECTED_DISCIPLINES))
 def test_each_discipline_file_has_required_tier_headers(discipline):
     text = load_checklist(discipline)
@@ -90,6 +96,7 @@ def test_each_discipline_file_has_required_tier_headers(discipline):
     assert not missing, f"{discipline}.md missing tier headers: {missing}"
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("discipline", sorted(EXPECTED_DISCIPLINES))
 def test_each_discipline_file_has_problem_class_tags(discipline):
     # The completeness-lens contract requires every actionable bullet to carry
@@ -105,12 +112,14 @@ def test_each_discipline_file_has_problem_class_tags(discipline):
 # Loader behaviour.
 # ---------------------------------------------------------------------------
 
+@pytest.mark.unit
 def test_load_checklist_returns_raw_text():
     text = load_checklist("EOM")
     assert isinstance(text, str)
     assert text.startswith("# Checklist")
 
 
+@pytest.mark.unit
 def test_load_checklist_is_case_insensitive_and_strips_whitespace():
     a = load_checklist("eom")
     b = load_checklist("  EOM  ")
@@ -118,26 +127,31 @@ def test_load_checklist_is_case_insensitive_and_strips_whitespace():
     assert a == b == c
 
 
+@pytest.mark.unit
 def test_load_checklist_rejects_unknown_discipline():
     with pytest.raises(ValueError, match="unknown discipline"):
         load_checklist("XYZ")
 
 
+@pytest.mark.unit
 def test_load_checklist_rejects_empty_string():
     with pytest.raises(ValueError):
         load_checklist("")
 
 
+@pytest.mark.unit
 def test_load_checklist_rejects_whitespace_only():
     with pytest.raises(ValueError):
         load_checklist("   ")
 
 
+@pytest.mark.unit
 def test_load_checklist_rejects_non_string():
     with pytest.raises(ValueError):
         load_checklist(None)  # type: ignore[arg-type]
 
 
+@pytest.mark.unit
 def test_load_checklist_raises_specific_subclass_when_file_missing(tmp_path, monkeypatch):
     # Point loader at a temp empty dir → all reads must raise the specific
     # ChecklistNotFoundError, not a bare FileNotFoundError that callers might
@@ -149,6 +163,7 @@ def test_load_checklist_raises_specific_subclass_when_file_missing(tmp_path, mon
         cl.load_checklist("EOM")
 
 
+@pytest.mark.integration
 def test_load_checklist_raises_when_file_is_empty(tmp_path, monkeypatch):
     from backend.app.services.text_analysis import checklist_loader as cl
 
@@ -158,11 +173,13 @@ def test_load_checklist_raises_when_file_is_empty(tmp_path, monkeypatch):
         cl.load_checklist("EOM")
 
 
+@pytest.mark.unit
 def test_available_disciplines_returns_full_set():
     got = available_disciplines()
     assert sorted(got) == sorted(EXPECTED_DISCIPLINES)
 
 
+@pytest.mark.unit
 def test_available_disciplines_is_subset_of_known():
     got = set(available_disciplines())
     assert got <= KNOWN_DISCIPLINES

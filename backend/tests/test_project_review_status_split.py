@@ -22,6 +22,10 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 from backend.app.services.common import project_service  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write_minimal_project(
     base: Path,

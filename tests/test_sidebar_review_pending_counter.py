@@ -26,6 +26,10 @@ import backend.app.services.common.object_service as object_service  # noqa: E40
 import backend.app.services.common.project_service as project_service  # noqa: E402
 from backend.app.services.storage import read_canary as RC  # noqa: E402
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 client = TestClient(app, raise_server_exceptions=False)
 
 OBJID = "revobj001"

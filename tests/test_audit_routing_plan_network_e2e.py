@@ -48,6 +48,10 @@ from backend.app.services.audit_routing import (                 # noqa: E402
 )
 from backend.app.services.audit_routing.plan import RoutingPlan  # noqa: E402
 
+# Primary lane §5: integration — несмотря на имя, живого сокета нет: in-process ASGI и
+# sqlite центра.
+pytestmark = pytest.mark.integration
+
 ARTIFACTS = REPO_ROOT / "docs" / "distributed_audit_workers" / "11i"
 
 #: Возможности воркера, объявляющего понимание плана и все шесть способностей.

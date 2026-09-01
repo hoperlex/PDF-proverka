@@ -7,6 +7,11 @@
 from backend.app.pipeline.manager import PipelineManager
 from backend.app.models.audit import BatchQueueStatus, BatchQueueItem
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 class _FakeTask:
     """Заглушка asyncio.Task: done() возвращает заранее заданное значение."""

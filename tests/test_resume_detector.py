@@ -8,6 +8,12 @@ from __future__ import annotations
 
 import backend.app.pipeline.resume_detector as rd
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def test_invalid_version_not_resumable(monkeypatch, tmp_path):
     monkeypatch.setattr(rd, "resolve_project_dir", lambda pid: tmp_path)

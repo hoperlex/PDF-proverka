@@ -29,6 +29,10 @@ from backend.app.services.common import (  # noqa: E402
 )
 import backend.app.services.storage.storage_write_facade as swf  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 _PDF = b"%PDF-1.4\n%a\n%%EOF\n"
 _PDF2 = b"%PDF-1.4\n%b-diff\n%%EOF\n"
 _MD = "## STR\nфасад кладка фасад\n".encode("utf-8")

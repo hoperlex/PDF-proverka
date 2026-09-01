@@ -24,6 +24,9 @@ from backend.app.services.text_analysis.checklist_loader import (
     load_checklist,
 )
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 # Forbidden phrases: (substring, reason, affected_items).
 # Use whole-substring matching — these phrases are specific enough that a

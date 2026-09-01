@@ -7,6 +7,10 @@ from backend.app.pipeline.stages.optimization.visual_context import (
     collect_optimization_visual_context,
 )
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write_block_fixture(tmp_path, records):
     image_dir = tmp_path / "blocks_gemma_100"

@@ -10,6 +10,10 @@ import pytest
 
 from backend.app.services.common import version_service as vs
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def test_write_group_manifest_failure_returns_false(tmp_path):
     # parent — файл → mkdir рейзит OSError → False (и пишет в лог).

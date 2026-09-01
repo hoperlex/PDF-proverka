@@ -11,6 +11,9 @@ import importlib
 
 import pytest
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def guard(monkeypatch):

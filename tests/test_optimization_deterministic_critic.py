@@ -14,6 +14,8 @@ from backend.app.pipeline.stages.optimization.deterministic_critic import (
     structural_verdict,
 )
 
+import pytest
+
 
 def _item(iid, **kw):
     base = {"id": iid, "spec_items": ["Поз. 1 — X"], "page": 5,
@@ -24,33 +26,39 @@ def _item(iid, **kw):
 
 # ─── структурные правила ─────────────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_no_traceability_when_spec_empty():
     v = structural_verdict(_item("OPT-001", spec_items=[]))
     assert v and v[0] == "no_traceability"
 
 
+@pytest.mark.unit
 def test_no_traceability_when_page_missing():
     v = structural_verdict(_item("OPT-001", page=None))
     assert v and v[0] == "no_traceability"
 
 
+@pytest.mark.unit
 def test_unrealistic_savings_expert_basis():
     v = structural_verdict(_item("OPT-001", savings_pct=70, savings_basis="экспертная оценка"))
     assert v and v[0] == "unrealistic_savings"
 
 
+@pytest.mark.unit
 def test_savings_not_flagged_when_calculated():
     """basis-aware: 70% с основанием «расчёт» НЕ флагуется."""
     v = structural_verdict(_item("OPT-001", savings_pct=70, savings_basis="расчёт"))
     assert v is None
 
 
+@pytest.mark.unit
 def test_clean_item_none():
     assert structural_verdict(_item("OPT-001")) is None
 
 
 # ─── слияние ─────────────────────────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_coverage_every_item_gets_verdict():
     items = [_item(f"OPT-{i:03d}") for i in range(1, 6)]
     existing = {"OPT-001": {"item_id": "OPT-001", "verdict": "pass"}}  # только 1 из 5
@@ -60,6 +68,7 @@ def test_coverage_every_item_gets_verdict():
     assert all(r.get("verdict") for r in reviews)
 
 
+@pytest.mark.unit
 def test_semantic_negative_not_overridden():
     """Агентный technical_issue на item с плохой traceability остаётся technical_issue."""
     items = [_item("OPT-001", spec_items=[], page=None)]  # структурно = no_traceability
@@ -70,6 +79,7 @@ def test_semantic_negative_not_overridden():
     assert reviews[0]["source"] == "agentic"
 
 
+@pytest.mark.unit
 def test_agentic_pass_flips_to_structural():
     items = [_item("OPT-001", savings_pct=80, savings_basis="экспертная оценка")]
     existing = {"OPT-001": {"item_id": "OPT-001", "verdict": "pass"}}
@@ -79,6 +89,7 @@ def test_agentic_pass_flips_to_structural():
     assert res.structural_added == 1
 
 
+@pytest.mark.unit
 def test_conflicting_finding_id_preserved():
     items = [_item("OPT-001")]
     existing = {"OPT-001": {"item_id": "OPT-001", "verdict": "conflicts_with_finding",
@@ -89,6 +100,7 @@ def test_conflicting_finding_id_preserved():
 
 # ─── I/O ─────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
 def test_run_writes_full_coverage(tmp_path):
     opt = {"meta": {}, "items": [_item(f"OPT-{i:03d}") for i in range(1, 4)]}
     (tmp_path / "optimization.json").write_text(json.dumps(opt), encoding="utf-8")
@@ -102,6 +114,7 @@ def test_run_writes_full_coverage(tmp_path):
     assert out["meta"]["total_reviewed"] == 3
 
 
+@pytest.mark.integration
 def test_run_without_agentic_review(tmp_path):
     """Нет optimization_review.json вообще → структурка даёт полное покрытие."""
     opt = {"meta": {}, "items": [_item("OPT-001", spec_items=[])]}

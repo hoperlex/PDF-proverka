@@ -24,6 +24,10 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO))
 from backend.app.main import app  # noqa: E402
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 OBJF = "213_Mosfilmovskaya_31A_KingSons"
 client = TestClient(app)
 Q = lambda s: urllib.parse.quote(s, safe="")

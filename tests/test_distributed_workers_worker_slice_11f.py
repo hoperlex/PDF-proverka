@@ -37,6 +37,7 @@ if str(ROOT) not in sys.path:
 
 # ─── 1. Ключ вызова учитывает вложения ───────────────────────────────────────
 
+@pytest.mark.unit
 def test_call_key_text_only_is_byte_compatible_with_pre_11f():
     """Текстовые вызовы обязаны сохранить ПРЕЖНИЙ ключ.
 
@@ -55,6 +56,7 @@ def test_call_key_text_only_is_byte_compatible_with_pre_11f():
     assert without == with_empty
 
 
+@pytest.mark.unit
 def test_call_key_separates_blocks_with_identical_prompt():
     """Два блока с одинаковым текстом задания — РАЗНЫЕ оплачиваемые вызовы."""
     from audit_worker.providers.inference_ledger import call_key
@@ -76,6 +78,7 @@ def test_call_key_separates_blocks_with_identical_prompt():
     assert first != text_only
 
 
+@pytest.mark.unit
 def test_attachments_digest_is_order_sensitive():
     from audit_worker.providers.pipeline_bridge import attachments_digest
 
@@ -87,6 +90,7 @@ def test_attachments_digest_is_order_sensitive():
 
 # ─── 2. Фактическая модель ───────────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_model_resolution_ignores_cli_auxiliary_model():
     """Служебный haiku CLI не должен выдаваться за модель, ответившую на задание.
 
@@ -105,6 +109,7 @@ def test_model_resolution_ignores_cli_auxiliary_model():
     assert _model_from_envelope(envelope) == "claude-opus-5"
 
 
+@pytest.mark.unit
 def test_model_resolution_prefers_top_level_field():
     from audit_worker.providers.claude_adapter import _model_from_envelope
 
@@ -114,6 +119,7 @@ def test_model_resolution_prefers_top_level_field():
 
 # ─── 3. Разбор потокового вывода ─────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_parse_stream_json_takes_result_and_assistant_model():
     from audit_worker.providers.claude_adapter import parse_stream_json
 
@@ -129,6 +135,7 @@ def test_parse_stream_json_takes_result_and_assistant_model():
     assert json.loads(envelope["result"]) == {"findings": []}
 
 
+@pytest.mark.unit
 def test_parse_stream_json_returns_none_without_result_event():
     """Отсутствие итогового объекта — ошибка CLI, а не пустой успех."""
     from audit_worker.providers.claude_adapter import parse_stream_json
@@ -139,6 +146,7 @@ def test_parse_stream_json_returns_none_without_result_event():
 
 # ─── 4. Мультимодальный argv ─────────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_multimodal_argv_keeps_every_isolation_flag():
     """Вызов с картинкой не имеет права быть «мягче» текстового."""
     from audit_worker.providers.claude_adapter import (
@@ -160,6 +168,7 @@ def test_multimodal_argv_keeps_every_isolation_flag():
 
 # ─── 5. Провайдерский транспорт block_analysis ───────────────────────────────
 
+@pytest.mark.unit
 def test_block_provider_prompt_carries_severity_and_forbids_files(tmp_path):
     from backend.app.pipeline.stages.block_analysis import provider_transport as pt
 
@@ -174,6 +183,7 @@ def test_block_provider_prompt_carries_severity_and_forbids_files(tmp_path):
     assert "инструментов у тебя нет" in built["prompt"]
 
 
+@pytest.mark.integration
 def test_read_crop_refuses_escape_and_missing(tmp_path):
     from backend.app.pipeline.stages.block_analysis import provider_transport as pt
 
@@ -192,6 +202,7 @@ def test_read_crop_refuses_escape_and_missing(tmp_path):
 
 # ─── 6. Общий транспорт JSON-этапов ──────────────────────────────────────────
 
+@pytest.mark.unit
 def test_json_stage_strips_file_instructions_and_paths():
     from backend.app.services.llm import provider_json_stage as pjs
 
@@ -215,6 +226,7 @@ def test_json_stage_strips_file_instructions_and_paths():
     assert pjs.guard_problems(built, max_prompt_chars=10**6) == []
 
 
+@pytest.mark.unit
 def test_json_stage_guard_catches_oversized_prompt():
     from backend.app.services.llm import provider_json_stage as pjs
 
@@ -228,6 +240,7 @@ def test_json_stage_guard_catches_oversized_prompt():
 
 # ─── 7. Инлайн блочного контекста в text_analysis ────────────────────────────
 
+@pytest.mark.unit
 def test_text_analysis_prompt_inlines_blocks_context():
     """Гейт 11D отказывал при наличии 01_blocks_for_text.json; 11F его вкладывает."""
     from backend.app.pipeline.stages.text_analysis import provider_transport as pt
@@ -249,6 +262,7 @@ def test_text_analysis_prompt_inlines_blocks_context():
 
 # ─── 8. Потолок вызовов попытки ──────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_max_inferences_ceiling_allows_full_worker_slice():
     """Прежний потолок 8 отвергал бы задание полного участка ещё до старта."""
     from audit_worker.providers import resolver
@@ -268,6 +282,7 @@ def test_max_inferences_ceiling_allows_full_worker_slice():
 
 # ─── 9. Молчаливая потеря графики запрещена ──────────────────────────────────
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_run_cli_refuses_images_under_bridge(monkeypatch):
     """Общий путь моста не имеет права уронить приложенные изображения."""
@@ -293,6 +308,7 @@ async def test_run_cli_refuses_images_under_bridge(monkeypatch):
 
 # ─── 10. Страж отсутствия не ходит мимо моста ────────────────────────────────
 
+@pytest.mark.unit
 def test_absence_guard_uses_bridge_when_active(monkeypatch):
     """При активном мосте прямой subprocess запрещён — даже ценой пустых вердиктов."""
     from backend.app.pipeline.stages.text_analysis import absence_guard
@@ -347,6 +363,7 @@ def test_absence_guard_uses_bridge_when_active(monkeypatch):
 
 # ─── 11. Дефекты, найденные состязательным ревью до боевого прогона ──────────
 
+@pytest.mark.unit
 def test_optimization_root_keys_match_real_schemas():
     """root_key обязан совпадать со СХЕМОЙ боевого шаблона, а не звучать похоже.
 
@@ -364,6 +381,7 @@ def test_optimization_root_keys_match_real_schemas():
     assert '"reviews"' in (ROOT / "prompts/pipeline/en/optimization_critic_task.md").read_text(encoding="utf-8")
 
 
+@pytest.mark.unit
 def test_json_stage_extracts_images_instead_of_dropping_them():
     """Картинки листов-планов обязаны доехать до модели, а не исчезнуть молча."""
     import base64
@@ -385,6 +403,7 @@ def test_json_stage_extracts_images_instead_of_dropping_them():
     assert built["map"]["images_attached"] == 2
 
 
+@pytest.mark.unit
 def test_json_stage_refuses_remote_image_reference():
     """Ссылка вместо данных — отказ: провайдерский путь в сеть за промптом не ходит."""
     from backend.app.services.llm import provider_json_stage as pjs
@@ -396,6 +415,7 @@ def test_json_stage_refuses_remote_image_reference():
         pjs.build_provider_prompt(messages, root_key="items")
 
 
+@pytest.mark.unit
 def test_json_stage_placeholder_does_not_claim_inputs_unavailable():
     """Нельзя говорить модели «недоступно» про то, что вложено ниже.
 
@@ -414,6 +434,7 @@ def test_json_stage_placeholder_does_not_claim_inputs_unavailable():
     assert pjs.INLINED_PLACEHOLDER in built["prompt"]
 
 
+@pytest.mark.unit
 def test_worker_provider_model_is_not_reported_as_openrouter():
     """Провенанс замечания не должен называть платного провайдера, которого не было."""
     from backend.app.pipeline.stages.block_analysis.provenance import detector_for_model
@@ -426,6 +447,7 @@ def test_worker_provider_model_is_not_reported_as_openrouter():
     assert detector_for_model("claude-opus-5") == "claude"
 
 
+@pytest.mark.unit
 def test_block_prompt_lists_every_required_finding_field():
     """Без json_schema обязательные поля перечисляются в промпте — иначе гейт их отбросит."""
     from backend.app.pipeline.stages.block_analysis import provider_transport as pt
@@ -437,6 +459,7 @@ def test_block_prompt_lists_every_required_finding_field():
         assert name in contract, f"поле {name} не названо модели"
 
 
+@pytest.mark.unit
 def test_worker_acceptance_gate_uses_same_ceiling_as_resolver():
     """Три валидатора одного поля обязаны иметь ОДИН потолок."""
     from audit_worker import audit_runner
@@ -471,6 +494,7 @@ def test_worker_acceptance_gate_uses_same_ceiling_as_resolver():
     )
 
 
+@pytest.mark.unit
 def test_broken_stream_output_is_not_reported_as_success():
     """Оборванный поток — ошибка, а не служебное событие CLI, выданное за ответ."""
     from audit_worker.providers.claude_adapter import parse_stream_json
@@ -482,6 +506,7 @@ def test_broken_stream_output_is_not_reported_as_success():
 
 # ─── 12. Дефект, найденный БОЕВЫМ прогоном ───────────────────────────────────
 
+@pytest.mark.unit
 def test_provider_block_timeout_is_not_the_openrouter_transport_limit():
     """Срок блочного вызова через провайдера — не 200 с ноги OpenRouter.
 

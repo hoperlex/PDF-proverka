@@ -121,6 +121,7 @@ def _reset(monkeypatch):
     database.reset_state_for_tests()
 
 
+@pytest.mark.integration
 def test_privileged_bootstrap_is_exact_receipted_and_idempotent(monkeypatch, tmp_path):
     settings, args = _prepare(monkeypatch, tmp_path / "state")
     before = args.receipt.read_bytes()
@@ -142,6 +143,7 @@ def test_privileged_bootstrap_is_exact_receipted_and_idempotent(monkeypatch, tmp
     )["runtime_mutations"] == []
 
 
+@pytest.mark.integration
 def test_runtime_never_chmods_or_chowns_shared_deployment_metadata(monkeypatch, tmp_path):
     settings, _args = _prepare(monkeypatch, tmp_path / "prepared")
     chmod_targets: list[str] = []
@@ -163,6 +165,7 @@ def test_runtime_never_chmods_or_chowns_shared_deployment_metadata(monkeypatch, 
     assert not any("/prepared/" in target and target.endswith((".json",)) for target in chmod_targets)
 
 
+@pytest.mark.integration
 def test_receipt_survives_normal_database_writes_and_process_restart(monkeypatch, tmp_path):
     settings, _args = _prepare(monkeypatch, tmp_path / "restart")
     database.ensure_ready(settings)
@@ -180,6 +183,7 @@ def test_receipt_survives_normal_database_writes_and_process_restart(monkeypatch
     assert database.ensure_ready(settings) == settings.db_path
 
 
+@pytest.mark.integration
 def test_overflow_gid_is_never_a_source_of_trust(monkeypatch):
     monkeypatch.setattr(
         state_permissions, "_read_id_map",
@@ -199,6 +203,7 @@ def test_overflow_gid_is_never_a_source_of_trust(monkeypatch):
         )
 
 
+@pytest.mark.integration
 def test_current_user_owned_receipt_is_rejected_as_forgeable(tmp_path):
     receipt_dir = tmp_path / "receipt"
     receipt_dir.mkdir(mode=0o700)
@@ -209,6 +214,7 @@ def test_current_user_owned_receipt_is_rejected_as_forgeable(tmp_path):
         state_permissions._validate_receipt_boundary(receipt)
 
 
+@pytest.mark.integration
 def test_wrong_mode_fails_before_database_open(monkeypatch, tmp_path):
     settings, _args = _prepare(monkeypatch, tmp_path / "wrong-mode")
     settings.data_dir.chmod(0o2777)
@@ -216,6 +222,7 @@ def test_wrong_mode_fails_before_database_open(monkeypatch, tmp_path):
         database.ensure_ready(settings)
 
 
+@pytest.mark.integration
 def test_wrong_owner_configuration_fails_without_chown(monkeypatch, tmp_path):
     settings, _args = _prepare(monkeypatch, tmp_path / "wrong-owner")
     monkeypatch.setenv("DISTRIBUTED_WORKERS_SHARED_OWNER_UID", str(os.getuid() + 1))
@@ -224,6 +231,7 @@ def test_wrong_owner_configuration_fails_without_chown(monkeypatch, tmp_path):
     assert settings.db_path.exists()
 
 
+@pytest.mark.integration
 def test_wrong_host_gid_is_rejected_by_authoritative_validator(monkeypatch, tmp_path):
     _settings, args = _prepare(monkeypatch, tmp_path / "wrong-gid")
     args.shared_gid = os.getgid() + 1
@@ -231,6 +239,7 @@ def test_wrong_host_gid_is_rejected_by_authoritative_validator(monkeypatch, tmp_
         state_tool.validate_host(args)
 
 
+@pytest.mark.integration
 def test_named_access_acl_is_rejected(monkeypatch, tmp_path):
     settings, _args = _prepare(monkeypatch, tmp_path / "unsafe-acl")
     undefined = 0xFFFFFFFF
@@ -249,6 +258,7 @@ def test_named_access_acl_is_rejected(monkeypatch, tmp_path):
         database.ensure_ready(settings)
 
 
+@pytest.mark.integration
 def test_prepare_canonicalizes_production_like_stale_named_acl_before_receipt(
     monkeypatch, tmp_path
 ):
@@ -323,6 +333,7 @@ def test_prepare_canonicalizes_production_like_stale_named_acl_before_receipt(
     )
 
 
+@pytest.mark.integration
 def test_prepare_is_repeatable_after_e601_private_mode_rollback(monkeypatch, tmp_path):
     settings, args = _prepare(monkeypatch, tmp_path / "repeat-transition" / "state")
     for _iteration in range(3):
@@ -340,6 +351,7 @@ def test_prepare_is_repeatable_after_e601_private_mode_rollback(monkeypatch, tmp
         assert state_permissions._xattr(settings.db_path, "system.posix_acl_access") is None
 
 
+@pytest.mark.integration
 def test_prepare_fully_replaces_unexpected_named_acl_but_validator_stays_strict(
     monkeypatch, tmp_path
 ):
@@ -371,6 +383,7 @@ def test_prepare_fully_replaces_unexpected_named_acl_but_validator_stays_strict(
         state_tool.validate_host(args)
 
 
+@pytest.mark.integration
 def test_prepare_fails_closed_if_access_acl_cannot_be_canonicalized(
     monkeypatch, tmp_path
 ):
@@ -389,6 +402,7 @@ def test_prepare_fails_closed_if_access_acl_cannot_be_canonicalized(
     assert args.receipt.read_bytes() == receipt_before
 
 
+@pytest.mark.integration
 def test_inherited_sqlite_access_acl_uses_mask_for_group_mode(monkeypatch, tmp_path):
     settings, _args = _prepare(monkeypatch, tmp_path / "inherited-acl")
     sidecar = settings.db_path.with_name(settings.db_path.name + "-wal")
@@ -412,6 +426,7 @@ def test_inherited_sqlite_access_acl_uses_mask_for_group_mode(monkeypatch, tmp_p
     )
 
 
+@pytest.mark.network
 def test_prepare_recovers_e601_wal_preserves_data_and_mints_receipt_last(
     monkeypatch, tmp_path
 ):
@@ -502,6 +517,7 @@ def test_prepare_recovers_e601_wal_preserves_data_and_mints_receipt_last(
         )
 
 
+@pytest.mark.network
 def test_prepare_fails_closed_while_sqlite_writer_is_active(monkeypatch, tmp_path):
     settings, args = _prepare(monkeypatch, tmp_path / "active-writer")
     receipt_before = args.receipt.read_bytes()
@@ -522,6 +538,7 @@ def test_prepare_fails_closed_while_sqlite_writer_is_active(monkeypatch, tmp_pat
         writer.close()
 
 
+@pytest.mark.integration
 def test_prepare_normalizes_legacy_rollback_journal(monkeypatch, tmp_path):
     settings, args = _prepare(monkeypatch, tmp_path / "rollback-journal")
     journal = settings.db_path.with_name(settings.db_path.name + "-journal")
@@ -537,6 +554,7 @@ def test_prepare_normalizes_legacy_rollback_journal(monkeypatch, tmp_path):
     assert "workers.db-journal" in {item["path"] for item in receipt["objects"]}
 
 
+@pytest.mark.integration
 def test_object_replacement_is_detected(monkeypatch, tmp_path):
     settings, _args = _prepare(monkeypatch, tmp_path / "replacement")
     target = settings.incoming_dir
@@ -550,6 +568,7 @@ def test_object_replacement_is_detected(monkeypatch, tmp_path):
         database.ensure_ready(settings)
 
 
+@pytest.mark.integration
 def test_missing_receipt_configuration_is_typed(monkeypatch, tmp_path):
     monkeypatch.setenv("DISTRIBUTED_WORKERS_ENABLED", "true")
     monkeypatch.setenv("DISTRIBUTED_WORKERS_DATA_DIR", str(tmp_path / "missing"))
@@ -560,6 +579,7 @@ def test_missing_receipt_configuration_is_typed(monkeypatch, tmp_path):
         get_settings()
 
 
+@pytest.mark.network
 def test_preparation_refuses_active_backend(monkeypatch, tmp_path):
     _settings, args = _prepare(monkeypatch, tmp_path / "active-backend")
     with socket.socket() as listener:
@@ -570,6 +590,7 @@ def test_preparation_refuses_active_backend(monkeypatch, tmp_path):
             state_tool.prepare(args)
 
 
+@pytest.mark.integration
 def test_authenticated_polling_request_path_does_not_revalidate_or_mutate(
     monkeypatch, tmp_path
 ):

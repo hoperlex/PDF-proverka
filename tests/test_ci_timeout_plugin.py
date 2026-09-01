@@ -40,6 +40,10 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: network — поднимает настоящих детей и добивает их; перезапуска после
+# убийства нет, поэтому это network, а не chaos.
+pytestmark = pytest.mark.network
+
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_PATH = ROOT / "scripts" / "ci_timeout_plugin.py"
 

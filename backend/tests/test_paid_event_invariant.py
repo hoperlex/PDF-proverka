@@ -28,6 +28,9 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def isolated_tracker(tmp_path, monkeypatch):

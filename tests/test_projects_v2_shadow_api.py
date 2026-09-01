@@ -23,6 +23,10 @@ from backend.app.main import app  # noqa: E402
 from backend.app.services.storage import projects_v2_adapter as ADP  # noqa: E402
 import check_shadow_api as CS  # noqa: E402
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 SHADOW = "/api/projects-v2-shadow"
 OBJF = "213_Mosfilmovskaya_31A_KingSons"
 client = TestClient(app)

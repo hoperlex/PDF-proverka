@@ -32,6 +32,7 @@ def cases():return json.loads(MANIFEST.read_text()) if MANIFEST.exists() else []
 def graphs():return {case["block_id"]:json.loads((OUT/f"{case['block_id']}.structure.json").read_text()) for case in cases()}
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 @pytest.mark.parametrize("case",cases(),ids=lambda case:case["block_id"])
 def test_eom_corpus_has_vector_pdf_and_accepted_graph(case,graphs):
@@ -42,6 +43,7 @@ def test_eom_corpus_has_vector_pdf_and_accepted_graph(case,graphs):
     assert gate["use"] is True
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_all_eom_families_and_subtypes_are_present(graphs):
     assert len(graphs)==157
@@ -49,6 +51,7 @@ def test_all_eom_families_and_subtypes_are_present(graphs):
     assert len({case["subtype"] for case in cases()})==50
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_generic_eom_references_are_integral(graphs):
     for graph in graphs.values():
@@ -64,6 +67,7 @@ def test_generic_eom_references_are_integral(graphs):
             if edge.get("network_id"):assert edge["network_id"] in network_ids
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_generic_human_descriptions_are_russian_and_hide_internal_codes(graphs):
     for graph in graphs.values():
@@ -78,6 +82,7 @@ def test_generic_human_descriptions_are_russian_and_hide_internal_codes(graphs):
         assert not re.search(r"\b(?:route|network|node|edge)-\d+\b",description)
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_distinct_boundary_dialects_are_not_forced_into_vectograph(graphs):
     lighting=graphs["4UJ9-3D93-W7A"]
@@ -91,6 +96,7 @@ def test_distinct_boundary_dialects_are_not_forced_into_vectograph(graphs):
     assert switchroom["validation"]["route_branches_total"]>=20
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_only_source_limited_blocks_remain_partial(graphs):
     summary=json.loads((OUT/"summary.json").read_text())
@@ -104,6 +110,7 @@ def test_only_source_limited_blocks_remain_partial(graphs):
         if secondary:assert "x" not in secondary and "y" not in secondary
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_eom_semantic_coverage_has_no_known_fact_losses():
     report=json.loads((EOM/"EOM_SEMANTIC_COVERAGE.json").read_text())
@@ -111,6 +118,7 @@ def test_eom_semantic_coverage_has_no_known_fact_losses():
     assert sum(record["pdf_misses_total"] for record in report["records"])==0
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_common_words_do_not_become_protective_devices(graphs):
     false_prefix=re.compile(r"^(?:авар|автостоян|автор|автоматическ)",re.I)
@@ -137,6 +145,7 @@ def _polygon(page,block):
     return value
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_eom_graph_builds_from_original_pdf_polygon():
     case,page,block=_source_case("GFEP-NT67-DEV")
@@ -147,6 +156,7 @@ def test_eom_graph_builds_from_original_pdf_polygon():
     assert evaluate_electrical_gate(graph)["use"] is True
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ЭОМ не извлечён")
 def test_router_returns_structured_eom(tmp_path):
     case,page,block=_source_case("GFEP-NT67-DEV");output=tmp_path/"_output";output.mkdir()

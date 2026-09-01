@@ -11,6 +11,11 @@ from pathlib import Path
 import backend.app.pipeline.stages.report.generate_excel_report as ger
 from backend.app.services.common import project_service
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_iter_delegates_to_canonical(monkeypatch):
     monkeypatch.setattr(

@@ -25,6 +25,10 @@ if str(_ROOT) not in sys.path:
 
 import norms._native_verify as nv  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 class _FakeNormsApi:
     """Индекс, знающий два пункта: ГОСТ 21.602-2016 п. 5.1 и ГОСТ Р 21.101-2020 п. 4.1.

@@ -16,6 +16,11 @@ import inspect
 from backend.app.core import config
 from backend.app.pipeline import manager as mgr
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_block_batch_mode_locked_to_findings_only():
     """Единственный допустимый режим — findings_only_block_context.

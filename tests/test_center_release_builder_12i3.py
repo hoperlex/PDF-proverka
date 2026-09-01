@@ -82,6 +82,7 @@ def _isolate_locks(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(lock_module, "DEFAULT_LOCK_DIR", tmp_path / "locks")
 
 
+@pytest.mark.network
 def test_canonical_builder_is_repository_owned():
     path = _ROOT / "scripts" / "build_center_release.py"
     assert path.is_file()
@@ -97,6 +98,7 @@ def test_canonical_builder_is_repository_owned():
     assert tracked.returncode == 0, "канонический сборщик обязан быть в индексе git"
 
 
+@pytest.mark.integration
 def test_builder_does_not_depend_on_tmp_scripts():
     """Проверяется КОД, а не пояснения: в docstring про /tmp сказано намеренно."""
     import ast
@@ -122,17 +124,20 @@ def test_builder_does_not_depend_on_tmp_scripts():
     }, f"неожиданная зависимость сборщика: {imported}"
 
 
+@pytest.mark.integration
 def test_builder_takes_the_deploy_lock_before_touching_releases():
     source = (_ROOT / "scripts" / "build_center_release.py").read_text(encoding="utf-8")
     assert "deploy_lock(" in source, "две сессии не должны собирать один release_id"
 
 
+@pytest.mark.integration
 def test_required_paths_include_the_release_machinery():
     assert "scripts/release_staging.py" in builder.REQUIRED_PATHS
     assert "scripts/deploy_lock.py" in builder.REQUIRED_PATHS
     assert "scripts/build_center_release.py" in builder.REQUIRED_PATHS
 
 
+@pytest.mark.integration
 def test_fileset_digest_reflects_content_not_names(tmp_path):
     root = tmp_path / "app"
     (root / "pkg").mkdir(parents=True)
@@ -143,6 +148,7 @@ def test_fileset_digest_reflects_content_not_names(tmp_path):
     assert builder.fileset_digest(root) != first
 
 
+@pytest.mark.integration
 def test_fileset_digest_catches_a_repointed_symlink(tmp_path):
     """Подмена кода без единого изменённого байта в обычных файлах."""
     root = tmp_path / "app"
@@ -156,6 +162,7 @@ def test_fileset_digest_catches_a_repointed_symlink(tmp_path):
     assert builder.fileset_digest(root) != before
 
 
+@pytest.mark.integration
 def test_fileset_digest_catches_a_mode_change(tmp_path):
     """Снятый бит чтения для прочих останавливает шлюз, не тронув содержимое."""
     root = tmp_path / "app"
@@ -177,6 +184,7 @@ def _sealed_tree(root: Path) -> None:
     seal_tree(root)
 
 
+@pytest.mark.integration
 def test_success_removes_staging(tmp_path):
     with staging_workspace(parent=tmp_path) as staging:
         _sealed_tree(staging / "release")
@@ -185,6 +193,7 @@ def test_success_removes_staging(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("seal", [False, True])
 def test_failure_before_and_after_sealing_removes_staging(tmp_path, seal):
     captured = None
@@ -200,6 +209,7 @@ def test_failure_before_and_after_sealing_removes_staging(tmp_path, seal):
     assert list(tmp_path.iterdir()) == []
 
 
+@pytest.mark.integration
 def test_multiple_consecutive_failures_leak_nothing(tmp_path):
     for attempt in range(5):
         with pytest.raises(RuntimeError):
@@ -210,6 +220,7 @@ def test_multiple_consecutive_failures_leak_nothing(tmp_path):
     assert sum(p.stat().st_size for p in tmp_path.rglob("*") if p.is_file()) == 0
 
 
+@pytest.mark.integration
 def test_builder_fails_loudly_if_cleanup_could_not_finish(tmp_path, monkeypatch):
     """`ignore_errors=True` молча объявляет успех — это обязано быть замечено."""
     import shutil
@@ -224,6 +235,7 @@ def test_builder_fails_loudly_if_cleanup_could_not_finish(tmp_path, monkeypatch)
         release_staging.cleanup_staging(staging)
 
 
+@pytest.mark.integration
 def test_existing_production_release_is_never_removed(tmp_path):
     from scripts.release_staging import cleanup_staging
 
@@ -235,6 +247,7 @@ def test_existing_production_release_is_never_removed(tmp_path):
     assert (production / "release-manifest.json").is_file()
 
 
+@pytest.mark.integration
 def test_release_identity_reuse_with_different_commit_is_refused(tmp_path, monkeypatch):
     """Один идентификатор с другим содержимым — подмена уже выданного имени."""
     releases = tmp_path / "releases"
@@ -259,6 +272,7 @@ def test_release_identity_reuse_with_different_commit_is_refused(tmp_path, monke
                       releases_dir=releases, tests=())
 
 
+@pytest.mark.integration
 def test_dirty_worktree_is_refused(tmp_path, monkeypatch):
     releases = tmp_path / "releases"
     (releases / "base").mkdir(parents=True)
@@ -306,6 +320,7 @@ def _gateway(root: Path, source: Path) -> Path:
     return gateway
 
 
+@pytest.mark.integration
 def test_deploy_precheck_catches_a_release_edited_after_the_build(tmp_path):
     """Между сборкой и выкаткой каталог могли поправить «на живую».
 
@@ -322,6 +337,7 @@ def test_deploy_precheck_catches_a_release_edited_after_the_build(tmp_path):
     assert any("не совпадает с манифестом" in item for item in problems), problems
 
 
+@pytest.mark.integration
 def test_deploy_precheck_refuses_a_schema_migration(tmp_path):
     release = _release(tmp_path, "ui-real-cafe0001")
     manifest = json.loads((release / "release-manifest.json").read_text(encoding="utf-8"))
@@ -331,6 +347,7 @@ def test_deploy_precheck_refuses_a_schema_migration(tmp_path):
     assert any("миграция запрещена" in item for item in problems), problems
 
 
+@pytest.mark.integration
 def test_deploy_precheck_catches_a_wire_split_with_the_running_gateway(tmp_path):
     release = _release(tmp_path, "ui-real-cafe0002")
     gateway = _gateway(tmp_path, release)
@@ -340,6 +357,7 @@ def test_deploy_precheck_catches_a_wire_split_with_the_running_gateway(tmp_path)
     assert any("провод разошёлся со шлюзом" in item for item in problems), problems
 
 
+@pytest.mark.integration
 def test_gateway_directory_cannot_be_overridden_away_from_the_running_unit(monkeypatch,
                                                                           tmp_path):
     """Сверка со шлюзом НЕ отключаема параметром командной строки."""
@@ -351,6 +369,7 @@ def test_gateway_directory_cannot_be_overridden_away_from_the_running_unit(monke
     assert "не совпадает с работающим шлюзом" in str(caught.value)
 
 
+@pytest.mark.integration
 def test_deploy_touches_nothing_when_prechecks_fail(monkeypatch, tmp_path):
     """Отказ предпроверки не имеет права стоить простоя."""
     monkeypatch.setattr(deployer, "ROOT", tmp_path)
@@ -368,6 +387,7 @@ def test_deploy_touches_nothing_when_prechecks_fail(monkeypatch, tmp_path):
     assert switched == [], "боевой указатель тронут при неудачной предпроверке"
 
 
+@pytest.mark.integration
 def test_failed_restart_rolls_back_before_releasing_the_lock(monkeypatch, tmp_path):
     """Отказ САМОГО restart раньше пролетал мимо отката.
 
@@ -413,6 +433,7 @@ def test_failed_restart_rolls_back_before_releasing_the_lock(monkeypatch, tmp_pa
         pass
 
 
+@pytest.mark.integration
 def test_health_200_alone_does_not_prove_the_new_release_is_running(monkeypatch, tmp_path):
     """200 отдаёт любой процесс на порту, в том числе переживший рестарт старый."""
     monkeypatch.setattr(deployer, "ROOT", tmp_path)
@@ -442,6 +463,7 @@ def deploy_lock_ctx(lock_dir: Path):
         yield path
 
 
+@pytest.mark.integration
 def test_manifest_digest_must_be_taken_after_sealing(tmp_path):
     """Порядок «запечатать → посчитать» — не стиль, а условие работоспособности.
 
@@ -484,6 +506,7 @@ def test_manifest_digest_must_be_taken_after_sealing(tmp_path):
     assert not any("не совпадает с манифестом" in item for item in good), good
 
 
+@pytest.mark.integration
 def test_deploy_precheck_refuses_a_release_missing_required_paths(tmp_path):
     """Релиз без обязательного файла UI не имеет права выкатиться.
 
@@ -496,6 +519,7 @@ def test_deploy_precheck_refuses_a_release_missing_required_paths(tmp_path):
     assert any("нет обязательного пути" in item for item in problems), problems
 
 
+@pytest.mark.integration
 def test_deploy_refuses_when_the_running_release_cannot_be_proven(monkeypatch, tmp_path):
     """Незнание — не успех: недоказанная выкатка ведёт к откату."""
     monkeypatch.setattr(deployer, "ROOT", tmp_path)
@@ -514,6 +538,7 @@ def test_deploy_refuses_when_the_running_release_cannot_be_proven(monkeypatch, t
     assert os.readlink(tmp_path / "current").endswith("old")
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("suite", [
     "tests/test_startup_connection_race_12i3.py",
     "tests/test_center_release_builder_12i3.py",
@@ -525,6 +550,7 @@ def test_release_gate_runs_the_suites_that_guard_this_stage(suite):
     assert suite in builder.DEFAULT_RELEASE_TESTS
 
 
+@pytest.mark.integration
 def test_fileset_digest_refuses_a_fifo_instead_of_hanging(tmp_path):
     """FIFO без писателя блокирует чтение НАВСЕГДА.
 
@@ -538,6 +564,7 @@ def test_fileset_digest_refuses_a_fifo_instead_of_hanging(tmp_path):
         builder.fileset_digest(root)
 
 
+@pytest.mark.integration
 def test_fileset_digest_refuses_a_hard_link(tmp_path):
     """Жёсткая связь — другая топология при том же содержимом."""
     root = tmp_path / "app"
@@ -548,6 +575,7 @@ def test_fileset_digest_refuses_a_hard_link(tmp_path):
         builder.fileset_digest(root)
 
 
+@pytest.mark.integration
 def test_partial_release_of_the_same_commit_is_not_declared_ready(tmp_path, monkeypatch):
     """Обломок прерванной установки не имеет права считаться собранным."""
     releases = tmp_path / "releases"
@@ -574,6 +602,7 @@ def test_partial_release_of_the_same_commit_is_not_declared_ready(tmp_path, monk
     assert "незавершённую сборку" in str(caught.value)
 
 
+@pytest.mark.integration
 def test_donor_release_from_a_foreign_branch_is_refused(tmp_path, monkeypatch):
     """Клонировать venv из релиза чужой ветки нельзя: происхождение неизвестно.
 
@@ -604,6 +633,7 @@ def test_donor_release_from_a_foreign_branch_is_refused(tmp_path, monkeypatch):
 # `ui-real-9b1dbedd` стал содержать дерево другого коммита, а `current`
 # продолжал на него указывать. Простоя не случилось только потому, что процесс
 # уже держал прежний код в памяти.
+@pytest.mark.network
 def test_builder_refuses_symlinked_base(tmp_path, monkeypatch):
     import subprocess
     import sys
@@ -631,6 +661,7 @@ def test_builder_refuses_symlinked_base(tmp_path, monkeypatch):
     assert (real / "app").is_dir()
 
 
+@pytest.mark.network
 def test_builder_refuses_symlinked_releases_dir(tmp_path):
     import subprocess
     import sys
@@ -651,6 +682,7 @@ def test_builder_refuses_symlinked_releases_dir(tmp_path):
     assert "символическая ссылка" in (result.stdout + result.stderr)
 
 
+@pytest.mark.integration
 def test_verify_release_catches_non_executable_python(tmp_path):
     """Неисполняемый интерпретатор обязан ловиться ДО выкатки.
 

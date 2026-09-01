@@ -27,6 +27,9 @@ from scripts.release_staging import (  # noqa: E402
     staging_workspace,
 )
 
+# Primary lane §5: integration — настоящие деревья, chmod, симлинки и rmtree в tmp_path.
+pytestmark = pytest.mark.integration
+
 # --- Признак «прогон идёт в CI» -------------------------------------------
 #
 # Решение владельца по C-4 (docs/architecture/ci_environment_matrix.md): набор

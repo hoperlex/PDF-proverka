@@ -6,6 +6,11 @@ import inspect
 from backend.app.pipeline import manager as manager_mod
 from backend.app.pipeline.stages.prepare import prepare_service
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_batch_queue_does_not_start_model_prefetch():
     source = inspect.getsource(manager_mod.PipelineManager._run_batch_queue)

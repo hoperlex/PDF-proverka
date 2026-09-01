@@ -5,6 +5,12 @@ from pathlib import Path
 from backend.app.pipeline.stages.gemma_enrichment.gemma_gate import find_project_markdown, load_project_info
 from backend.app.pipeline.stages.prepare.process_project import detect_md_file
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 _WMODE = "AUDIT_PROJECTS_V2_WRITE_MODE"
 
 

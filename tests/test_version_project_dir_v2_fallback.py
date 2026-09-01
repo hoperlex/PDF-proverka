@@ -25,6 +25,10 @@ import pytest
 from backend.app.pipeline.stages.prepare import task_builder as tb
 from backend.app.services.common import audit_scope
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _v2_version_tree(root: Path) -> Path:
     """Скелет версии в раскладке projects_v2 с исходниками на своих местах."""

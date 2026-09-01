@@ -32,6 +32,7 @@ def _fetch_ok(url, timeout):
     return 200, b"%PDF-1.7 " + url.encode()
 
 
+@pytest.mark.unit
 def test_downloads_all_and_writes_manifest(tmp_path):
     man = download_crops(BLOCKS, tmp_path, fetch=_fetch_ok)
     assert man["counts"] == {"ok": 2, "skipped": 1}
@@ -41,6 +42,7 @@ def test_downloads_all_and_writes_manifest(tmp_path):
     assert disk["total_bytes"] > 0
 
 
+@pytest.mark.unit
 def test_idempotent_second_run_uses_cache(tmp_path):
     download_crops(BLOCKS, tmp_path, fetch=_fetch_ok)
     calls = []
@@ -54,6 +56,7 @@ def test_idempotent_second_run_uses_cache(tmp_path):
     assert man["counts"] == {"cached": 2, "skipped": 1}
 
 
+@pytest.mark.unit
 def test_http_403_recorded_not_raised(tmp_path):
     man = download_crops(BLOCKS, tmp_path, fetch=lambda u, t: (403, b""))
     assert man["counts"] == {"error": 2, "skipped": 1}
@@ -61,6 +64,7 @@ def test_http_403_recorded_not_raised(tmp_path):
     assert all(e["reason"] == "http_403" for e in errs)
 
 
+@pytest.mark.unit
 def test_fetch_exception_fail_soft(tmp_path):
     def _boom(url, timeout):
         raise OSError("network down")
@@ -69,6 +73,7 @@ def test_fetch_exception_fail_soft(tmp_path):
     assert (tmp_path / MANIFEST_NAME).is_file()
 
 
+@pytest.mark.integration
 def test_crops_complete(tmp_path):
     assert crops_complete(tmp_path, BLOCKS) is False
     download_crops(BLOCKS, tmp_path, fetch=_fetch_ok)
@@ -78,18 +83,21 @@ def test_crops_complete(tmp_path):
     assert crops_complete(tmp_path, BLOCKS) is False
 
 
+@pytest.mark.unit
 def test_empty_blocks_data(tmp_path):
     man = download_crops({}, tmp_path, fetch=_fetch_ok)
     assert man["counts"] == {}
     assert man["entries"] == []
 
 
+@pytest.mark.unit
 def test_ensure_crops_for_version_disabled_by_env(tmp_path, monkeypatch):
     from backend.app.services.common.crop_cache import ensure_crops_for_version
     monkeypatch.setenv("AUDIT_CROP_CACHE_ON_UPLOAD", "0")
     assert ensure_crops_for_version(tmp_path, background=False) is None
 
 
+@pytest.mark.integration
 def test_ensure_crops_for_version_no_blocks_json(tmp_path, monkeypatch):
     from backend.app.services.common.crop_cache import ensure_crops_for_version
     monkeypatch.delenv("AUDIT_CROP_CACHE_ON_UPLOAD", raising=False)
@@ -130,6 +138,7 @@ def _fetch_fail_if_called(url, timeout):
     raise AssertionError(f"сеть не должна использоваться: {url}")
 
 
+@pytest.mark.unit
 def test_cache_crops_local_mode_cuts_from_pdf(tmp_path):
     pdf = tmp_path / "src.pdf"
     _make_src_pdf(pdf)
@@ -147,6 +156,7 @@ def test_cache_crops_local_mode_cuts_from_pdf(tmp_path):
     assert "ALPHA" in text and "BRAVO" not in text
 
 
+@pytest.mark.unit
 def test_cache_crops_local_fallback_to_download(tmp_path):
     pdf = tmp_path / "src.pdf"
     _make_src_pdf(pdf)
@@ -159,6 +169,7 @@ def test_cache_crops_local_fallback_to_download(tmp_path):
     assert by_id["blk_badpage"]["fallback_from_local"].startswith("bad_page")
 
 
+@pytest.mark.unit
 def test_cache_crops_local_fallback_error_keeps_both_reasons(tmp_path):
     pdf = tmp_path / "src.pdf"
     _make_src_pdf(pdf)
@@ -169,6 +180,7 @@ def test_cache_crops_local_fallback_error_keeps_both_reasons(tmp_path):
     assert "local:" in bad["reason"] and "http_403" in bad["reason"]
 
 
+@pytest.mark.unit
 def test_cache_crops_local_without_pdf_degrades_to_download(tmp_path):
     man = cache_crops(_local_blocks(), tmp_path, pdf_path=None, mode=MODE_LOCAL,
                       fetch=lambda u, t: (200, b"%PDF portal"))
@@ -178,6 +190,7 @@ def test_cache_crops_local_without_pdf_degrades_to_download(tmp_path):
                for e in man["entries"] if e["status"] == "ok")
 
 
+@pytest.mark.unit
 def test_cache_crops_local_idempotent_second_run(tmp_path):
     pdf = tmp_path / "src.pdf"
     _make_src_pdf(pdf)
@@ -190,6 +203,7 @@ def test_cache_crops_local_idempotent_second_run(tmp_path):
     assert man["counts"] == {"cached": 1, "skipped": 1}
 
 
+@pytest.mark.unit
 def test_cache_crops_local_too_large_falls_back(tmp_path, monkeypatch):
     """Локальный кроп больше MAX_FILE_BYTES: файл удалён, блок докачан."""
     import backend.app.services.common.crop_cache as cc
@@ -206,6 +220,7 @@ def test_cache_crops_local_too_large_falls_back(tmp_path, monkeypatch):
     assert (tmp_path / "crops" / "blk_good.pdf").read_bytes() == b"%PDF portal small"
 
 
+@pytest.mark.integration
 def test_cache_crops_local_corrupt_pdf_all_fallback(tmp_path):
     pdf = tmp_path / "src.pdf"
     pdf.write_bytes("это не PDF вовсе".encode("utf-8"))
@@ -218,6 +233,7 @@ def test_cache_crops_local_corrupt_pdf_all_fallback(tmp_path):
     assert good["fallback_from_local"].startswith("open:")
 
 
+@pytest.mark.unit
 def test_cache_crops_local_missing_fitz_all_fallback(tmp_path, monkeypatch):
     """Без PyMuPDF режим local_pdf обязан деградировать в скачивание,
     а не терять кропы (ImportError не должен пролетать наружу)."""
@@ -234,6 +250,7 @@ def test_cache_crops_local_missing_fitz_all_fallback(tmp_path, monkeypatch):
     assert good["fallback_from_local"].startswith("fitz_unavailable")
 
 
+@pytest.mark.unit
 def test_download_budget_counts_cached_and_stops(tmp_path):
     """Бюджет = объём кэша документа (включая cached), гейт между чанками."""
     blocks = {
@@ -259,6 +276,7 @@ def test_download_budget_counts_cached_and_stops(tmp_path):
     assert man2["total_bytes"] == 200  # cached-байты видны в манифесте
 
 
+@pytest.mark.integration
 def test_stale_tmp_cleaned_and_not_cached(tmp_path):
     pdf = tmp_path / "src.pdf"
     _make_src_pdf(pdf)
@@ -275,6 +293,7 @@ def test_stale_tmp_cleaned_and_not_cached(tmp_path):
     assert good["status"] == "ok" and good["source"] == MODE_LOCAL
 
 
+@pytest.mark.integration
 def test_v2_input_names_excludes_crop_cache(tmp_path):
     """Кэш кропов в 01_input — derived-артефакт, не пользовательский
     исходник: не должен попадать в списки файлов версии (иначе сотни
@@ -288,6 +307,7 @@ def test_v2_input_names_excludes_crop_cache(tmp_path):
     assert _v2_input_names(tmp_path) == ["мой_документ.pdf"]
 
 
+@pytest.mark.unit
 def test_crop_source_mode_env(monkeypatch):
     monkeypatch.delenv("AUDIT_CROP_CACHE_SOURCE", raising=False)
     assert crop_source_mode() == MODE_LOCAL  # заглушка по умолчанию (АИ 16.07)
@@ -297,6 +317,7 @@ def test_crop_source_mode_env(monkeypatch):
     assert crop_source_mode() == MODE_LOCAL
 
 
+@pytest.mark.integration
 def test_ensure_crops_for_version_local_cut(tmp_path, monkeypatch):
     """Интеграция: комплект версии с blocks.json + PDF режется без сети."""
     from backend.app.services.common.crop_cache import ensure_crops_for_version

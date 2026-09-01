@@ -155,6 +155,10 @@ def _load_analysis_module():
 # ─── Import / API ─────────────────────────────────────────────────────────────
 
 class TestImports:
+    # Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+    # память».
+    pytestmark = pytest.mark.integration
+
     def test_script_imports_without_error(self):
         mod = _load_analysis_module()
         assert hasattr(mod, "run_analysis")
@@ -168,6 +172,8 @@ class TestImports:
 # ─── classify_borderline ──────────────────────────────────────────────────────
 
 class TestClassifyBorderline:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_analysis_module()
 
@@ -238,6 +244,8 @@ class TestClassifyBorderline:
 # ─── _detect_borderline_source ────────────────────────────────────────────────
 
 class TestDetectBorderlineSource:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_analysis_module()
 
@@ -273,6 +281,8 @@ class TestDetectBorderlineSource:
 # ─── load_batch_decisions ─────────────────────────────────────────────────────
 
 class TestLoadBatchDecisions:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_analysis_module()
 
@@ -334,6 +344,8 @@ class TestLoadBatchDecisions:
 # ─── analyze_borderline ───────────────────────────────────────────────────────
 
 class TestAnalyzeBorderline:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_analysis_module()
 
@@ -434,6 +446,8 @@ class TestAnalyzeBorderline:
 # ─── run_analysis ─────────────────────────────────────────────────────────────
 
 class TestRunAnalysis:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_analysis_module()
 
@@ -509,6 +523,8 @@ class TestRunAnalysis:
 # ─── render_markdown ──────────────────────────────────────────────────────────
 
 class TestRenderMarkdown:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_analysis_module()
 
@@ -549,6 +565,8 @@ class TestRenderMarkdown:
 # ─── Safe reject / safe accept correctness invariants ─────────────────────────
 
 class TestSafetyInvariants:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_analysis_module()
 
@@ -610,6 +628,9 @@ class TestSafetyInvariants:
 # ─── CLI integration ──────────────────────────────────────────────────────────
 
 class TestCLI:
+    # Primary lane §5: network — запускает настоящие дочерние процессы.
+    pytestmark = pytest.mark.network
+
     def test_cli_basic_run(self, tmp_path):
         decisions = [_decision(f"F-{i:03d}", decision="borderline") for i in range(5)]
         batch_dir = _make_batch_output(tmp_path, [{"slug": "proj1", "decisions": decisions}])

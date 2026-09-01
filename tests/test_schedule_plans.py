@@ -37,6 +37,10 @@ import backend.app.services.common.schedule_service as schedule_service  # noqa:
 import backend.app.api.routers.schedule as schedule_router  # noqa: E402
 import backend.app.services.common.user_service as user_service  # noqa: E402
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def tmp_plans(tmp_path, monkeypatch):

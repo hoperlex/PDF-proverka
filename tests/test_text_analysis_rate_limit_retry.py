@@ -22,6 +22,10 @@ import backend.app.pipeline.stages.text_analysis.runner as runner  # noqa: E402
 import backend.app.services.llm.claude_runner as claude_runner  # noqa: E402
 from backend.app.pipeline.stages.text_analysis import rate_limit_retry as rlr  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 # ─── Часть A.1: pure backoff / config ────────────────────────────────────────
 

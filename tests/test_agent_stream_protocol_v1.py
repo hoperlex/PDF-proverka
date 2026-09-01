@@ -14,6 +14,10 @@ from contracts.agent_stream.v1 import adapters
 from contracts.agent_stream.v1 import agent_stream_pb2 as stream_pb
 from contracts.agent_stream.v1 import common_pb2 as common_pb
 
+# Primary lane §5: contract — protoc — «bounded local compiler process», разрешённый §5
+# для contract; сокетов и сервисов в модуле нет.
+pytestmark = pytest.mark.contract
+
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN = json.loads(

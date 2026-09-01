@@ -3,6 +3,12 @@ from pathlib import Path
 
 from backend.app.services.common import discipline_service, object_service, project_service
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _seed_objects_file(path: Path, projects_root: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -5,6 +5,11 @@ import inspect
 from backend.app.pipeline.stages.block_context.reference_catalog import loader
 from backend.app.pipeline.stages.block_grounding import block_profile_registry
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_embedded_catalog_is_complete_and_self_contained():
     manifest = loader.load_catalog_manifest()

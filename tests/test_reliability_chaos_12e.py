@@ -60,6 +60,7 @@ def _config(root: Path, *, transport: str = "polling") -> WorkerConfig:
     )
 
 
+@pytest.mark.integration
 def test_12e_state_epoch_and_runtime_diagnostics_are_atomic(tmp_path):
     store = WorkerStateStore(tmp_path / "worker_state.json", tmp_path / "token")
     epochs: list[int] = []
@@ -88,6 +89,7 @@ def test_12e_state_epoch_and_runtime_diagnostics_are_atomic(tmp_path):
     assert state["runtime_diagnostics"]["last_disconnect_reason"] == "GRPC_UNAVAILABLE"
 
 
+@pytest.mark.contract
 def test_12e_doctor_is_offline_safe_and_never_prints_token(tmp_path, capsys):
     config = _config(tmp_path)
     config.ensure_dirs()
@@ -123,6 +125,7 @@ def test_12e_doctor_is_offline_safe_and_never_prints_token(tmp_path, capsys):
     assert "not-for-diagnostics" not in output
 
 
+@pytest.mark.contract
 def test_12e_doctor_does_not_create_or_migrate_a_missing_worker_root(tmp_path, capsys):
     root = tmp_path / "missing-worker-root"
 
@@ -133,6 +136,7 @@ def test_12e_doctor_does_not_create_or_migrate_a_missing_worker_root(tmp_path, c
     assert not root.exists()
 
 
+@pytest.mark.contract
 def test_12e_gateway_hello_persists_diagnostic_connection_state(tmp_path):
     config = _config(tmp_path, transport="grpc")
     config.ensure_dirs()
@@ -164,6 +168,7 @@ def test_12e_gateway_hello_persists_diagnostic_connection_state(tmp_path):
     assert runtime["last_connected_at"] > 0
 
 
+@pytest.mark.contract
 def test_12e_typed_disconnect_reasons_are_stable():
     assert grpc_failure_reason_code(FatalGrpcTransportError("bad protocol")) == "PROTOCOL_MISMATCH"
     assert grpc_failure_reason_code(RuntimeError("TLS certificate verify failed")) == "TLS_FAILED"
@@ -175,6 +180,7 @@ def test_12e_typed_disconnect_reasons_are_stable():
     assert grpc_failure_reason_code(RuntimeError("unclassified")) == "UNKNOWN"
 
 
+@pytest.mark.contract
 def test_12e_stale_request_iterator_cannot_consume_reconnected_outbox_item(tmp_path):
     """C02 regression: only the current connection epoch can drain control work."""
     config = _config(tmp_path, transport="grpc")
@@ -197,6 +203,7 @@ def test_12e_stale_request_iterator_cannot_consume_reconnected_outbox_item(tmp_p
     assert not transport._is_active_request_epoch(2)
 
 
+@pytest.mark.contract
 def test_c34_twelve_grpc_failures_never_fall_back_to_polling(tmp_path, monkeypatch):
     """C34: repeated stream failure keeps one explicit gRPC owner."""
     class DataPlane(_NullData):
@@ -252,6 +259,7 @@ def test_c34_twelve_grpc_failures_never_fall_back_to_polling(tmp_path, monkeypat
     assert state["last_disconnect_reason"] == "GRPC_UNAVAILABLE"
 
 
+@pytest.mark.contract
 def test_c36_twenty_reconnect_candidates_use_bounded_jitter(monkeypatch):
     """C36: a reconnect herd does not share one deterministic retry instant."""
     monkeypatch.setattr(client_module, "random", random.Random(12036))
@@ -271,6 +279,7 @@ def test_c36_twenty_reconnect_candidates_use_bounded_jitter(monkeypatch):
     assert len({round(value, 3) for value in third}) >= 15
 
 
+@pytest.mark.contract
 def test_c14_interrupted_source_body_resumes_from_durable_part(tmp_path, monkeypatch):
     boundary = 1024 * 1024
     payload = b"a" * boundary + b"def"
@@ -351,6 +360,7 @@ def test_c14_interrupted_source_body_resumes_from_durable_part(tmp_path, monkeyp
     assert context["outbox"].events[-1][0] == "source_verified"
 
 
+@pytest.mark.contract
 def test_c16_result_upload_resumes_same_session_after_data_plane_interruption(
     tmp_path, monkeypatch
 ):
@@ -419,6 +429,7 @@ def test_c16_result_upload_resumes_same_session_after_data_plane_interruption(
     assert client.chunk_calls == [0, 1, 1, 1, 1]
 
 
+@pytest.mark.contract
 def test_c41_duplicate_result_ack_never_blocks_grpc_reader(tmp_path):
     transport = GrpcStreamControlTransport(
         target="localhost:12345",

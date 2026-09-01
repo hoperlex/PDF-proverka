@@ -41,6 +41,10 @@ from backend.app.services.findings.block_captions import (  # noqa: E402
     humanize_text,
 )
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 # ─── Фикстуры артефактов ─────────────────────────────────────────────────────
 

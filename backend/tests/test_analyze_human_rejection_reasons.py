@@ -77,6 +77,10 @@ def _load_script():
 # ─── Import check ─────────────────────────────────────────────────────────────
 
 class TestImports:
+    # Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+    # память».
+    pytestmark = pytest.mark.integration
+
     def test_script_imports(self):
         mod = _load_script()
         assert hasattr(mod, "classify_reason")
@@ -89,6 +93,8 @@ class TestImports:
 # ─── classify_reason ─────────────────────────────────────────────────────────
 
 class TestClassifyReason:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_script()
 
@@ -166,6 +172,8 @@ class TestClassifyReason:
 # ─── analyze_false_accepts ────────────────────────────────────────────────────
 
 class TestAnalyzeFalseAccepts:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_script()
 
@@ -239,6 +247,8 @@ class TestAnalyzeFalseAccepts:
 # ─── run_analysis ─────────────────────────────────────────────────────────────
 
 class TestRunAnalysis:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_script()
 
@@ -313,6 +323,8 @@ class TestRunAnalysis:
 # ─── render_markdown ──────────────────────────────────────────────────────────
 
 class TestRenderMarkdown:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_script()
 
@@ -350,6 +362,8 @@ class TestRenderMarkdown:
 # ─── Taxonomy completeness ────────────────────────────────────────────────────
 
 class TestTaxonomyCompleteness:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_script()
 
@@ -436,6 +450,9 @@ class TestTaxonomyCompleteness:
 # ─── CLI integration ──────────────────────────────────────────────────────────
 
 class TestCLI:
+    # Primary lane §5: network — запускает настоящие дочерние процессы.
+    pytestmark = pytest.mark.network
+
     def test_cli_basic_run(self, tmp_path):
         records = [
             _fa_record("F-1", "Ошибка OCR — неверно прочитано"),

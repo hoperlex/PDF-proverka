@@ -20,6 +20,9 @@ from backend.app.pipeline.stages.block_grounding.ar_ceiling_lighting import symb
 from backend.app.pipeline.stages.block_grounding.ar_ceiling_lighting.spatial import (
     OccupancyGrid, SpatialIndex, build_chains)
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 ROOT = Path(__file__).resolve().parent.parent
 PKG = ROOT / "backend/app/pipeline/stages/block_grounding/ar_ceiling_lighting"
 REFERENCE_PDF = (ROOT / "experiments/блоки разных дисциплин/АР/"

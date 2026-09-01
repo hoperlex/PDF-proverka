@@ -81,6 +81,7 @@ def _unpack(archive: Path, target: Path) -> Path:
 class TestPortableLayout:
     """RRG-01…RRG-08."""
 
+    @pytest.mark.integration
     def test_canonical_package_tree(self, tmp_path):
         """RRG-01: в пакете полноценный переносимый корень projects_v2."""
         f = fx.build_project_fixture(tmp_path / "v2")
@@ -95,6 +96,7 @@ class TestPortableLayout:
         assert manifest["portable_projects_root"] == "payload/projects_v2/"
         assert manifest["project_layout_version"] == 2
 
+    @pytest.mark.network
     def test_resolver_finds_project_inside_attempt_root(self, tmp_path):
         """RRG-02/RRG-03/RRG-04: резолвер находит проект в каталоге попытки."""
         f = fx.build_project_fixture(tmp_path / "v2")
@@ -128,15 +130,18 @@ class TestPortableLayout:
         assert all(str(job_dir) in path for path in resolved)
         assert all(str(tmp_path / "v2") not in path for path in resolved)
 
+    @pytest.mark.integration
     def test_old_flat_layout_is_rejected(self, tmp_path):
         """RRG-01 (обратная сторона): плоский пакет версии 1 отвергается."""
         with pytest.raises(package_io.BundleError, match="не поддерживается"):
             package_io.require_portable_layout({"project_layout_version": 1}, tmp_path)
 
+    @pytest.mark.integration
     def test_missing_layout_version_is_rejected(self, tmp_path):
         with pytest.raises(package_io.BundleError, match="project_layout_version"):
             package_io.require_portable_layout({}, tmp_path)
 
+    @pytest.mark.integration
     def test_missing_document_metadata_fails_the_build(self, tmp_path):
         """Без document.json адаптер пропускает документ МОЛЧА — значит отказ."""
         f = fx.build_project_fixture(tmp_path / "v2")
@@ -144,6 +149,7 @@ class TestPortableLayout:
         with pytest.raises(project_package.ProjectPackageError, match="document.json"):
             _build(tmp_path, f)
 
+    @pytest.mark.integration
     def test_version_with_and_without_service_dir_both_resolve(self, tmp_path):
         """Раскладка версий неоднородна — пакет обязан собираться на обеих."""
         with_service = fx.build_project_fixture(tmp_path / "a")
@@ -155,6 +161,7 @@ class TestPortableLayout:
             info = package_io.require_portable_layout(manifest, payload)
             assert Path(info["version_dir"]).is_dir()
 
+    @pytest.mark.integration
     def test_unicode_external_id_never_becomes_a_path(self, tmp_path):
         """RRG-05: внешний код со слэшем остаётся метаданными."""
         f = fx.build_project_fixture(tmp_path / "v2")
@@ -165,18 +172,21 @@ class TestPortableLayout:
             names = tar.getnames()
         assert not any("корпус 1" in name for name in names)
 
+    @pytest.mark.integration
     @pytest.mark.parametrize("bad", ["a/b", "..", ".", "~x", "a\\b", "con", "a\0b"])
     def test_unsafe_segments_are_refused_not_sanitised(self, bad):
         """RRG-06: сегмент отвергается. Санация склеила бы разные проекты."""
         with pytest.raises(project_package.ProjectPackageError):
             project_package.safe_path_segment(bad, field="test")
 
+    @pytest.mark.integration
     def test_traversal_in_relative_path_is_refused(self):
         with pytest.raises(project_package.ProjectPackageError):
             project_package.safe_relative_path("a/../../etc", field="test")
         with pytest.raises(project_package.ProjectPackageError):
             project_package.safe_relative_path("/etc/passwd", field="test")
 
+    @pytest.mark.integration
     def test_no_absolute_paths_in_package(self, tmp_path):
         """RRG-07."""
         f = fx.build_project_fixture(tmp_path / "v2")
@@ -186,12 +196,14 @@ class TestPortableLayout:
             assert ".." not in entry["path"].split("/")
             assert entry["path"].startswith("payload/")
 
+    @pytest.mark.integration
     def test_no_application_source_code_in_package(self, tmp_path):
         """RRG-08."""
         f = fx.build_project_fixture(tmp_path / "v2")
         manifest = _build(tmp_path, f)
         assert not any(e["path"].endswith(".py") for e in manifest["files"])
 
+    @pytest.mark.integration
     def test_neighbouring_project_is_not_included(self, tmp_path):
         """Пакет содержит РОВНО ОДИН документ, даже если рядом лежит второй."""
         root = tmp_path / "v2"
@@ -202,6 +214,7 @@ class TestPortableLayout:
         payload = _unpack(tmp_path / "pkg.tar.gz", tmp_path / "unp")
         assert package_io.portable_version_dir(payload / "projects_v2").is_dir()
 
+    @pytest.mark.integration
     def test_ambiguous_version_dir_is_an_error(self, tmp_path):
         """Неоднозначность — ошибка, а не «возьмём первый»."""
         root = tmp_path / "v2"
@@ -210,6 +223,7 @@ class TestPortableLayout:
         with pytest.raises(package_io.PortableTreeError, match="несколько"):
             package_io.portable_version_dir(root)
 
+    @pytest.mark.integration
     def test_root_level_dotfile_keeps_its_name(self, tmp_path):
         """lstrip снимал НАБОР символов и переименовывал `.gitkeep`."""
         f = fx.build_project_fixture(tmp_path / "v2")
@@ -217,6 +231,7 @@ class TestPortableLayout:
         manifest = _build(tmp_path, f)
         assert any(e["path"].endswith("/.gitkeep") for e in manifest["files"])
 
+    @pytest.mark.integration
     def test_host_absolute_paths_are_cleared_from_metadata(self, tmp_path):
         """RRG-07: путь центрального хоста не уезжает в метаданных."""
         f = fx.build_project_fixture(tmp_path / "v2")
@@ -236,6 +251,10 @@ class TestPortableLayout:
 # ═══ 21.2. Снимок runtime-конфигурации ══════════════════════════════════════
 class TestRuntimeSnapshot:
     """RRG-09…RRG-14."""
+    # Primary lane §5: integration — поднимает приложение целиком in-process
+    # (ASGI/TestClient).
+    pytestmark = pytest.mark.integration
+
 
     def test_snapshot_has_version_and_hash(self):
         """RRG-09."""
@@ -319,29 +338,34 @@ class TestRuntimeSnapshot:
 class TestPathIsolation:
     """RRG-13…RRG-17, RRG-29, RRG-30."""
 
+    @pytest.mark.integration
     def test_every_write_root_is_inside_the_attempt_dir(self, tmp_path):
         """RRG-15/RRG-29: соседняя попытка лежит вне этого корня."""
         job_dir = (tmp_path / "jobs" / "J" / "A").resolve()
         for name, value in audit_runner.isolated_roots(job_dir).items():
             assert Path(value).resolve().is_relative_to(job_dir), name
 
+    @pytest.mark.integration
     def test_comparison_root_is_isolated(self, tmp_path):
         """RRG-16: Б-4. Каталог `comparison/` больше не в корне кода."""
         roots = audit_runner.isolated_roots(tmp_path / "job")
         assert "COMPARISON_ROOT" in roots
         assert Path(roots["COMPARISON_ROOT"]).is_relative_to(tmp_path / "job")
 
+    @pytest.mark.integration
     def test_home_is_isolated(self, tmp_path):
         """RRG-17: HOME воркера не используется для записи артефактов."""
         roots = audit_runner.isolated_roots(tmp_path / "job")
         assert Path(roots["HOME"]).is_relative_to(tmp_path / "job")
         assert "HOME" not in audit_runner._ENV_WHITELIST
 
+    @pytest.mark.integration
     def test_tmpdir_is_isolated(self, tmp_path):
         roots = audit_runner.isolated_roots(tmp_path / "job")
         assert Path(roots["TMPDIR"]).is_relative_to(tmp_path / "job")
         assert "TMPDIR" not in audit_runner._ENV_WHITELIST
 
+    @pytest.mark.integration
     def test_clean_cwd_root_follows_tmpdir(self, monkeypatch, tmp_path):
         """`/tmp/sonnet_clean` был литералом в трёх файлах."""
         from backend.app.core import config
@@ -351,6 +375,7 @@ class TestPathIsolation:
         monkeypatch.setenv("AUDIT_CLEAN_CWD_ROOT", str(tmp_path / "explicit"))
         assert config.clean_cli_cwd_root() == str(tmp_path / "explicit")
 
+    @pytest.mark.integration
     def test_clean_cwd_default_matches_historic_path(self, monkeypatch):
         """Поведение центра не меняется: без TMPDIR путь прежний."""
         from backend.app.core import config
@@ -358,6 +383,7 @@ class TestPathIsolation:
             monkeypatch.delenv(name, raising=False)
         assert config.clean_cli_cwd_root().endswith("/sonnet_clean")
 
+    @pytest.mark.integration
     def test_codex_workdir_defaults_to_code_root(self, monkeypatch):
         from backend.app.core import config
         monkeypatch.delenv("AUDIT_CODEX_WORKDIR", raising=False)
@@ -365,6 +391,7 @@ class TestPathIsolation:
         monkeypatch.setenv("AUDIT_CODEX_WORKDIR", "/x/y")
         assert config.codex_workdir() == "/x/y"
 
+    @pytest.mark.integration
     def test_no_literal_sonnet_clean_left_in_pipeline_code(self):
         """Машинная проверка: литерал не вернётся копипастом."""
         offenders = []
@@ -376,12 +403,14 @@ class TestPathIsolation:
                 offenders.append(str(path.relative_to(REPO_ROOT)))
         assert not offenders, offenders
 
+    @pytest.mark.integration
     def test_manager_does_not_anchor_comparison_at_base_dir(self):
         """RRG-30/Б-4 машинно: `BASE_DIR / comparison` не должен вернуться."""
         text = (REPO_ROOT / "backend" / "app" / "pipeline" / "manager.py").read_text(
             encoding="utf-8")
         assert 'BASE_DIR / "comparison"' not in text
 
+    @pytest.mark.integration
     def test_env_is_built_from_scratch_not_scrubbed(self, tmp_path, monkeypatch):
         """RRG-13/RRG-14: секрет хоста не доезжает до конвейера."""
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-SECRET")
@@ -395,6 +424,7 @@ class TestPathIsolation:
         assert "AUDIT_PROJECTS_V2_WRITE_MODE" not in env
         assert env["AUDIT_DISABLE_DOTENV"] == "1"
 
+    @pytest.mark.integration
     def test_runtime_paths_check_covers_every_isolated_root(self):
         """Выставляющая и проверяющая стороны обязаны совпадать по составу."""
         from backend.app.pipeline import remote_audit_runner
@@ -402,6 +432,7 @@ class TestPathIsolation:
         checked = set(remote_audit_runner._ISOLATED_ROOT_ENV)
         assert not (declared - checked), declared - checked
 
+    @pytest.mark.network
     def test_dotenv_kill_switch_is_honoured(self, tmp_path):
         """RRG-14: `.env` рядом с установленным кодом не подхватывается."""
         cwd = tmp_path / "code"
@@ -428,6 +459,8 @@ class TestPathIsolation:
 # ═══ 21.4. Исполнение на воркере ════════════════════════════════════════════
 class TestWorkerExecution:
     """RRG-18…RRG-23."""
+    pytestmark = pytest.mark.integration
+
 
     @staticmethod
     def _config():
@@ -527,18 +560,21 @@ class TestWorkerExecution:
 class TestProvidersAndNetwork:
     """RRG-24, RRG-25."""
 
+    @pytest.mark.integration
     def test_fake_dir_needs_the_marker(self, tmp_path):
         """Пустой каталог префиксует PATH и НИЧЕГО не перекрывает."""
         empty = tmp_path / "empty"
         empty.mkdir()
         assert not audit_runner.provider_dir_is_fake(empty)
 
+    @pytest.mark.integration
     def test_marker_alone_is_not_enough(self, tmp_path):
         from backend.app.pipeline.execution import fake_providers
         d = fake_providers.materialize(tmp_path / "p")
         (d / "claude").unlink()
         assert not audit_runner.provider_dir_is_fake(d)
 
+    @pytest.mark.network
     def test_fake_providers_are_executable_and_deterministic(self, tmp_path):
         from backend.app.pipeline.execution import fake_providers
         d = fake_providers.materialize(tmp_path / "p")
@@ -556,12 +592,14 @@ class TestProvidersAndNetwork:
         assert results[0] == results[1], "подделка недетерминирована"
         assert fake_providers.read_call_log(tmp_path / "calls.jsonl")
 
+    @pytest.mark.integration
     def test_fake_payload_is_not_empty(self):
         """Иначе узкая parity сравнивает «обе стороны ничего не сделали»."""
         from backend.app.pipeline.execution import fake_providers
         source = Path(fake_providers.__file__).read_text(encoding="utf-8")
         assert "_finding(1," in source and "_finding(2," in source
 
+    @pytest.mark.network
     @pytest.mark.parametrize("behaviour", ["rate_limit", "auth_error", "broken_json"])
     def test_failure_behaviours_are_reachable(self, tmp_path, behaviour):
         from backend.app.pipeline.execution import fake_providers
@@ -574,6 +612,7 @@ class TestProvidersAndNetwork:
         combined = (proc.stdout or "") + (proc.stderr or "")
         assert proc.returncode != 0 or combined.strip(), behaviour
 
+    @pytest.mark.integration
     def test_no_real_cli_names_in_the_worker_package(self):
         """RRG-24: в пакете воркера нет исполняемых литералов настоящих CLI.
 
@@ -589,6 +628,7 @@ class TestProvidersAndNetwork:
 
         checker()
 
+    @pytest.mark.network
     def test_netguard_kills_the_process(self, tmp_path):
         """RRG-25: соединение вне loopback обрывает прогон, а не бросает."""
         from tests.distributed_audit_e2e import isolation
@@ -600,6 +640,7 @@ class TestProvidersAndNetwork:
                "E2E_NETGUARD_LOG": str(tmp_path / "net.log")}
         assert isolation.selfcheck_netguard(sys.executable, env)
 
+    @pytest.mark.network
     def test_writeguard_kills_the_process(self, tmp_path):
         """Сторож записи ловит запись В МОМЕНТ совершения, а не постфактум."""
         from tests.distributed_audit_e2e import isolation
@@ -621,6 +662,8 @@ class TestProvidersAndNetwork:
 # ═══ 21.6. Пакет результата ═════════════════════════════════════════════════
 class TestResultPackage:
     """RRG-26…RRG-28."""
+    pytestmark = pytest.mark.integration
+
 
     def _job_dir(self, tmp_path: Path) -> Path:
         job_dir = tmp_path / "job"
@@ -707,6 +750,7 @@ class TestResultPackage:
 class TestAdversarialFindings:
     """Каждый тест закрепляет ПОДТВЕРЖДЁННУЮ находку, а не гипотезу."""
 
+    @pytest.mark.integration
     def test_layout_2_requires_v2_primary_write_mode(self):
         """Проверка 1: раскладка 2 резолвится ТОЛЬКО в projects_v2_primary.
 
@@ -724,6 +768,7 @@ class TestAdversarialFindings:
             _snapshot(), supported_profiles=("remote_audit_pilot_v1",),
             supported_layout_versions=frozenset({2}), allow_real_llm=False)
 
+    @pytest.mark.integration
     @pytest.mark.parametrize("payload,expected_key", [
         ({"sources": ["/home/coder/secret.pdf"]}, "sources[0]"),
         ({"a": [{"b": ["/root/.ssh/id_rsa"]}]}, "a[0].b[0]"),
@@ -735,11 +780,13 @@ class TestAdversarialFindings:
             json.dumps(payload, ensure_ascii=False).encode("utf-8"), source="t")
         assert cleared == [f"t:{expected_key}"]
 
+    @pytest.mark.integration
     def test_sanitizer_keeps_engineering_data(self):
         _out, cleared = project_package.sanitize_metadata_blob(
             json.dumps({"power_kw": 12.5, "name": "ЩР-1"}).encode("utf-8"), source="t")
         assert cleared == []
 
+    @pytest.mark.network
     def test_write_guard_covers_pathlib_and_io(self, tmp_path):
         """Проверка 2 (HIGH): `Path.write_text` — доминирующий примитив записи.
 
@@ -775,6 +822,7 @@ class TestAdversarialFindings:
             env=env, capture_output=True, timeout=120)
         assert ok.returncode == 0, "сторож ломает разрешённую запись"
 
+    @pytest.mark.integration
     def test_dotenv_kill_switch_covers_every_call_site(self):
         """Every remaining runtime `load_dotenv` call is kill-switch gated.
 
@@ -810,6 +858,7 @@ class TestAdversarialFindings:
                 offenders.append(str(path.relative_to(REPO_ROOT)))
         assert not offenders, offenders
 
+    @pytest.mark.integration
     def test_en_prompts_follow_the_verified_snapshot(self):
         """Проверка 2 (HIGH): текст в модель брался из УСТАНОВЛЕННОГО кода.
 
@@ -824,6 +873,7 @@ class TestAdversarialFindings:
         snapshot = project_package.collect_prompt_snapshot(Path(config.PROMPTS_DIR))
         assert any(name.startswith("prompts/pipeline/en/") for name in snapshot)
 
+    @pytest.mark.integration
     def test_snapshot_provider_mode_beats_worker_spec(self, tmp_path, monkeypatch):
         """Проверка 2: режим провайдеров из снимка ОБЯЗЫВАЕТ.
 
@@ -851,6 +901,7 @@ class TestAdversarialFindings:
         assert evidence["provider_mode_forced_by_snapshot"] is True
         assert evidence["applied_write_mode"] == "projects_v2_primary"
 
+    @pytest.mark.integration
     def test_spec_paths_are_contained(self, tmp_path):
         """Проверка 2: проверялся только `paths.project`."""
         from audit_worker import audit_runner as ar
@@ -870,6 +921,7 @@ class TestAdversarialFindings:
             for name in env:
                 os.environ.pop(name, None)
 
+    @pytest.mark.integration
     def test_forbidden_stage_check_ignores_inherited_central_status(self, tmp_path):
         """Проверка 4 (HIGH): `pipeline_log.json` НАКОПИТЕЛЬНЫЙ.
 
@@ -893,6 +945,7 @@ class TestAdversarialFindings:
             remote_audit_runner.FORBIDDEN_STAGES)
         assert history["completed_stages"] == ["findings_merge"]
 
+    @pytest.mark.integration
     def test_forbidden_stage_check_still_catches_a_fresh_run(self, tmp_path):
         from backend.app.pipeline import remote_audit_runner
 
@@ -905,6 +958,7 @@ class TestAdversarialFindings:
             {"paths": {"work": str(work)}}, before={"norm_verify": "deferred"})
         assert history["violations"] == ["norm_verify=done"]
 
+    @pytest.mark.integration
     def test_result_manifest_measures_absolute_paths(self, tmp_path):
         """Проверка 4: поле утверждало False безусловно."""
         job_dir = tmp_path / "job"

@@ -65,6 +65,7 @@ def _mgr() -> PipelineManager:
 # ─── A. heartbeat resilience ──────────────────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_heartbeat_survives_iteration_exception(monkeypatch):
     """Сбой broadcast в одной итерации не должен гасить heartbeat-цикл:
     last_heartbeat обновляется, цикл доходит до следующих тиков."""
@@ -100,6 +101,7 @@ def test_heartbeat_survives_iteration_exception(monkeypatch):
     assert job.last_heartbeat is not None, "last_heartbeat обновляется даже при сбое broadcast"
 
 
+@pytest.mark.unit
 def test_heartbeat_stops_cleanly_when_job_not_running(monkeypatch):
     """Если job не RUNNING — цикл выходит без исключений (нормальное завершение)."""
     mgr = _mgr()
@@ -122,6 +124,7 @@ def test_heartbeat_stops_cleanly_when_job_not_running(monkeypatch):
 # ─── B. identity-aware _cleanup_batch_worker ─────────────────────────────────
 
 
+@pytest.mark.unit
 def test_cleanup_batch_worker_removes_own_registration(monkeypatch):
     mgr = _mgr()
 
@@ -137,6 +140,7 @@ def test_cleanup_batch_worker_removes_own_registration(monkeypatch):
     asyncio.run(_run())
 
 
+@pytest.mark.unit
 def test_cleanup_batch_worker_preserves_new_worker(monkeypatch):
     """Гонка close+enqueue: пока старый worker в finally, enqueue поднял новый
     под тем же ключом __BATCH__. Старый НЕ должен снести регистрацию нового."""
@@ -163,6 +167,7 @@ def test_cleanup_batch_worker_preserves_new_worker(monkeypatch):
 # ─── C. restart → resume предсказуем ─────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_restart_recovery_marks_interrupted_with_reason(monkeypatch, tmp_path):
     """load_persisted_queue: running → interrupted с понятной причиной;
     pending остаётся pending; статус очереди → interrupted (worker не стартует)."""
@@ -188,6 +193,7 @@ def test_restart_recovery_marks_interrupted_with_reason(monkeypatch, tmp_path):
     assert q.items[1].status == "pending"
 
 
+@pytest.mark.integration
 def test_restart_recovery_then_resume_spawns_single_worker(monkeypatch, tmp_path):
     """После recovery resume поднимает РОВНО один worker, items → pending."""
     qfile = tmp_path / "batch_queue.json"
@@ -241,6 +247,7 @@ class _ExistsPath:
         return self._e
 
 
+@pytest.mark.unit
 def test_batch_items_no_longer_publish_prefetch_state():
     item = BatchQueueItem(project_id="target", status="pending")
 

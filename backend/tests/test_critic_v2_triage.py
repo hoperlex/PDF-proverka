@@ -115,6 +115,10 @@ def _finding(
 
 
 class TestStrongKeep:
+    # Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни
+    # сокетов.
+    pytestmark = pytest.mark.unit
+
     def test_det_accept_score8_valid(self):
         """Deterministic accept + score>=8 + valid evidence → strong_keep."""
         det = _make_det(decision="accept", score=8, ev=EVIDENCE_VALID)
@@ -210,6 +214,8 @@ class TestStrongKeep:
 
 
 class TestMainReview:
+    pytestmark = pytest.mark.unit
+
     def test_accept_score7_partial_with_action_impact(self):
         """accept + score=7 + partial + has_action + has_impact → main_review."""
         det = _make_det(
@@ -239,6 +245,8 @@ class TestMainReview:
 
 
 class TestHiddenByCritic:
+    pytestmark = pytest.mark.unit
+
     def test_det_reject_no_evidence(self):
         """Deterministic reject with no_evidence → hidden_by_critic."""
         det = _make_det(
@@ -376,6 +384,8 @@ class TestHiddenByCritic:
 
 
 class TestSuggestedReject:
+    pytestmark = pytest.mark.unit
+
     def test_blocked_guard_case_not_hidden(self):
         """Guard blocked → suggested_reject or strong_keep, never hidden."""
         det = _make_det(decision="accept", score=8, ev=EVIDENCE_VALID)
@@ -429,6 +439,8 @@ class TestSuggestedReject:
 
 
 class TestBorderline:
+    pytestmark = pytest.mark.unit
+
     def test_final_borderline_stays_borderline(self):
         det = _make_det(decision="borderline", score=5, ev=EVIDENCE_PARTIAL)
         td = assign_triage_queue(_finding(), det, det)
@@ -494,6 +506,8 @@ class TestBorderline:
 
 
 class TestNeedsContext:
+    pytestmark = pytest.mark.unit
+
     def test_insufficient_source_context_taxonomy(self):
         """insufficient_source_context taxonomy → needs_context."""
         det = _make_det(decision="accept", score=5, ev=EVIDENCE_PARTIAL)
@@ -531,6 +545,8 @@ class TestNeedsContext:
 
 
 class TestVisibility:
+    pytestmark = pytest.mark.unit
+
     def test_visible_queues(self):
         """strong_keep, main_review, borderline, needs_context → visible_by_default."""
         visible_queues = {QUEUE_STRONG_KEEP, QUEUE_MAIN_REVIEW, QUEUE_BORDERLINE, QUEUE_NEEDS_CONTEXT}
@@ -558,6 +574,8 @@ class TestVisibility:
 
 
 class TestBuildTriageResult:
+    pytestmark = pytest.mark.unit
+
     def test_basic_batch(self):
         decisions = [
             _make_det("F-001", "accept", 8, EVIDENCE_VALID),
@@ -586,6 +604,8 @@ class TestBuildTriageResult:
 
 
 class TestTriageMetrics:
+    pytestmark = pytest.mark.unit
+
     def test_workload_reduction_computed(self):
         decisions = [
             _make_det("F-001", "accept", 8, EVIDENCE_VALID),
@@ -692,6 +712,8 @@ class TestTriageMetrics:
 
 
 class TestSerialization:
+    pytestmark = pytest.mark.unit
+
     def test_triage_decision_to_dict(self):
         det = _make_det(decision="accept", score=8, ev=EVIDENCE_VALID)
         td = assign_triage_queue(_finding(), det, det)
@@ -717,6 +739,8 @@ class TestSerialization:
 
 
 class TestArF001Diagnostic:
+    pytestmark = pytest.mark.unit
+
     def test_diagnostic_returns_expected_fields(self):
         diag = get_ar_f001_diagnostic()
         assert "finding_id" in diag
@@ -759,6 +783,8 @@ class TestArF001Diagnostic:
 
 class TestProfiles:
     """Tests for conservative / assisted / aggressive profile differences."""
+    pytestmark = pytest.mark.unit
+
 
     def test_conservative_no_taxonomy_expansion(self):
         """Conservative: LLM reject via taxonomy does NOT expand to suggested_reject."""
@@ -882,6 +908,8 @@ class TestProfiles:
 
 class TestNewMetrics:
     """Tests for primary_queue metrics and accepted recall variants."""
+    pytestmark = pytest.mark.unit
+
 
     def test_primary_visible_count_equals_queue_sum(self):
         decisions = [
@@ -958,6 +986,7 @@ class TestNewMetrics:
 class TestReplayWithProfiles:
     """Tests for replay_triage_on_records with profile parameter."""
 
+    @pytest.mark.unit
     def test_replay_conservative_is_default(self):
         from backend.scripts.replay_critic_v2_triage_policy import replay_triage_on_records
         import json
@@ -970,6 +999,7 @@ class TestReplayWithProfiles:
         assert m1.strong_keep_count == m2.strong_keep_count
         assert m1.hidden_by_critic_count == m2.hidden_by_critic_count
 
+    @pytest.mark.unit
     def test_replay_assisted_more_suggested_reject(self):
         from backend.scripts.replay_critic_v2_triage_policy import replay_triage_on_records
         llm_by_id = {
@@ -992,6 +1022,7 @@ class TestReplayWithProfiles:
         _, m_asst = replay_triage_on_records(records, llm_by_id, profile=PROFILE_ASSISTED)
         assert m_asst.suggested_reject_count >= m_cons.suggested_reject_count
 
+    @pytest.mark.network
     def test_replay_profile_all_creates_sub_dirs(self, tmp_path):
         import json, subprocess, sys
         records = [{"finding_id": "F-001", "project_name": "P1",
@@ -1125,6 +1156,7 @@ class TestUIExport:
         return decisions, metrics
 
     # 1) UI export contains 4 tabs
+    @pytest.mark.unit
     def test_ui_export_has_four_tabs(self):
         from backend.app.pipeline.stages.findings_review.critic_v2.triage import (
             build_ui_export,
@@ -1138,6 +1170,7 @@ class TestUIExport:
                         "suggested_reject", "hidden_by_critic"]
 
     # 2) primary tab includes strong_keep + main_review + borderline
+    @pytest.mark.unit
     def test_primary_tab_includes_three_queues(self):
         from backend.app.pipeline.stages.findings_review.critic_v2.triage import (
             build_ui_export,
@@ -1152,6 +1185,7 @@ class TestUIExport:
         assert primary["default_open"] is True
 
     # 3) needs_context is collapsed
+    @pytest.mark.unit
     def test_needs_context_tab_collapsed(self):
         from backend.app.pipeline.stages.findings_review.critic_v2.triage import (
             build_ui_export,
@@ -1164,6 +1198,7 @@ class TestUIExport:
         assert nc["count"] == 1
 
     # 4) suggested_reject is collapsed
+    @pytest.mark.unit
     def test_suggested_reject_tab_collapsed(self):
         from backend.app.pipeline.stages.findings_review.critic_v2.triage import (
             build_ui_export,
@@ -1176,6 +1211,7 @@ class TestUIExport:
         assert sr["count"] == 1
 
     # 5) hidden_by_critic is collapsed
+    @pytest.mark.unit
     def test_hidden_by_critic_tab_collapsed(self):
         from backend.app.pipeline.stages.findings_review.critic_v2.triage import (
             build_ui_export,
@@ -1188,6 +1224,7 @@ class TestUIExport:
         assert hc["count"] == 1
 
     # 6) every item has a tab field
+    @pytest.mark.unit
     def test_each_item_has_tab(self):
         from backend.app.pipeline.stages.findings_review.critic_v2.triage import (
             build_ui_export,
@@ -1202,6 +1239,7 @@ class TestUIExport:
             }
 
     # 7) every item has all required fields
+    @pytest.mark.unit
     def test_each_item_has_required_fields(self):
         from backend.app.pipeline.stages.findings_review.critic_v2.triage import (
             build_ui_export,
@@ -1222,6 +1260,7 @@ class TestUIExport:
             assert not missing, f"Missing fields in item: {missing}"
 
     # 8) can_restore=True for collapsed tabs
+    @pytest.mark.unit
     def test_can_restore_true_for_collapsed_tabs(self):
         from backend.app.pipeline.stages.findings_review.critic_v2.triage import (
             build_ui_export,
@@ -1240,6 +1279,7 @@ class TestUIExport:
                 assert item["can_restore"] is True
 
     # 9) summary computes primary_queue_reduction_percent correctly
+    @pytest.mark.unit
     def test_summary_primary_queue_reduction_percent(self):
         from backend.app.pipeline.stages.findings_review.critic_v2.triage import (
             build_ui_export,
@@ -1255,6 +1295,7 @@ class TestUIExport:
         assert s["primary_queue_reduction_percent"] == 50.0
 
     # 10) human decisions are propagated to items if provided
+    @pytest.mark.unit
     def test_items_carry_human_decisions(self):
         from backend.app.pipeline.stages.findings_review.critic_v2.triage import (
             build_ui_export,
@@ -1283,6 +1324,7 @@ class TestUIExport:
         assert item["human_reason"] == "real issue"
 
     # 11) markdown preview can be rendered without crashing
+    @pytest.mark.unit
     def test_render_ui_export_markdown_runs(self):
         from backend.app.pipeline.stages.findings_review.critic_v2.triage import (
             build_ui_export,
@@ -1300,6 +1342,7 @@ class TestUIExport:
         assert "hidden_by_critic" in md
 
     # 12) tab counts match item counts per tab
+    @pytest.mark.unit
     def test_tab_counts_match_items(self):
         from backend.app.pipeline.stages.findings_review.critic_v2.triage import (
             build_ui_export,
@@ -1315,6 +1358,7 @@ class TestUIExport:
             )
 
     # 13) replay --ui-export flag writes UI artifacts
+    @pytest.mark.network
     def test_replay_ui_export_flag_writes_artifacts(self, tmp_path):
         import json
         import subprocess
@@ -1362,6 +1406,7 @@ class TestUIExport:
         assert len(loaded["tabs"]) == 4
 
     # 14) replay without --ui-export does NOT write UI artifacts
+    @pytest.mark.network
     def test_replay_without_ui_export_skips_artifacts(self, tmp_path):
         import json
         import subprocess
@@ -1434,6 +1479,7 @@ def _decision_in_queue(queue: str, **overrides) -> TriageDecision:
 # ─── Profile is registered ──────────────────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_assisted_round1_profile_is_registered():
     assert PROFILE_ASSISTED_ROUND1 in VALID_PROFILES
     cfg = get_profile_config(PROFILE_ASSISTED_ROUND1)
@@ -1447,6 +1493,7 @@ def test_assisted_round1_profile_is_registered():
 # ─── Rule A1: OCR markers ───────────────────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_A1_ocr_downgrades_main_review_to_suggested_reject():
     td = _decision_in_queue(QUEUE_MAIN_REVIEW)
     f = _finding(title="Обозначение — OCR мусор",
@@ -1461,6 +1508,7 @@ def test_A1_ocr_downgrades_main_review_to_suggested_reject():
     assert new.raw["round1_pre_queue"] == QUEUE_MAIN_REVIEW
 
 
+@pytest.mark.unit
 def test_A1_does_not_touch_hidden_by_critic():
     td = _decision_in_queue(QUEUE_HIDDEN)
     f = _finding(title="OCR мусор", description="нераспозн")
@@ -1468,6 +1516,7 @@ def test_A1_does_not_touch_hidden_by_critic():
     assert new is td  # untouched
 
 
+@pytest.mark.unit
 def test_A1_does_not_touch_already_suggested_reject():
     td = _decision_in_queue(QUEUE_SUGGESTED_REJECT)
     f = _finding(title="OCR мусор")
@@ -1475,6 +1524,7 @@ def test_A1_does_not_touch_already_suggested_reject():
     assert new is td
 
 
+@pytest.mark.unit
 def test_A1_does_not_route_to_hidden_by_critic():
     """Critical: round1 rules MUST NEVER move things to hidden_by_critic."""
     td = _decision_in_queue(QUEUE_MAIN_REVIEW)
@@ -1486,6 +1536,7 @@ def test_A1_does_not_route_to_hidden_by_critic():
 # ─── Rule C: RD vs PZ ───────────────────────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_C_rd_pz_matches_in_KJ():
     td = _decision_in_queue(QUEUE_MAIN_REVIEW)
     f = _finding(title="REI 150 не указан в общих указаниях",
@@ -1497,6 +1548,7 @@ def test_C_rd_pz_matches_in_KJ():
     assert "C_rd_pz" in new.raw["applied_round1_rules"]
 
 
+@pytest.mark.unit
 def test_C_rd_pz_matches_in_EOM():
     td = _decision_in_queue(QUEUE_BORDERLINE)
     f = _finding(title="Расчётное обоснование отсутствует",
@@ -1505,6 +1557,7 @@ def test_C_rd_pz_matches_in_EOM():
     assert new.human_queue == QUEUE_SUGGESTED_REJECT
 
 
+@pytest.mark.unit
 def test_C_does_not_match_in_AR_without_markers():
     td = _decision_in_queue(QUEUE_MAIN_REVIEW)
     f = _finding(title="REI 150 отсутствует", section="AR")
@@ -1516,6 +1569,7 @@ def test_C_does_not_match_in_AR_without_markers():
 # ─── Rule D: already covered ────────────────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_D_already_in_adjacent_section():
     td = _decision_in_queue(QUEUE_BORDERLINE)
     f = _finding(title="Параметры АВ присутствуют в смежном разделе",
@@ -1525,6 +1579,7 @@ def test_D_already_in_adjacent_section():
     assert "D_already_covered" in new.raw["applied_round1_rules"]
 
 
+@pytest.mark.unit
 def test_D_already_in_spec():
     td = _decision_in_queue(QUEUE_MAIN_REVIEW)
     f = _finding(title="Информация уже указана в спецификации",
@@ -1533,6 +1588,7 @@ def test_D_already_in_spec():
     assert new.human_queue == QUEUE_SUGGESTED_REJECT
 
 
+@pytest.mark.unit
 def test_no_rule_fires_on_clean_text():
     td = _decision_in_queue(QUEUE_MAIN_REVIEW)
     f = _finding(title="Не указан класс пожарной опасности по ФЗ-123",
@@ -1544,6 +1600,7 @@ def test_no_rule_fires_on_clean_text():
 # ─── Strong-keep guardrail (spec §4) ───────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_strong_keep_critical_protected_unless_ocr_or_already_covered():
     """Critical strong_keep with valid evidence + score>=8 is protected
     unless A1 or D fires."""
@@ -1558,6 +1615,7 @@ def test_strong_keep_critical_protected_unless_ocr_or_already_covered():
     assert new is td, "critical strong_keep must be protected from C alone"
 
 
+@pytest.mark.unit
 def test_strong_keep_critical_downgraded_when_ocr_marker():
     """Strong_keep with OCR marker still gets downgraded (A1 overrides guard)."""
     td = _decision_in_queue(
@@ -1573,6 +1631,7 @@ def test_strong_keep_critical_downgraded_when_ocr_marker():
 # ─── Risk preservation ─────────────────────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_risk_level_medium_high_preserved():
     """Spec §2: if risk_level was medium/high, do not silently downgrade."""
     td = _decision_in_queue(QUEUE_BORDERLINE, risk_level="high")
@@ -1582,6 +1641,7 @@ def test_risk_level_medium_high_preserved():
     assert new.risk_level == "high"
 
 
+@pytest.mark.unit
 def test_risk_level_low_bumped_to_medium():
     td = _decision_in_queue(QUEUE_MAIN_REVIEW, risk_level="low")
     f = _finding(title="OCR мусор", section="AR")
@@ -1607,6 +1667,7 @@ class _SpyFinding(dict):
         return super().get(key, default)
 
 
+@pytest.mark.unit
 def test_round1_rules_never_read_label_fields():
     """A1/C/D MUST NOT inspect human_decision / preferred_tab / etc."""
     td = _decision_in_queue(QUEUE_MAIN_REVIEW)
@@ -1629,6 +1690,7 @@ def test_round1_rules_never_read_label_fields():
 # ─── End-to-end through build_triage_result ────────────────────────────────
 
 
+@pytest.mark.unit
 def test_build_triage_result_applies_round1_only_for_round1_profile():
     """Round1 post-processor is wired in build_triage_result, not in
     assign_triage_queue, and runs only for the round1 profile."""
@@ -1650,6 +1712,7 @@ def test_build_triage_result_applies_round1_only_for_round1_profile():
     assert r1[0].reason == ROUND1_REASON_RD_PZ
 
 
+@pytest.mark.unit
 def test_build_triage_result_round1_does_not_produce_hidden():
     """No matter what text features, round1 must never emit hidden_by_critic."""
     findings = [

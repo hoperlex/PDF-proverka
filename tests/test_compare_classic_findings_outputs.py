@@ -2,6 +2,12 @@ import json
 
 from backend.scripts.compare_classic_findings_outputs import compare
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write_findings(path, findings):
     path.write_text(json.dumps({"findings": findings}, ensure_ascii=False), encoding="utf-8")

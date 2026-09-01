@@ -27,6 +27,9 @@ if str(ROOT) not in sys.path:
 sys.path.insert(0, str(ROOT / "scripts" / "contract"))
 import dump_openapi as contract  # noqa: E402
 
+# Primary lane §5: contract — сверяет схемы/proto из `contracts/**` с источником.
+pytestmark = pytest.mark.contract
+
 SNAPSHOT = ROOT / "contracts" / "http" / "v1" / "openapi.snapshot.json"
 INDEX = ROOT / "contracts" / "http" / "v1" / "endpoints.md"
 

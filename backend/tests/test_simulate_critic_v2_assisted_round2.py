@@ -39,6 +39,7 @@ def sim() -> ModuleType:
 
 # ── Forbidden imports / writes ────────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_no_llm_or_network_imports():
     src = SCRIPT_PATH.read_text(encoding="utf-8")
     for tok in ("import anthropic", "import openai", "import requests",
@@ -47,6 +48,7 @@ def test_no_llm_or_network_imports():
         assert tok not in src, f"forbidden token: {tok}"
 
 
+@pytest.mark.unit
 def test_no_production_writes():
     src = SCRIPT_PATH.read_text(encoding="utf-8")
     for tok in ("_output/", "03_findings_review.json",
@@ -83,6 +85,7 @@ def _label_only_keys(sim) -> set[str]:
     return set(sim.LABEL_ONLY_FIELDS)
 
 
+@pytest.mark.unit
 def test_a1_v2_does_not_read_label_fields(sim):
     spy = SpyDict({
         "title": "OCR ошибка в маркировке",
@@ -103,6 +106,7 @@ def test_a1_v2_does_not_read_label_fields(sim):
     assert not leaked, f"A1_v2 leaked: {leaked}"
 
 
+@pytest.mark.unit
 def test_c_v2_does_not_read_label_fields(sim):
     spy = SpyDict({
         "title": "REI 150 расчёт огнестойкости в ПЗ",
@@ -123,6 +127,7 @@ def test_c_v2_does_not_read_label_fields(sim):
     assert not leaked, f"C_v2 leaked: {leaked}"
 
 
+@pytest.mark.unit
 def test_d_v2_does_not_read_label_fields(sim):
     spy = SpyDict({
         "title": "уже указано в спецификации, см. таблицу 2",
@@ -145,6 +150,7 @@ def test_d_v2_does_not_read_label_fields(sim):
 
 # ── A1_v2: requires 2 signals ─────────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_a1_v2_does_not_fire_with_one_signal(sim):
     item = {"title": "OCR ошибка распознавания знака",
             "taxonomy_reason": "other",
@@ -154,6 +160,7 @@ def test_a1_v2_does_not_fire_with_one_signal(sim):
     assert sim.rule_a1_v2_fires(item) is False
 
 
+@pytest.mark.unit
 def test_a1_v2_fires_with_two_signals(sim):
     item = {"title": "OCR ошибка распознавания знака",
             "taxonomy_reason": "visual_or_ocr_misread",
@@ -163,6 +170,7 @@ def test_a1_v2_fires_with_two_signals(sim):
     assert sim.rule_a1_v2_fires(item) is True
 
 
+@pytest.mark.unit
 def test_a1_v2_ignores_typo_alone(sim):
     item = {"title": "опечатка в маркировке помещения",
             "taxonomy_reason": "other",
@@ -174,6 +182,7 @@ def test_a1_v2_ignores_typo_alone(sim):
 
 # ── C_v2: requires 2 RD/PZ markers, gated to KJ/EOM ───────────────────────────
 
+@pytest.mark.unit
 def test_c_v2_does_not_fire_outside_kj_eom(sim):
     item = {"title": "ПЗ расчёт REI огнестойкости",
             "section": "AR", "taxonomy_reason": "other",
@@ -181,6 +190,7 @@ def test_c_v2_does_not_fire_outside_kj_eom(sim):
     assert sim.rule_c_v2_fires(item) is False
 
 
+@pytest.mark.unit
 def test_c_v2_does_not_fire_with_one_marker(sim):
     item = {"title": "REI 150 не указан",
             "section": "KJ", "taxonomy_reason": "other",
@@ -188,6 +198,7 @@ def test_c_v2_does_not_fire_with_one_marker(sim):
     assert sim.rule_c_v2_fires(item) is False
 
 
+@pytest.mark.unit
 def test_c_v2_fires_with_two_markers(sim):
     item = {"title": "REI 150 — расчёт огнестойкости в ПЗ",
             "section": "KJ", "taxonomy_reason": "other",
@@ -195,6 +206,7 @@ def test_c_v2_fires_with_two_markers(sim):
     assert sim.rule_c_v2_fires(item) is True
 
 
+@pytest.mark.unit
 def test_c_v2_guard_blocks_strong_economic_finding(sim):
     item = {
         "title": "Объём бетона на 35% больше",  # no PZ/RD markers
@@ -209,6 +221,7 @@ def test_c_v2_guard_blocks_strong_economic_finding(sim):
 
 # ── D_v2: requires strong text + (safe taxonomy OR location) ──────────────────
 
+@pytest.mark.unit
 def test_d_v2_requires_strong_text(sim):
     item = {"title": "смежный раздел может что-то покрывать",  # weak phrasing
             "section": "AR", "taxonomy_reason": "other",
@@ -216,6 +229,7 @@ def test_d_v2_requires_strong_text(sim):
     assert sim.rule_d_v2_fires(item) is False
 
 
+@pytest.mark.unit
 def test_d_v2_strong_text_only_does_not_fire(sim):
     item = {"title": "уже указано на чертеже",  # one strong marker only
             "section": "AR", "taxonomy_reason": "other",
@@ -224,6 +238,7 @@ def test_d_v2_strong_text_only_does_not_fire(sim):
     assert sim.rule_d_v2_fires(item) is False
 
 
+@pytest.mark.unit
 def test_d_v2_fires_with_strong_text_plus_safe_taxonomy(sim):
     item = {"title": "уже указано в общих указаниях",
             "section": "AR",
@@ -232,6 +247,7 @@ def test_d_v2_fires_with_strong_text_plus_safe_taxonomy(sim):
     assert sim.rule_d_v2_fires(item) is True
 
 
+@pytest.mark.unit
 def test_d_v2_fires_with_strong_text_plus_location(sim):
     item = {"title": "уже указано на стороннем листе, по таблице 5",
             "section": "AR", "taxonomy_reason": "other",
@@ -239,6 +255,7 @@ def test_d_v2_fires_with_strong_text_plus_location(sim):
     assert sim.rule_d_v2_fires(item) is True
 
 
+@pytest.mark.unit
 def test_d_v2_guard_blocks_strong_critical_without_location(sim):
     item = {
         "title": "уже указано",  # strong but vague
@@ -276,6 +293,7 @@ def _make_item(sim, fid: str, **kwargs):
     )
 
 
+@pytest.mark.unit
 def test_evaluate_rule_counts_outcomes(sim):
     items = [
         # C_v2 fires (KJ, two markers); reviewer confirmed → counted as SR.
@@ -297,6 +315,7 @@ def test_evaluate_rule_counts_outcomes(sim):
     assert res["precision"] == pytest.approx(0.5)
 
 
+@pytest.mark.unit
 def test_evaluate_combo_unions_matches(sim):
     items = [
         _make_item(sim, "k1", section="KJ",
@@ -312,6 +331,7 @@ def test_evaluate_combo_unions_matches(sim):
     assert res["confirmed_SR"] == 2
 
 
+@pytest.mark.unit
 def test_risky_impact_counts_only_risky_bucket(sim):
     items = [
         _make_item(sim, "r1", section="KJ",
@@ -337,6 +357,7 @@ def test_risky_impact_counts_only_risky_bucket(sim):
 # ── End-to-end with synthetic enriched.csv ────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_main_runs_with_synthetic_csv(sim, tmp_path):
     # Write a tiny enriched.csv
     analysis_dir = tmp_path / "analysis"

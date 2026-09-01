@@ -12,6 +12,11 @@ from backend.app.pipeline.stages.block_grounding.singleline_graph_geometry impor
     _extract_sub_panels,
 )
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 # Заголовок «Ввод N (...)» может переноситься на несколько строк (как в pdfplumber).
 TEXT = """\
 Ввод 2 (РП2+РП3

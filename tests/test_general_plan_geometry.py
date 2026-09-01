@@ -24,6 +24,7 @@ def cases():return json.loads(MANIFEST.read_text()) if MANIFEST.exists() else []
 def graphs():return {c["block_id"]:json.loads((OUT/f"{c['block_id']}.structure.json").read_text()) for c in cases()}
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ГП не извлечён")
 @pytest.mark.parametrize("case",cases(),ids=lambda case:case["block_id"])
 def test_gp_corpus_has_vector_pdf_and_complete_graph(case,graphs):
@@ -32,12 +33,14 @@ def test_gp_corpus_has_vector_pdf_and_complete_graph(case,graphs):
     gate=evaluate_gp_gate(graph);assert gate["use"] is True and gate["complete"] is True
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ГП не извлечён")
 def test_all_gp_profiles_and_subtypes_are_present(graphs):
     assert len(graphs)==47 and {g["profile_id"] for g in graphs.values()}==set(ALL_GP_PROFILES)
     assert len({c["subtype"] for c in cases()})==16
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ГП не извлечён")
 def test_gp_references_are_integral(graphs):
     for graph in graphs.values():
@@ -49,6 +52,7 @@ def test_gp_references_are_integral(graphs):
         for edge in graph.get("edges",[]):assert edge["from"] in node_ids and edge["to"] in node_ids
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ГП не извлечён")
 def test_road_constructions_cover_all_missed_vector_details(graphs):
     roads=[g for g in graphs.values() if g["profile_id"]=="gp_road_structure"]
@@ -57,6 +61,7 @@ def test_road_constructions_cover_all_missed_vector_details(graphs):
     assert sum(g["validation"]["layer_order_edges_total"] for g in roads)>=40
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ГП не извлечён")
 def test_profile_specific_information_is_present(graphs):
     earth=graphs["A7VL-W7KW-6Y7"];assert earth["validation"]["elevations_total"]>=20
@@ -64,6 +69,7 @@ def test_profile_specific_information_is_present(graphs):
     plan=graphs["474Q-GKNU-ACJ"];assert plan["validation"]["buildings_total"]>=5
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ГП не извлечён")
 def test_gp_human_output_is_russian_and_hides_internal_codes(graphs):
     for graph in graphs.values():
@@ -75,6 +81,7 @@ def test_gp_human_output_is_russian_and_hides_internal_codes(graphs):
         assert not re.search(r"\b(?:node|network|route|edge)-\d+\b",text)
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ГП не извлечён")
 def test_gp_semantic_audit_has_no_known_losses():
     report=json.loads((GP/"GP_SEMANTIC_COVERAGE.json").read_text());assert report["blocks_total"]==47
@@ -97,6 +104,7 @@ def polygon(page,block):
     return value
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ГП не извлечён")
 def test_gp_builds_from_original_pdf_polygon():
     case,page,block=source_case("474Q-GKNU-ACJ")
@@ -105,6 +113,7 @@ def test_gp_builds_from_original_pdf_polygon():
     assert graph and graph["profile_id"]=="gp_general_plan" and evaluate_gp_gate(graph)["use"] is True
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ГП не извлечён")
 def test_router_returns_structured_gp(tmp_path):
     case,page,block=source_case("474Q-GKNU-ACJ");output=tmp_path/"_output";output.mkdir();(tmp_path/"document.pdf").symlink_to(ROOT/case["source_pdf"])

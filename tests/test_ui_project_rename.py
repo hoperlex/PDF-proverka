@@ -10,6 +10,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 _ROOT = Path(__file__).resolve().parent.parent
 HTML = (_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
 JS = (_ROOT / "frontend" / "static" / "js" / "app.js").read_text(encoding="utf-8")

@@ -31,6 +31,10 @@ from fastapi.testclient import TestClient
 from backend.app.api.routers import blocks
 from backend.app.main import app
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 client = TestClient(app)
 
 PROJECT_ID = "AR/133-23-ГК-АР1"

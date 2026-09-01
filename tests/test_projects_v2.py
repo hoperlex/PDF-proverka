@@ -25,6 +25,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "projects_v2"))
 import v2lib  # noqa: E402
 
+# Primary lane §5: integration — настоящая миграция v2lib по дереву в tmp_path, без
+# процессов.
+pytestmark = pytest.mark.integration
+
 
 # ---------------------------------------------------------------------------
 # helpers

@@ -4,6 +4,11 @@ from __future__ import annotations
 from backend.app.models.audit import BatchQueueItem
 from backend.app.pipeline.manager import PipelineManager
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_model_prefetch_methods_are_removed():
     assert not hasattr(PipelineManager, "_select_pregemma_candidate")

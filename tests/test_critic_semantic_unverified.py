@@ -10,6 +10,11 @@ import asyncio
 
 from backend.app.pipeline.stages.findings_review import deterministic_critic as dc
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def _run(coro):
     return asyncio.run(coro)

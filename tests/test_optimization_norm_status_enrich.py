@@ -11,6 +11,10 @@ import pytest
 
 from backend.app.pipeline.stages.norms.runner import enrich_optimization_norm_status
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _setup(tmp_path, items, checks):
     (tmp_path / "optimization.json").write_text(

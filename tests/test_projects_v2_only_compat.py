@@ -14,6 +14,10 @@ from backend.app.services.storage import v2_primary_wiring as wiring
 from backend.app.services.storage.projects_v2_adapter import ProjectsV2Adapter
 from backend.app.services.storage.storage_write_facade import DestructiveWriteBlocked
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 _WMODE = "AUDIT_PROJECTS_V2_WRITE_MODE"
 
 

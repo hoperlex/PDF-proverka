@@ -57,6 +57,7 @@ def _config_value_in_subprocess(name: str, env_overrides: dict[str, str]) -> str
     raise AssertionError(f"значение не напечатано: {proc.stdout[-500:]}")
 
 
+@pytest.mark.unit
 def test_flags_declared_with_off_default_in_source():
     """Контракт проекта: флаг объявлен выключенным, включается через .env."""
     src = (ROOT / "backend/app/core/config.py").read_text(encoding="utf-8")
@@ -67,6 +68,7 @@ def test_flags_declared_with_off_default_in_source():
     assert "STAGE01_LEG_FAILURE_THRESHOLD" in src
 
 
+@pytest.mark.network
 @pytest.mark.parametrize("raw,expected", [
     ("5", "5"),      # обычное значение
     ("0", "1"),      # ноль не должен означать «останавливаться всегда»
@@ -80,6 +82,7 @@ def test_threshold_parsing_is_isolated_and_floored(raw, expected):
     assert got == expected, f"порог {raw!r} → ожидали {expected}, получили {got}"
 
 
+@pytest.mark.network
 @pytest.mark.parametrize("raw,expected", [("true", "True"), ("false", "False")])
 def test_enable_flag_follows_env(raw, expected):
     got = _config_value_in_subprocess(
@@ -92,6 +95,7 @@ def test_enable_flag_follows_env(raw, expected):
 # ─── Признак, на котором всё держится ─────────────────────────────────
 
 
+@pytest.mark.unit
 def test_combine_marks_failed_leg_but_keeps_block_ok():
     """Опорный факт: блок остаётся ok, а выпавшая нога видна в detectors_failed.
 
@@ -114,6 +118,7 @@ def test_combine_marks_failed_leg_but_keeps_block_ok():
     assert combined["partial"] is True
 
 
+@pytest.mark.unit
 def test_combine_reports_no_failures_when_all_legs_ok():
     from backend.app.pipeline.stages.block_analysis.gemma_findings_only import (
         combine_detector_results,
@@ -186,6 +191,7 @@ async def _eval_branch(src: str, namespace: dict):
     return await namespace["_branch"]()
 
 
+@pytest.mark.unit
 def test_abort_branch_fails_stage_and_names_the_leg():
     summary = {
         "aborted_on_leg_failure": True,
@@ -222,6 +228,7 @@ def test_abort_branch_fails_stage_and_names_the_leg():
     assert any("заново" in m for _, m in ctx.logs), "подсказать, что делать дальше"
 
 
+@pytest.mark.unit
 def test_abort_branch_aggregates_several_legs_by_count():
     summary = {
         "aborted_on_leg_failure": True,
@@ -239,6 +246,7 @@ def test_abort_branch_aggregates_several_legs_by_count():
     assert "openai/gpt-5.4" in text
 
 
+@pytest.mark.unit
 def test_abort_branch_survives_empty_details():
     """Флаг стоит, а подробностей нет — сообщение всё равно должно собраться."""
     result, ctx = _run_abort_branch(
@@ -251,6 +259,7 @@ def test_abort_branch_survives_empty_details():
 # ─── Устройство остановки внутри стадии ───────────────────────────────
 
 
+@pytest.mark.unit
 def test_abort_uses_its_own_event_not_cancel_event():
     """Отмена пользователем и падение ноги не должны сливаться в одно.
 
@@ -266,6 +275,7 @@ def test_abort_uses_its_own_event_not_cancel_event():
     assert "cancelled = cancel_event is not None and cancel_event.is_set()" in src
 
 
+@pytest.mark.unit
 def test_abort_checked_at_both_semaphore_gates():
     """Проверка обязана стоять и до семафора, и после.
 
@@ -278,6 +288,7 @@ def test_abort_checked_at_both_semaphore_gates():
     assert src.count("if abort_event.is_set():") >= 2
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("legs,threshold,expect_abort", [
     (["codex/gpt-5.4"], 1, True),
     ([], 1, False),
@@ -294,6 +305,7 @@ def test_threshold_semantics(legs, threshold, expect_abort):
 # ─── Дыры, найденные адверсарной проверкой (все воспроизводились) ──────
 
 
+@pytest.mark.unit
 def test_inner_gather_does_not_swallow_leg_exceptions():
     """У ног есть НЕобёрнутые raise — они обязаны стать «упавшей ногой».
 
@@ -313,6 +325,7 @@ def test_inner_gather_does_not_swallow_leg_exceptions():
     assert '"parse_error": "leg_exception"' in src, "исключение ноги → падение ноги"
 
 
+@pytest.mark.unit
 def test_cancellation_is_not_swallowed_by_the_new_normalizer():
     """CancelledError нельзя превращать в «нога не ответила».
 
@@ -325,6 +338,7 @@ def test_cancellation_is_not_swallowed_by_the_new_normalizer():
     assert "raise _r" in src
 
 
+@pytest.mark.unit
 def test_hard_timeout_block_reports_all_legs_failed():
     """Инверсия строгости: блок, где сдохли ВСЕ ноги, обязан останавливать.
 
@@ -339,6 +353,7 @@ def test_hard_timeout_block_reports_all_legs_failed():
     assert '"detectors_failed": list(configured_detector_models)' in window
 
 
+@pytest.mark.unit
 def test_abort_does_not_overwrite_previous_stage_artifact():
     """Огрызок оборванного прогона не должен затирать готовый результат.
 
@@ -354,6 +369,7 @@ def test_abort_does_not_overwrite_previous_stage_artifact():
     assert "write_target = False" in guard[:900], "запись обязана быть отменена"
 
 
+@pytest.mark.unit
 def test_abandoned_blocks_advance_progress():
     """Брошенные блоки должны отмечаться, иначе остановка выглядит зависанием."""
     from backend.app.pipeline.stages.block_analysis import gemma_findings_only as mod
@@ -363,6 +379,7 @@ def test_abandoned_blocks_advance_progress():
     assert src.count("await _skip_after_abort()") >= 2, "обе точки выхода по аборту"
 
 
+@pytest.mark.unit
 def test_leg_failure_record_carries_sheet_and_page_separately():
     """sheet (штамп) и page (страница PDF) — разные поля, CLAUDE.md."""
     from backend.app.pipeline.stages.block_analysis import gemma_findings_only as mod
@@ -374,6 +391,7 @@ def test_leg_failure_record_carries_sheet_and_page_separately():
     assert '"page": block["page"]' in window
 
 
+@pytest.mark.unit
 def test_message_says_sheet_and_pdf_page_distinctly():
     summary = {
         "aborted_on_leg_failure": True,
@@ -395,6 +413,7 @@ def test_message_says_sheet_and_pdf_page_distinctly():
     )
 
 
+@pytest.mark.unit
 def test_message_without_sheet_falls_back_to_pdf_page():
     """Штампа может не быть — тогда честно пишем только страницу PDF."""
     summary = {

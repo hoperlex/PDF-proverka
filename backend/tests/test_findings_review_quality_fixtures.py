@@ -16,6 +16,9 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 # ─── Пути ────────────────────────────────────────────────────────────────────
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "findings_review"

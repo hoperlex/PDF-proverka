@@ -30,6 +30,9 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: network — запускает настоящие дочерние процессы.
+pytestmark = pytest.mark.network
+
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
 PROVISION_PATH = SCRIPTS / "ci_provision_norms.py"

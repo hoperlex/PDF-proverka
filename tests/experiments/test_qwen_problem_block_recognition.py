@@ -64,6 +64,7 @@ def _block_for(pdf_path: str):
 
 # ── input builders ─────────────────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_image_data_url_builder():
     png = b"\x89PNG\r\n\x1a\nFAKE"
     content, meta = IB.build_image_message("hi", png)
@@ -76,6 +77,7 @@ def test_image_data_url_builder():
     assert meta["input_size_bytes"] == len(png)
 
 
+@pytest.mark.unit
 def test_pdf_base64_builder_shapes_and_mime():
     pdf = b"%PDF-1.4 fake"
     shapes, meta = IB.build_pdf_base64_messages("hi", pdf)
@@ -89,6 +91,7 @@ def test_pdf_base64_builder_shapes_and_mime():
     assert meta["input_size_bytes"] == len(pdf)
 
 
+@pytest.mark.unit
 def test_pdf_url_builder():
     shapes, meta = IB.build_pdf_url_messages("hi", "https://x/y.pdf")
     assert meta["input_mode"] == "pdf_url"
@@ -96,6 +99,7 @@ def test_pdf_url_builder():
     assert img[1]["image_url"]["url"] == "https://x/y.pdf"
 
 
+@pytest.mark.unit
 def test_multi_image_builder_counts():
     pngs = [b"a", b"bb", b"ccc"]
     content, meta = IB.build_multi_image_message("hi", pngs)
@@ -106,6 +110,7 @@ def test_multi_image_builder_counts():
 
 # ── pdf_tools render path builders + fallbacks ───────────────────────────────
 
+@pytest.mark.integration
 def test_high_dpi_render_path(tmp_path):
     import pdf_tools as PT
     pdf = tmp_path / "x.pdf"
@@ -119,6 +124,7 @@ def test_high_dpi_render_path(tmp_path):
     assert rr300.dpi == pytest.approx(300, rel=0.01)
 
 
+@pytest.mark.integration
 def test_render_respects_max_long_side_cap(tmp_path):
     import pdf_tools as PT
     pdf = tmp_path / "x.pdf"
@@ -130,6 +136,7 @@ def test_render_respects_max_long_side_cap(tmp_path):
     assert "dpi_capped" in rr.note
 
 
+@pytest.mark.integration
 def test_production_clamp_baseline_caps_scale(tmp_path):
     """current_image_crop baseline must reproduce the production 6x clamp."""
     import pdf_tools as PT
@@ -143,6 +150,7 @@ def test_production_clamp_baseline_caps_scale(tmp_path):
     assert rr.note == "scale_clamped_6x"
 
 
+@pytest.mark.integration
 def test_extract_block_pdf_bytes_is_valid_pdf(tmp_path):
     import pdf_tools as PT
     pdf = tmp_path / "x.pdf"
@@ -155,6 +163,7 @@ def test_extract_block_pdf_bytes_is_valid_pdf(tmp_path):
     d.close()
 
 
+@pytest.mark.integration
 def test_tile_block_respects_max_tiles(tmp_path):
     import pdf_tools as PT
     pdf = tmp_path / "x.pdf"
@@ -166,6 +175,7 @@ def test_tile_block_respects_max_tiles(tmp_path):
     assert all(t.png_bytes[:4] == b"\x89PNG" for t in tiles)
 
 
+@pytest.mark.unit
 def test_missing_pdf_raises(tmp_path):
     import pdf_tools as PT
     with pytest.raises(Exception):
@@ -174,6 +184,7 @@ def test_missing_pdf_raises(tmp_path):
 
 # ── result normalizer ────────────────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_normalize_done_counts_facts_and_evidence():
     raw = json.dumps({
         "block_type": "scheme",
@@ -195,6 +206,7 @@ def test_normalize_done_counts_facts_and_evidence():
     assert n["usable_for_diff"] is True
 
 
+@pytest.mark.unit
 def test_normalize_error_status():
     n = RN.normalize(block_id="b1", method="pdf_url", prompt_variant="scheme_mode",
                      provider="local", model="qwen", parameters={}, status="unsupported",
@@ -204,6 +216,7 @@ def test_normalize_error_status():
     assert n["error"] == "http_400"
 
 
+@pytest.mark.unit
 def test_normalize_salvages_truncated_json():
     # truncated (no closing brace) but valid prefix
     raw = '{"labels":[{"raw_text":"ЩР-1а","evidence_snippet":"ЩР-1а"}],"numeric_parameters":[{"value":"1000А"'
@@ -216,6 +229,7 @@ def test_normalize_salvages_truncated_json():
     assert "truncated_output" in n["warnings"] or n["salvaged"]
 
 
+@pytest.mark.unit
 def test_normalize_maps_v5_diff_anchors():
     raw = json.dumps({
         "diff_anchors": {
@@ -247,6 +261,7 @@ def _norm_with(facts, **kw):
     return base
 
 
+@pytest.mark.unit
 def test_scorer_prefers_rich_evidence_over_empty():
     rich = _norm_with({"labels": [{"raw_text": "ЩР-1а", "evidence_snippet": "ЩР-1а"}],
                        "materials": [], "numeric_parameters": [{"value": "1000А", "evidence_snippet": "1000А"}],
@@ -257,6 +272,7 @@ def test_scorer_prefers_rich_evidence_over_empty():
     assert QS.score_result(empty)["score"] == 0  # no facts -> heavy penalty floors to 0
 
 
+@pytest.mark.unit
 def test_scorer_penalizes_artificial_series():
     series = {"labels": [{"raw_text": f"ЩА-1.{i}"} for i in range(1, 12)],
               "materials": [], "numeric_parameters": [], "visible_text": [],
@@ -267,6 +283,7 @@ def test_scorer_penalizes_artificial_series():
     assert s["hallucination_risk"] is True
 
 
+@pytest.mark.unit
 def test_pick_best_selects_highest_score():
     a = _norm_with({"labels": [{"raw_text": "X", "evidence_snippet": "X"}],
                     "materials": [], "numeric_parameters": [], "visible_text": [],
@@ -284,6 +301,7 @@ def test_pick_best_selects_highest_score():
     assert best["result"]["method"] == "pdf_render_600dpi"
 
 
+@pytest.mark.unit
 def test_pick_best_returns_none_when_all_zero():
     z1 = _norm_with({k: [] for k in RN.EMPTY_FACTS})
     z1["status"] = "error"
@@ -292,6 +310,7 @@ def test_pick_best_returns_none_when_all_zero():
 
 # ── prompt variants ───────────────────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_prompt_variants_all_present_and_json_only():
     for name in ("general_engineering_facts", "ocr_strict", "stamp_mode",
                  "table_mode", "scheme_mode", "material_numeric_mode"):

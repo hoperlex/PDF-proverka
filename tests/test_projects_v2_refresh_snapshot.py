@@ -16,6 +16,10 @@ sys.path.insert(0, str(_SCRIPTS))
 import v2lib                          # noqa: E402
 import refresh_migrated_snapshot as rms  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 DOC = "13АВ-РД-АР3-К6"
 VER = "v002"
 

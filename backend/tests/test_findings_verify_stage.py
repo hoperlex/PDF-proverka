@@ -11,6 +11,10 @@ import pytest
 
 from backend.app.pipeline.stages.findings_verify.runner import run_findings_verify
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 _VERIFY = "ПРОВЕРИТЬ ПО СМЕЖНЫМ"
 
 

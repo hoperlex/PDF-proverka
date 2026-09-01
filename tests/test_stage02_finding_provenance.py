@@ -14,6 +14,12 @@ from backend.app.pipeline.stages.block_analysis.gemma_findings_only import (
     combine_detector_results,
 )
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write(path, payload):
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")

@@ -43,6 +43,7 @@ def _http_error(code: int) -> urllib.error.HTTPError:
     return urllib.error.HTTPError("http://x/crop.pdf", code, "err", {}, None)
 
 
+@pytest.mark.unit
 def test_transient_error_retried_then_succeeds(monkeypatch, _no_sleep):
     calls = {"n": 0}
 
@@ -59,6 +60,7 @@ def test_transient_error_retried_then_succeeds(monkeypatch, _no_sleep):
     assert len(_no_sleep) == 2             # backoff перед каждым ретраем
 
 
+@pytest.mark.unit
 def test_404_is_fatal_no_retry(monkeypatch, _no_sleep):
     calls = {"n": 0}
 
@@ -75,6 +77,7 @@ def test_404_is_fatal_no_retry(monkeypatch, _no_sleep):
     assert len(_no_sleep) == 0
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("code", [408, 429, 500, 503])
 def test_retryable_codes_are_retried(monkeypatch, _no_sleep, code):
     calls = {"n": 0}
@@ -92,6 +95,7 @@ def test_retryable_codes_are_retried(monkeypatch, _no_sleep, code):
     assert len(_no_sleep) == blocks._CROP_DOWNLOAD_RETRIES - 1
 
 
+@pytest.mark.unit
 def test_persistent_network_error_raises_after_retries(monkeypatch, _no_sleep):
     calls = {"n": 0}
 
@@ -110,11 +114,13 @@ def test_persistent_network_error_raises_after_retries(monkeypatch, _no_sleep):
 # ─── #10: failed_block_ids + failed_details в index.json ──────────────────────
 
 
+@pytest.mark.unit
 def test_classify_crop_failure_reasons():
     assert blocks._classify_crop_failure("нет crop_url") == "no_crop_url"
     assert blocks._classify_crop_failure(ValueError("boom")) == "http_error"
 
 
+@pytest.mark.unit
 def test_crop_index_records_failed_block_ids(monkeypatch, tmp_path):
     """#10: блок без crop_url и без PDF-fallback не теряется молча — он попадает
     в index.json как failed_block_ids/failed_details с причиной no_crop_url."""
@@ -143,6 +149,7 @@ def test_crop_index_records_failed_block_ids(monkeypatch, tmp_path):
     assert index["errors"] == 1
 
 
+@pytest.mark.integration
 def test_full_crop_without_image_blocks_writes_empty_stage02_index(monkeypatch, tmp_path):
     """Успешный пустой crop обязан материализовать downstream-контракт index.json."""
     result_json = tmp_path / "empty_result.json"

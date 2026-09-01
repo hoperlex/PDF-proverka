@@ -30,6 +30,10 @@ if str(_ROOT) not in sys.path:
 from backend.app.services.common import object_service, project_service  # noqa: E402
 import backend.app.services.storage.storage_write_facade as swf  # noqa: E402
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 _PDF = b"%PDF-1.4\n%alpha\n%%EOF\n"
 _PDF2 = b"%PDF-1.4\n%beta-different\n%%EOF\n"
 _MD = b"## STR 1\n"

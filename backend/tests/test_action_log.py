@@ -9,6 +9,10 @@ from fastapi.testclient import TestClient
 from backend.app.core import action_log
 from backend.app.core import config as cfg
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 
 def _read(log_dir, pattern):
     events = []

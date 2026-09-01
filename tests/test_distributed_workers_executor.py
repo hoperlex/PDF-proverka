@@ -31,6 +31,10 @@ from pathlib import Path
 
 import pytest
 
+# Lane §5 по нодам: три теста убивают процесс SIGKILL и поднимают его
+# заново, проверяя восстановление, — это chaos; остальные только
+# поднимают и штатно останавливают процессы, то есть network.
+
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -175,7 +179,9 @@ def test_two_executors_never_start_two_processes(tmp_path):
 
 
 # ─── §8.6 Рестарт исполнителя ────────────────────────────────────────────────
-@pytest.mark.network
+# Primary lane §5: chaos — исполнитель убит SIGKILL и поднят заново, проверяется
+# живучесть процесса аудита.
+@pytest.mark.chaos
 @pytest.mark.slow
 def test_executor_restart_does_not_duplicate_running_process(tmp_path):
     """Живой процесс переживает рестарт исполнителя, второй не появляется."""
@@ -208,7 +214,9 @@ def test_executor_restart_does_not_duplicate_running_process(tmp_path):
         _stop(first, sig=signal.SIGKILL)
 
 
-@pytest.mark.network
+# Primary lane §5: chaos — SIGKILL и исполнителю, и процессу аудита, затем новый
+# исполнитель распознаёт прерывание.
+@pytest.mark.chaos
 @pytest.mark.slow
 def test_executor_marks_interrupted_without_marker_and_never_retries(tmp_path):
     """Процесс исчез без маркера → executor_interrupted, автоповтора нет."""
@@ -309,6 +317,7 @@ def test_cancel_terminates_only_verified_process(tmp_path):
         _stop(executor)
 
 
+@pytest.mark.network
 def test_cancel_refuses_when_fingerprint_does_not_match(tmp_path):
     """Отпечаток из второго источника не сошёлся → ЧУЖОЙ процесс не трогаем (I-17)."""
     from audit_worker.executor import Executor
@@ -340,6 +349,7 @@ def test_cancel_refuses_when_fingerprint_does_not_match(tmp_path):
     assert _alive(os.getpid())
 
 
+@pytest.mark.network
 def test_cancel_of_dead_pid_reports_not_running(tmp_path):
     """Записанный процесс мёртв (или это тёзка по pid) — сигналов не шлём."""
     from audit_worker.executor import Executor
@@ -362,6 +372,7 @@ def test_cancel_of_dead_pid_reports_not_running(tmp_path):
     assert _alive(os.getpid())
 
 
+@pytest.mark.network
 def test_cancel_of_already_finished_attempt_keeps_result(tmp_path):
     from audit_worker.executor import Executor
     from audit_worker.process_control import OUTCOME_ALREADY_COMPLETED
@@ -378,6 +389,7 @@ def test_cancel_of_already_finished_attempt_keeps_result(tmp_path):
     assert db.queue_item(attempt_id)["state"] == "finished"
 
 
+@pytest.mark.network
 def test_cancel_of_unknown_attempt_is_safe(tmp_path):
     from audit_worker.executor import Executor
     from audit_worker.process_control import OUTCOME_NOT_RUNNING
@@ -411,6 +423,7 @@ def _code_only(path: Path) -> str:
     return " ".join(pieces)
 
 
+@pytest.mark.network
 def test_no_pkill_or_killall_anywhere():
     """Поиск процесса по имени команды запрещён: попадём в чужой (§10)."""
     # `platform.system()` — про имя ОС, а не про запуск процесса, поэтому
@@ -426,6 +439,7 @@ def test_no_pkill_or_killall_anywhere():
     assert not offenders, offenders
 
 
+@pytest.mark.network
 def test_agent_module_has_no_process_signalling():
     """У сетевого агента нет кода, шлющего сигналы процессам."""
     code = _code_only(_ROOT / "audit_worker" / "agent.py")
@@ -434,6 +448,7 @@ def test_agent_module_has_no_process_signalling():
         assert marker not in code, f"агент не должен уметь {marker}"
 
 
+@pytest.mark.network
 def test_executor_never_reads_worker_token():
     """Исполнителю сетевые секреты не положены (§8.2)."""
     code = _code_only(_ROOT / "audit_worker" / "executor.py")
@@ -510,7 +525,9 @@ def _ping(url: str) -> bool:
         return False
 
 
-@pytest.mark.network
+# Primary lane §5: chaos — агент убит SIGKILL и поднят заново; проверяется, что дублей
+# не возникло.
+@pytest.mark.chaos
 @pytest.mark.slow
 def test_killing_agent_does_not_stop_the_audit(tmp_path, live_center):
     """I-02/I-03 на настоящих процессах: центр + агент + исполнитель."""

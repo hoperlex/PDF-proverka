@@ -33,6 +33,10 @@ from backend.app.services.common.version_service import (  # noqa: E402
     read_project_versions,
 )
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 

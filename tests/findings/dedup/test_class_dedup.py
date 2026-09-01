@@ -30,6 +30,11 @@ from backend.app.services.findings.dedup import (  # noqa: E402
     merge_across_methods,
 )
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def _f(**kw) -> dict:
     base = {

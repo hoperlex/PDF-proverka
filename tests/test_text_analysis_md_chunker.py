@@ -7,6 +7,11 @@ from backend.app.pipeline.stages.text_analysis.md_chunker import (
     plan_text_analysis_chunks,
 )
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def _draw_page(n: int, chars: int) -> str:
     # Чертёжный лист: есть block_id → section_class != "pz".

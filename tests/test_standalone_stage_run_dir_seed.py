@@ -29,6 +29,10 @@ if str(_ROOT) not in sys.path:
 
 from backend.app.pipeline.manager import PipelineManager  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 class _Job:
     project_id = "KJ/ТЕСТ-ПРОЕКТ_V1"

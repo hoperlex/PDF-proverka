@@ -13,6 +13,11 @@ from pathlib import Path
 
 from backend.app.services.llm import llm_runner as lr
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_model_prices_loaded_from_config():
     prices = lr._load_model_prices()

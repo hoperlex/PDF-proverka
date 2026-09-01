@@ -40,6 +40,9 @@ from backend.app.models.audit import (  # noqa: E402
     JobStatus,
 )
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 async def _anoop(*a, **k):
     return None

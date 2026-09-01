@@ -11,6 +11,10 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 # Импорт скрипта по пути (он в scripts/, не пакет).
 _SCRIPT = (
     Path(__file__).resolve().parents[1]

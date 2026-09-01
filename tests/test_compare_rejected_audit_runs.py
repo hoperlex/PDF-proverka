@@ -6,6 +6,12 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 _MODULE_PATH = (
     Path(__file__).resolve().parents[1]

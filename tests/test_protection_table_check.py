@@ -19,6 +19,9 @@ from backend.app.pipeline.stages.block_analysis.protection_table_check import (
 )
 from backend.app.pipeline.stages.block_analysis.provenance import detector_for_model
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 ROOT = Path(__file__).resolve().parents[1]
 BLOCK_ID = "blk_5850f08c8fd0407fb58e4271cd648198"

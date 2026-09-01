@@ -26,6 +26,7 @@ if str(_ROOT) not in sys.path:
 
 
 # ─── Параметры тестового задания: три рубежа зажима ──────────────────────────
+@pytest.mark.unit
 def test_params_are_clamped_not_trusted():
     from audit_worker import test_runner
 
@@ -38,6 +39,7 @@ def test_params_are_clamped_not_trusted():
     assert params.result_bytes == test_runner.MAX_RESULT_BYTES
 
 
+@pytest.mark.unit
 def test_params_reject_unknown_fields():
     """Попытка протащить лишнее поле отвергается, а не игнорируется молча."""
     from audit_worker import test_runner
@@ -50,6 +52,7 @@ def test_params_reject_unknown_fields():
     assert "cmd" in str(info.value)
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "label",
     ["../../etc/passwd", "a; rm -rf /", "$(whoami)", "with space", "`id`", "a|b"],
@@ -61,6 +64,7 @@ def test_label_rejects_injection_shapes(label):
         test_runner.validate_params({"label": label}, max_total_sec=300.0)
 
 
+@pytest.mark.unit
 def test_params_reject_too_long_job():
     from audit_worker import test_runner
 
@@ -72,6 +76,7 @@ def test_params_reject_too_long_job():
 
 
 # ─── argv и окружение строит ВОРКЕР ──────────────────────────────────────────
+@pytest.mark.unit
 def test_argv_is_fixed_and_built_by_worker(tmp_path):
     from audit_worker import test_process, test_runner
 
@@ -83,6 +88,7 @@ def test_argv_is_fixed_and_built_by_worker(tmp_path):
     assert argv[3] == str(tmp_path / "params.json")
 
 
+@pytest.mark.unit
 def test_env_is_whitelisted(monkeypatch):
     from audit_worker import test_runner
 
@@ -94,6 +100,7 @@ def test_env_is_whitelisted(monkeypatch):
     assert set(env) <= set(test_runner._ENV_WHITELIST)
 
 
+@pytest.mark.unit
 def test_test_process_runs_and_writes_artifacts(tmp_path):
     from audit_worker import test_runner
 
@@ -119,6 +126,7 @@ def test_test_process_runs_and_writes_artifacts(tmp_path):
     assert (tmp_path / "job" / "result" / "run_log.txt").is_file()
 
 
+@pytest.mark.unit
 def test_test_process_reports_failure(tmp_path):
     from audit_worker import test_runner
 
@@ -141,6 +149,7 @@ def test_test_process_reports_failure(tmp_path):
 
 
 # ─── EventOutbox ─────────────────────────────────────────────────────────────
+@pytest.mark.unit
 def test_outbox_seq_is_monotonic_and_survives_restart(tmp_path):
     from audit_worker.event_outbox import EventOutbox
 
@@ -153,6 +162,7 @@ def test_outbox_seq_is_monotonic_and_survives_restart(tmp_path):
     assert reopened.append("stage_completed", {}) == 3   # нумерация НЕ сбрасывается
 
 
+@pytest.mark.unit
 def test_outbox_batch_is_contiguous_and_ack_advances(tmp_path):
     from audit_worker.event_outbox import EventOutbox
 
@@ -169,6 +179,7 @@ def test_outbox_batch_is_contiguous_and_ack_advances(tmp_path):
     assert not outbox.has_pending
 
 
+@pytest.mark.unit
 def test_outbox_rewind_after_gap(tmp_path):
     from audit_worker.event_outbox import EventOutbox
 
@@ -180,6 +191,7 @@ def test_outbox_rewind_after_gap(tmp_path):
     assert [e["seq"] for e in outbox.pending_batch()] == [2, 3, 4]
 
 
+@pytest.mark.unit
 def test_outbox_redacts_secrets_on_write(tmp_path):
     from audit_worker.event_outbox import EventOutbox
 
@@ -193,6 +205,7 @@ def test_outbox_redacts_secrets_on_write(tmp_path):
     assert "sk-abc123456789012345" not in raw
 
 
+@pytest.mark.unit
 def test_outbox_truncation_is_visible(tmp_path, monkeypatch):
     """Потеря строк лога при переполнении должна быть ЯВНОЙ, а не молчаливой."""
     import audit_worker.event_outbox as mod
@@ -209,6 +222,7 @@ def test_outbox_truncation_is_visible(tmp_path, monkeypatch):
 
 
 # ─── Реестр процессов ────────────────────────────────────────────────────────
+@pytest.mark.unit
 def test_process_registry_detects_dead_and_pid_reuse(tmp_path):
     from audit_worker.process_registry import ProcessRegistry, is_alive, process_start_time
 
@@ -226,6 +240,7 @@ def test_process_registry_detects_dead_and_pid_reuse(tmp_path):
     assert registry.prune_dead() >= 1
 
 
+@pytest.mark.unit
 def test_process_registry_survives_restart(tmp_path):
     from audit_worker.process_registry import ProcessRegistry
 
@@ -236,6 +251,7 @@ def test_process_registry_survives_restart(tmp_path):
 
 
 # ─── Слоты ───────────────────────────────────────────────────────────────────
+@pytest.mark.unit
 def test_slots_hard_zero_on_swap_and_disk(tmp_path):
     from audit_worker.resource_monitor import ResourceMonitor
 
@@ -254,6 +270,7 @@ def test_slots_hard_zero_on_swap_and_disk(tmp_path):
     assert low_disk.calculated_free == 0 and low_disk.binding_constraint == "s_disk"
 
 
+@pytest.mark.unit
 def test_slots_respect_hard_cap_and_config(tmp_path):
     from audit_worker.resource_monitor import HARD_CAP, ResourceMonitor
 
@@ -271,6 +288,7 @@ def test_slots_respect_hard_cap_and_config(tmp_path):
     assert limited.calculated_free == 2 and limited.binding_constraint == "s_cfg"
 
 
+@pytest.mark.unit
 def test_slots_hysteresis_shrinks_fast_grows_slow(tmp_path):
     """Гистерезис сглаживает РЕСУРСЫ: падение мгновенно, рост — после паузы."""
     from audit_worker.resource_monitor import (
@@ -294,6 +312,7 @@ def test_slots_hysteresis_shrinks_fast_grows_slow(tmp_path):
     ).calculated_free == HARD_CAP
 
 
+@pytest.mark.unit
 def test_finished_job_frees_slot_immediately(tmp_path):
     """Освобождение слота — НЕ «рост ресурсов» и ждать стабильности не должно.
 
@@ -312,6 +331,7 @@ def test_finished_job_frees_slot_immediately(tmp_path):
     assert monitor.calculate_slots(**good, active_jobs=0, now=3.0).calculated_free == HARD_CAP
 
 
+@pytest.mark.unit
 def test_snapshot_explains_binding_constraint(tmp_path):
     from audit_worker.resource_monitor import ResourceMonitor
 
@@ -322,6 +342,7 @@ def test_snapshot_explains_binding_constraint(tmp_path):
 
 
 # ─── Локальное состояние ─────────────────────────────────────────────────────
+@pytest.mark.unit
 def test_local_job_store_retention_unconfirmed(tmp_path):
     from audit_worker.local_store import LocalJobStore
 
@@ -334,6 +355,7 @@ def test_local_job_store_retention_unconfirmed(tmp_path):
     assert store.retention_unconfirmed() == []
 
 
+@pytest.mark.unit
 def test_token_file_permissions(tmp_path):
     from audit_worker.local_store import WorkerStateStore
 
@@ -343,6 +365,7 @@ def test_token_file_permissions(tmp_path):
     assert store.read_token() == "wtk_abc"
 
 
+@pytest.mark.unit
 def test_atomic_write_leaves_no_partial(tmp_path):
     from audit_worker.local_store import atomic_write_json, read_json
 
@@ -353,6 +376,7 @@ def test_atomic_write_leaves_no_partial(tmp_path):
 
 
 # ─── Безопасность пакета на стороне воркера ──────────────────────────────────
+@pytest.mark.integration
 def test_worker_rejects_bad_hash(tmp_path):
     from audit_worker import package_io
 
@@ -372,6 +396,7 @@ def test_worker_rejects_bad_hash(tmp_path):
     assert "SHA-256" in str(exc.value)
 
 
+@pytest.mark.integration
 def test_worker_rejects_traversal(tmp_path):
     from audit_worker import package_io
 
@@ -397,6 +422,7 @@ def test_worker_rejects_traversal(tmp_path):
     assert not (tmp_path / "work").exists()
 
 
+@pytest.mark.integration
 def test_result_package_requires_content(tmp_path):
     from audit_worker import package_io
 
@@ -411,6 +437,7 @@ def test_result_package_requires_content(tmp_path):
 
 
 # ─── Очистка секретов ────────────────────────────────────────────────────────
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "text,leaked",
     [
@@ -427,6 +454,7 @@ def test_redaction_removes_known_shapes(text, leaked):
     assert leaked not in redaction.redact(text)
 
 
+@pytest.mark.unit
 def test_redaction_failure_drops_line_instead_of_leaking(monkeypatch):
     from audit_worker import redaction
 
@@ -439,6 +467,7 @@ def test_redaction_failure_drops_line_instead_of_leaking(monkeypatch):
     assert "redaction_failed" in out
 
 
+@pytest.mark.unit
 def test_redaction_handles_nested_payload():
     from audit_worker import redaction
 

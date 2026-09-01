@@ -30,7 +30,12 @@ if str(_ROOT / "scripts") not in sys.path:
 
 import ci_regression_gate as gate  # noqa: E402
 
+# Lane §5 расставлен по нодам: настоящий дочерний pytest — network,
+# чтение бюджета из файла — integration. Сигналы здесь доказывают уборку
+# детей, а не восстановление после убийства, поэтому это не chaos.
 
+
+@pytest.mark.integration
 def test_budget_rejects_values_that_defeat_its_purpose(monkeypatch):
     """Бюджет, который нельзя выдержать, не принимается молча.
 
@@ -48,6 +53,7 @@ def test_budget_rejects_values_that_defeat_its_purpose(monkeypatch):
     assert gate.wall_budget_sec() == 42.5
 
 
+@pytest.mark.integration
 def test_default_budget_leaves_room_for_a_slow_runner():
     """Потолок не должен мешать медленной машине.
 
@@ -58,6 +64,7 @@ def test_default_budget_leaves_room_for_a_slow_runner():
     assert gate.DEFAULT_WALL_BUDGET_SEC >= 1200
 
 
+@pytest.mark.network
 def test_hanging_run_becomes_a_bounded_failure(tmp_path: Path):
     """Зависание превращается в отказ с диагнозом, а не в бесконечное ожидание.
 
@@ -151,6 +158,7 @@ def test_hangs():
 """
 
 
+@pytest.mark.network
 def test_hanging_run_leaves_no_orphan_processes(tmp_path: Path):
     """После снятия по бюджету не остаётся ни pytest, ни его потомка.
 
@@ -198,6 +206,7 @@ def test_hanging_run_leaves_no_orphan_processes(tmp_path: Path):
                 pass
 
 
+@pytest.mark.network
 def test_interrupt_also_kills_the_detached_pytest(tmp_path: Path):
     """Прерывание гейта не оставляет отвязанный pytest работать.
 

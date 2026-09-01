@@ -30,6 +30,9 @@ import backend.app.pipeline.manager as mgr_mod  # noqa: E402
 from backend.app.pipeline.manager import PipelineManager  # noqa: E402
 from backend.app.models.audit import BatchQueueStatus, BatchQueueItem  # noqa: E402
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def _make_queue() -> BatchQueueStatus:
     statuses = ["failed", "failed", "completed", "running", "pending", "pending"]

@@ -18,6 +18,9 @@ from pathlib import Path
 
 import pytest
 
+# Primary lane §5: network — запускает настоящие дочерние процессы.
+pytestmark = pytest.mark.network
+
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "findings_review"

@@ -21,6 +21,10 @@ from backend.app.pipeline.stages.block_context.contract import (  # noqa: E402
 )
 from backend.app.services.common import block_crop_lru, block_crop_store  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 PAGE_W, PAGE_H = 1200, 1600
 

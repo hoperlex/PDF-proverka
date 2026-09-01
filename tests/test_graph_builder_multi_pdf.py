@@ -16,6 +16,12 @@ from pathlib import Path
 
 from backend.app.pipeline.stages.prepare.graph_builder import build_document_graph_v2
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write_result_json(path: Path, page_numbers: list[int], *, prefix: str) -> None:
     """Минимальный result.json с текстовыми блоками (без image → без locality)."""

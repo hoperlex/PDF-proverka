@@ -14,6 +14,9 @@ from backend.app.services.text_analysis.stage_gates import (
     should_force_shadow_only_for_stage,
 )
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def test_allowed_stages_match_enum():
     assert ALLOWED_STAGES == {s.value for s in DocumentStage}

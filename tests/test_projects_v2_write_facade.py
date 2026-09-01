@@ -30,6 +30,10 @@ from backend.app.services.storage.storage_write_facade import (
     WRITE_MODE_V2_PRIMARY,
 )
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 ENV = "AUDIT_PROJECTS_V2_WRITE_MODE"
 
 

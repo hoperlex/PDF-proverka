@@ -12,6 +12,10 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def client():

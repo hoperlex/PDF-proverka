@@ -21,6 +21,10 @@ import v2lib                       # noqa: E402
 import readiness                   # noqa: E402
 import batch_migrate_projects_v2 as batch  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 OBJECTS_MAP = {"by_name": {"OBJ": "o1"}, "by_path": {}, "by_id": {"o1": "OBJ"}}
 
 

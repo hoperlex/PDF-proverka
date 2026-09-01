@@ -62,6 +62,10 @@ from audit_worker.providers.paths import ProviderHome                  # noqa: E
 
 from backend.app.pipeline.stages.text_analysis import provider_transport  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 # ═════════════════════════ Подставной CLI и фикстуры ═════════════════════════
 

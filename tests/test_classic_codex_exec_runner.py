@@ -6,6 +6,7 @@ import pytest
 from backend.app.models.usage import CLIResult
 
 
+@pytest.mark.unit
 def test_codex_stage_model_is_available_and_resolves(monkeypatch):
     from backend.app.core import config
 
@@ -19,6 +20,7 @@ def test_codex_stage_model_is_available_and_resolves(monkeypatch):
     assert config.is_claude_stage("findings_merge") is False
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_claude_runner_dispatches_codex_model_to_codex_transport(monkeypatch):
     import backend.app.services.llm.claude_runner as claude_runner
@@ -53,6 +55,7 @@ async def test_claude_runner_dispatches_codex_model_to_codex_transport(monkeypat
     assert captured["allowed_tools"] == "Read,Write"
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_run_norm_fix_uses_agentic_codex_exec(monkeypatch, tmp_path):
     import backend.app.pipeline.stages.prepare.prompt_builder as prompt_builder
@@ -109,6 +112,7 @@ async def test_run_norm_fix_uses_agentic_codex_exec(monkeypatch, tmp_path):
     assert captured["audit"]["args"][1] == "04b_norm_fix"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_codex_runner_builds_exec_command_and_reads_output_file(monkeypatch):
     import backend.app.services.llm.codex_runner as codex_runner
@@ -153,6 +157,7 @@ async def test_codex_runner_builds_exec_command_and_reads_output_file(monkeypatc
     assert not captured["out_file"].exists()
 
 
+@pytest.mark.unit
 def test_codex_runner_accepts_max_reasoning_effort():
     from backend.app.services.llm.codex_runner import _reasoning_effort_args
 
@@ -162,6 +167,7 @@ def test_codex_runner_accepts_max_reasoning_effort():
     ]
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_codex_runner_attaches_images_to_exec_command(monkeypatch, tmp_path):
     import backend.app.services.llm.codex_runner as codex_runner
@@ -206,6 +212,7 @@ async def test_codex_runner_attaches_images_to_exec_command(monkeypatch, tmp_pat
     assert "USE DRAWINGS" in captured["input_text"]
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_codex_runner_configures_required_norms_mcp_and_disables_web(
     monkeypatch, tmp_path
@@ -269,6 +276,7 @@ async def test_codex_runner_configures_required_norms_mcp_and_disables_web(
     assert "Web search is disabled" in captured["input_text"]
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_codex_json_runner_uses_inline_context_and_parses_final_json(monkeypatch):
     import backend.app.services.llm.codex_runner as codex_runner
@@ -355,6 +363,7 @@ async def test_codex_json_runner_uses_inline_context_and_parses_final_json(monke
     assert not captured["schema_file"].exists()
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_codex_json_runner_attaches_local_images(monkeypatch, tmp_path):
     import backend.app.services.llm.codex_runner as codex_runner
@@ -386,6 +395,7 @@ async def test_codex_json_runner_attaches_local_images(monkeypatch, tmp_path):
     assert str(image.resolve()) in captured["input_text"]
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_stage01_codex_block_keeps_full_context_image_schema_and_effort(monkeypatch, tmp_path):
     from backend.app.models.usage import LLMResult
@@ -445,6 +455,7 @@ async def test_stage01_codex_block_keeps_full_context_image_schema_and_effort(mo
     assert result["reasoning_tokens"] == 45
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_codex_json_runner_accepts_valid_json_despite_nonzero_cli_exit(monkeypatch):
     import backend.app.services.llm.codex_runner as codex_runner
@@ -471,6 +482,7 @@ async def test_codex_json_runner_accepts_valid_json_despite_nonzero_cli_exit(mon
     assert result.error_message == "codex_exec_exit_9_ignored_after_valid_json"
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_codex_json_stage_retries_only_broken_successful_response(monkeypatch, tmp_path):
     import backend.app.services.llm.claude_runner as claude_runner
@@ -525,6 +537,7 @@ async def test_codex_json_stage_retries_only_broken_successful_response(monkeypa
     assert json.loads((tmp_path / "03_findings.json").read_text(encoding="utf-8")) == {"items": []}
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ("text", "error_message"),
     [
@@ -577,6 +590,7 @@ def _no_backoff_sleep(monkeypatch):
     return slept
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ("exit_code", "stdout", "stderr", "expected"),
     [
@@ -602,6 +616,7 @@ def test_transient_failure_reason_classifies_provider_outages(
     assert codex_runner._transient_failure_reason(exit_code, stdout, stderr) == expected
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_codex_json_retries_at_capacity_and_succeeds(
     monkeypatch, _no_backoff_sleep
@@ -637,6 +652,7 @@ async def test_codex_json_retries_at_capacity_and_succeeds(
     assert len(_no_backoff_sleep) == 1
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_codex_json_reports_attempts_when_outage_outlives_retries(
     monkeypatch, _no_backoff_sleep
@@ -669,6 +685,7 @@ async def test_codex_json_reports_attempts_when_outage_outlives_retries(
     )
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_codex_json_does_not_retry_usage_limit(monkeypatch, _no_backoff_sleep):
     import backend.app.services.llm.codex_runner as codex_runner
@@ -696,6 +713,7 @@ async def test_codex_json_does_not_retry_usage_limit(monkeypatch, _no_backoff_sl
     assert result.error_message == "codex_exec_exit_1; codex_json_not_found"
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_codex_json_retry_disabled_by_env(monkeypatch, _no_backoff_sleep):
     import backend.app.services.llm.codex_runner as codex_runner
@@ -722,6 +740,7 @@ async def test_codex_json_retry_disabled_by_env(monkeypatch, _no_backoff_sleep):
     assert result.error_message == "codex_exec_exit_1; codex_json_not_found"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_codex_json_retry_clears_stale_out_file(monkeypatch, _no_backoff_sleep):
     """Мусор от прошлой попытки не должен пройти как свежий ответ."""
@@ -755,6 +774,7 @@ async def test_codex_json_retry_clears_stale_out_file(monkeypatch, _no_backoff_s
     assert result.json_data is None
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_codex_exec_retries_at_capacity(monkeypatch, _no_backoff_sleep):
     """Агентный путь (optimization и др.) страдал тем же отказом."""
@@ -787,6 +807,7 @@ async def test_codex_exec_retries_at_capacity(monkeypatch, _no_backoff_sleep):
     assert result.result_text == "ГОТОВО"
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_codex_retry_releases_budget_slots_between_attempts(
     monkeypatch, _no_backoff_sleep
@@ -832,6 +853,7 @@ async def test_codex_retry_releases_budget_slots_between_attempts(
     assert held == [1, 1]
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_run_findings_merge_codex_applies_targeted_passes(monkeypatch, tmp_path):
     import backend.app.pipeline.stages.prepare.codex_targeted_findings as targeted
@@ -937,6 +959,7 @@ async def test_run_findings_merge_codex_applies_targeted_passes(monkeypatch, tmp
     assert final_data["meta"]["codex_targeted_stages"] == ["alia_ss_lowcurrent_audit"]
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_run_optimization_codex_uses_agentic_exec_with_visual_context(monkeypatch, tmp_path):
     import backend.app.pipeline.stages.prepare.prompt_builder as prompt_builder
@@ -1073,6 +1096,7 @@ def _patch_codex_json(monkeypatch, responses: list):
     return calls
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_codex_json_stage_gives_up_after_attempts(tmp_path, monkeypatch):
     """Всегда битый → попытки исчерпаны, артефакт не пишется, стадия падает."""
@@ -1098,6 +1122,7 @@ async def test_codex_json_stage_gives_up_after_attempts(tmp_path, monkeypatch):
     assert not (tmp_path / "03_findings.json").exists()
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_codex_json_stage_valid_json_runs_once(tmp_path, monkeypatch):
     """Здоровый ответ — ровно один вызов, повторов нет."""
@@ -1122,6 +1147,7 @@ async def test_codex_json_stage_valid_json_runs_once(tmp_path, monkeypatch):
     assert exit_code == 0
 
 
+@pytest.mark.integration
 def test_codex_json_mode_wires_norms_mcp_when_stage_declares_tools(monkeypatch, tmp_path):
     """JSON-вход codex обязан подключать сервер норм так же, как exec-вход.
 
@@ -1145,6 +1171,7 @@ def test_codex_json_mode_wires_norms_mcp_when_stage_declares_tools(monkeypatch, 
     assert "mcp_servers.norms.required=true" in args
 
 
+@pytest.mark.unit
 def test_codex_json_mode_keeps_web_disabled_without_tools():
     """Стадия без инструментов сохраняет исторический дефолт: веб выключен."""
     from backend.app.services.llm.codex_runner import _json_tool_args
@@ -1152,6 +1179,7 @@ def test_codex_json_mode_keeps_web_disabled_without_tools():
     assert _json_tool_args(None) == ["-c", 'web_search="disabled"']
 
 
+@pytest.mark.unit
 def test_normative_stage_refuses_to_run_without_norms_tools():
     """Нормативная стадия падает закрыто, если сервер норм не пробросили.
 
@@ -1175,6 +1203,7 @@ def test_normative_stage_refuses_to_run_without_norms_tools():
     assert_norms_stage_wired("optimization", None)  # ненормативная — свободна
 
 
+@pytest.mark.unit
 def test_missing_norms_venv_raises_actionable_setup_error(monkeypatch):
     """Отсутствие venv сервера норм даёт внятную ошибку, а не `os error 2`.
 

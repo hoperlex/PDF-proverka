@@ -18,6 +18,7 @@ def _read_json(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+@pytest.mark.integration
 def test_load_modify_save_threaded_no_lost_update(tmp_path):
     path = tmp_path / "data.json"
 
@@ -33,6 +34,7 @@ def test_load_modify_save_threaded_no_lost_update(tmp_path):
     assert sorted(_read_json(path)["items"]) == list(range(80))
 
 
+@pytest.mark.network
 def test_load_modify_save_cross_process_fcntl_no_lost_update(tmp_path):
     path = tmp_path / "data.json"
     script = """
@@ -63,6 +65,7 @@ load_modify_save(path, mutate, default={"items": []})
     assert sorted(_read_json(path)["items"]) == list(range(24))
 
 
+@pytest.mark.integration
 def test_load_modify_save_threading_fallback_when_fcntl_unavailable(monkeypatch, tmp_path):
     monkeypatch.setattr(atomic_json, "_fcntl", None)
     path = tmp_path / "data.json"
@@ -79,6 +82,7 @@ def test_load_modify_save_threading_fallback_when_fcntl_unavailable(monkeypatch,
     assert sorted(_read_json(path)["items"]) == list(range(60))
 
 
+@pytest.mark.integration
 def test_load_modify_save_missing_and_corrupt_file_behavior(tmp_path):
     path = tmp_path / "data.json"
 
@@ -95,6 +99,7 @@ def test_load_modify_save_missing_and_corrupt_file_behavior(tmp_path):
     assert path.read_text(encoding="utf-8") == "{broken"
 
 
+@pytest.mark.unit
 def test_load_modify_save_idempotent_mutation(tmp_path):
     path = tmp_path / "data.json"
 
@@ -110,6 +115,7 @@ def test_load_modify_save_idempotent_mutation(tmp_path):
     assert _read_json(path) == {"ids": ["A"]}
 
 
+@pytest.mark.integration
 def test_customer_confirmed_concurrent_confirm_unmark_preserves_all_changes(monkeypatch, tmp_path):
     log_path = tmp_path / "knowledge_base" / "decisions_log.json"
     log_path.parent.mkdir(parents=True)
@@ -136,6 +142,7 @@ def test_customer_confirmed_concurrent_confirm_unmark_preserves_all_changes(monk
     assert by_id["DEC-B"]["customer_note"] is None
 
 
+@pytest.mark.integration
 def test_append_to_decisions_log_preserves_customer_confirmation(monkeypatch, tmp_path):
     log_path = tmp_path / "knowledge_base" / "decisions_log.json"
     log_path.parent.mkdir(parents=True)
@@ -169,6 +176,7 @@ def test_append_to_decisions_log_preserves_customer_confirmation(monkeypatch, tm
     assert entries[0]["customer_note"] == "old-note"
 
 
+@pytest.mark.integration
 def test_repeated_confirm_is_idempotent(monkeypatch, tmp_path):
     log_path = tmp_path / "knowledge_base" / "decisions_log.json"
     log_path.parent.mkdir(parents=True)
@@ -185,6 +193,7 @@ def test_repeated_confirm_is_idempotent(monkeypatch, tmp_path):
     assert entries[0]["customer_note"] == "ok"
 
 
+@pytest.mark.integration
 def test_save_expert_review_concurrent_merges_per_project_review(monkeypatch, tmp_path):
     review_path = tmp_path / "project" / "_output" / "expert_review.json"
     log_path = tmp_path / "knowledge_base" / "decisions_log.json"

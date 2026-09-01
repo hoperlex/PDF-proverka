@@ -90,6 +90,7 @@ CHANDRA_SAMPLE = """\
 
 # ── parse_block_header ───────────────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_parse_block_header_new_format():
     header = parse_block_header(f"### BLOCK #2 [IMAGE]: {BLK_IMAGE_2}\n")
 
@@ -99,6 +100,7 @@ def test_parse_block_header_new_format():
     assert header.ordinal == 2
 
 
+@pytest.mark.unit
 def test_parse_block_header_old_format_unchanged():
     header = parse_block_header("### BLOCK [TEXT]: NOTES-2")
 
@@ -108,6 +110,7 @@ def test_parse_block_header_old_format_unchanged():
     assert header.ordinal is None
 
 
+@pytest.mark.unit
 def test_parse_block_header_rejects_garbage():
     assert parse_block_header("### BLOCK #x [TEXT]: blk_deadbeef") is None
     assert parse_block_header("## Page 3") is None
@@ -115,6 +118,7 @@ def test_parse_block_header_rejects_garbage():
 
 # ── iter_block_headers / extract_block_sections ─────────────────────────────
 
+@pytest.mark.unit
 def test_iter_block_headers_new_format():
     headers = list(iter_block_headers(RESULTS_SAMPLE))
 
@@ -123,6 +127,7 @@ def test_iter_block_headers_new_format():
     assert [h.id for h in headers] == [BLK_TEXT_1, BLK_IMAGE_2, BLK_TEXT_3]
 
 
+@pytest.mark.unit
 def test_extract_block_sections_new_format_fields():
     sections = extract_block_sections(RESULTS_SAMPLE)
 
@@ -137,6 +142,7 @@ def test_extract_block_sections_new_format_fields():
     assert "> **Created:**" in sections[0].body
 
 
+@pytest.mark.unit
 def test_extract_block_sections_new_format_offsets_roundtrip():
     sections = extract_block_sections(RESULTS_SAMPLE)
 
@@ -150,6 +156,7 @@ def test_extract_block_sections_new_format_offsets_roundtrip():
     assert "Узел примыкания" in sections[1].body
 
 
+@pytest.mark.unit
 def test_extract_block_sections_old_format_unchanged():
     sections = extract_block_sections(CHANDRA_SAMPLE)
 
@@ -166,10 +173,12 @@ def test_extract_block_sections_old_format_unchanged():
 
 # ── strip_gemma_enrichment_sections ──────────────────────────────────────────
 
+@pytest.mark.unit
 def test_strip_enrichment_noop_on_new_format_without_tail():
     assert strip_gemma_enrichment_sections(RESULTS_SAMPLE) == RESULTS_SAMPLE
 
 
+@pytest.mark.unit
 def test_strip_enrichment_removes_tail_in_new_format():
     enriched = RESULTS_SAMPLE + (
         "\n**[ENRICHED google/gemma-test @ 2026-07-01T00:00:00]**\n"
@@ -186,6 +195,7 @@ def test_strip_enrichment_removes_tail_in_new_format():
 
 # ── extract_chandra_block_description (маппинг нового формата) ───────────────
 
+@pytest.mark.unit
 def test_block_description_maps_new_format_fields():
     description = extract_chandra_block_description(RESULTS_SAMPLE, BLK_IMAGE_2)
 
@@ -198,11 +208,13 @@ def test_block_description_maps_new_format_fields():
     assert "ЯД-" not in description.classification_text
 
 
+@pytest.mark.unit
 def test_block_description_new_format_ignores_text_blocks_and_unknown_ids():
     assert extract_chandra_block_description(RESULTS_SAMPLE, BLK_TEXT_1) is None
     assert extract_chandra_block_description(RESULTS_SAMPLE, "blk_0000000000000000") is None
 
 
+@pytest.mark.integration
 def test_block_description_new_format_cuts_enriched_tail():
     # ENRICHED-хвост прилипает к последней секции — в контракт попадать не должен
     block_tail = RESULTS_SAMPLE.replace(
@@ -219,6 +231,7 @@ def test_block_description_new_format_cuts_enriched_tail():
     assert "ЯД-" not in description.classification_text
 
 
+@pytest.mark.unit
 def test_block_description_old_format_unchanged():
     description = extract_chandra_block_description(CHANDRA_SAMPLE, "DETAIL-1")
 
@@ -234,6 +247,7 @@ _REAL_ZIP = Path(__file__).resolve().parent.parent / (
 )
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(not _REAL_ZIP.exists(), reason="реальная выгрузка недоступна")
 def test_real_results_md_smoke():
     with zipfile.ZipFile(_REAL_ZIP) as zf:

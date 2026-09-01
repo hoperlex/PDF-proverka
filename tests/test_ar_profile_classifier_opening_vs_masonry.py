@@ -7,6 +7,11 @@ from backend.app.pipeline.stages.block_grounding.architecture_geometry import (
     classify_ar_profile,
 )
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 # Реальный контекст классификации боевого блока (block_title + block_type +
 # short_description + description из пакета block_vector_graphs/9UN7-PPMM-9CG.json).
 REAL_MASONRY_CONTEXT = (

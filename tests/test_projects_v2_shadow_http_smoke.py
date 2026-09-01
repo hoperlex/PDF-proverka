@@ -14,6 +14,8 @@ sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(_REPO / "scripts" / "projects_v2"))
 import http_smoke_shadow_api as HS  # noqa: E402
 
+import pytest
+
 OBJF = "213_Mosfilmovskaya_31A_KingSons"
 
 
@@ -106,6 +108,7 @@ def _registered_paths(node, seen: set[str] | None = None) -> set[str]:
     return seen
 
 
+@pytest.mark.unit
 def test_build_smoke_app_has_routes():
     app = HS.build_smoke_app()
     paths = _registered_paths(app)
@@ -113,6 +116,7 @@ def test_build_smoke_app_has_routes():
     assert any(p.startswith("/api/objects") for p in paths)
 
 
+@pytest.mark.unit
 def test_pick_sample_codes_covers_kingsons_widely():
     parity = {"results": [
         {"document_code": "a", "type": "complete"},
@@ -126,6 +130,7 @@ def test_pick_sample_codes_covers_kingsons_widely():
     assert any(p["type"] == "complete" for p in picked)
 
 
+@pytest.mark.integration
 def test_snapshot_detects_no_change(tmp_path):
     (tmp_path / "a.txt").write_text("x")
     snap1 = HS._snapshot(tmp_path)
@@ -133,6 +138,7 @@ def test_snapshot_detects_no_change(tmp_path):
     assert snap1 == snap2 and len(snap1) == 1
 
 
+@pytest.mark.unit
 def test_render_md_smoke():
     rep = {"generated_at": "t", "ok": True,
            "summary": {"checks_passed": 1, "checks_total": 1,
@@ -147,6 +153,7 @@ def test_render_md_smoke():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.network
 def test_run_smoke_http_real_socket(tmp_path, monkeypatch):
     v2 = _build_tree(tmp_path)
     monkeypatch.setenv("AUDIT_PROJECTS_V2_DIR", str(v2))
@@ -173,6 +180,7 @@ def test_run_smoke_http_real_socket(tmp_path, monkeypatch):
     assert os.environ.get("AUDIT_PROJECTS_V2_SHADOW_API_ENABLED") in (None, "false")
 
 
+@pytest.mark.network
 def test_run_smoke_writes_reports(tmp_path, monkeypatch):
     v2 = _build_tree(tmp_path)
     monkeypatch.setenv("AUDIT_PROJECTS_V2_DIR", str(v2))

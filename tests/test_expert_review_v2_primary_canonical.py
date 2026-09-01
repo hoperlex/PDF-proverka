@@ -5,6 +5,12 @@ from pathlib import Path
 
 from backend.app.models.expert_review import ExpertDecision
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write_json(path: Path, payload: dict | list) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)

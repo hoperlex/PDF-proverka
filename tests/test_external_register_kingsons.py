@@ -63,6 +63,7 @@ def _make_xlsx(tmp_path):
 # ─── from_raw / VERDICT_MAP ──────────────────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_from_raw_trebuet_vneseniya():
     assert CustomerResponse.from_raw("Требует внесения") == CustomerResponse.TREBUET_VNESENIYA
     assert CustomerResponse.from_raw("требует") == CustomerResponse.TREBUET_VNESENIYA
@@ -70,6 +71,7 @@ def test_from_raw_trebuet_vneseniya():
     assert CustomerResponse.from_raw("Внесено") == CustomerResponse.VNESENO
 
 
+@pytest.mark.unit
 def test_verdict_map():
     assert VERDICT_MAP[CustomerResponse.OTKLONENO] == "rejected"
     assert VERDICT_MAP[CustomerResponse.TREBUET_VNESENIYA] == "accepted"
@@ -81,6 +83,7 @@ def test_verdict_map():
 # ─── parse_kingsons_xlsx ─────────────────────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_parse_kingsons_xlsx(tmp_path):
     es = parser.parse_kingsons_xlsx(_make_xlsx(tmp_path))
     assert len(es) == 4
@@ -102,6 +105,7 @@ def test_parse_kingsons_xlsx(tmp_path):
     assert es[0].customer_comment == "коммент-1"
 
 
+@pytest.mark.unit
 def test_entry_key_to_finding_id():
     assert parser.entry_key_to_finding_id("133/23-ГК-АР1#3") == "REG-133-23-ГК-АР1-3"
     assert parser.entry_key_to_finding_id("133/23-ГК-АР1~2#1") == "REG-133-23-ГК-АР1-2-1"
@@ -119,6 +123,7 @@ def _entry(key, code, resp, match=None, status=MatchStatus.UNMATCHED, cat="Кр�
     )
 
 
+@pytest.mark.unit
 def test_build_plan_matched_and_new():
     code = "133/23-ГК-ЭО2"
     matched = _entry(
@@ -145,6 +150,7 @@ def test_build_plan_matched_and_new():
 # ─── apply_register: запись + идемпотентность ────────────────────────────────
 
 
+@pytest.mark.integration
 def test_apply_creates_findings_and_decisions(tmp_path, monkeypatch):
     proj_dir = tmp_path / "EOM" / "133_23-ГК-ЭО2"
     (proj_dir / "_output").mkdir(parents=True)
@@ -197,6 +203,7 @@ def test_apply_creates_findings_and_decisions(tmp_path, monkeypatch):
     assert (proj_dir / "_output" / "03_findings.json.bak").exists()
 
 
+@pytest.mark.integration
 def test_apply_dry_run_writes_nothing(tmp_path, monkeypatch):
     proj_dir = tmp_path / "EOM" / "133_23-ГК-ЭО2"
     (proj_dir / "_output").mkdir(parents=True)

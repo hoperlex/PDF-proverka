@@ -51,6 +51,7 @@ def _is_legend(graph):
     return graph["profile_id"] == PROFILE_LEGEND
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ОВ не извлечён")
 @pytest.mark.parametrize("case", cases(), ids=lambda case: case["block_id"])
 def test_hvac_corpus_has_vector_pdf_and_description(case, graphs):
@@ -78,6 +79,7 @@ def test_hvac_corpus_has_vector_pdf_and_description(case, graphs):
     assert graph["profile_id"] not in description
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ОВ не извлечён")
 def test_all_nine_hvac_families_are_present(graphs):
     assert len(graphs) == 154
@@ -85,6 +87,7 @@ def test_all_nine_hvac_families_are_present(graphs):
             == set(ALL_HVAC_PROFILES))
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ОВ не извлечён")
 def test_profile_specific_evidence_passes_strict_gates(graphs):
     for graph in graphs.values():
@@ -119,6 +122,7 @@ def test_profile_specific_evidence_passes_strict_gates(graphs):
             assert validation["buildings_total"] >= 4
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ОВ не извлечён")
 def test_graph_references_are_integral_and_do_not_invent_multiway_pairs(graphs):
     for graph in graphs.values():
@@ -144,6 +148,7 @@ def test_graph_references_are_integral_and_do_not_invent_multiway_pairs(graphs):
                 )
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ОВ не извлечён")
 def test_raster_fan_curve_is_marked_as_raster_not_fake_vector(graphs):
     graph = graphs["6G36-HFKH-CQV"]
@@ -154,6 +159,7 @@ def test_raster_fan_curve_is_marked_as_raster_not_fake_vector(graphs):
     assert any("не векторизуются" in warning for warning in graph["warnings"])
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ОВ не извлечён")
 def test_human_descriptions_do_not_expose_internal_english_codes(graphs):
     for graph in graphs.values():
@@ -169,6 +175,7 @@ def test_human_descriptions_do_not_expose_internal_english_codes(graphs):
         assert not re.search(r"\b(?:route|network|node)-\d+\b", description)
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ОВ не извлечён")
 def test_descriptions_report_evidence_depth_instead_of_claiming_equal_topology(graphs):
     allowed = {
@@ -183,6 +190,7 @@ def test_descriptions_report_evidence_depth_instead_of_claiming_equal_topology(g
         assert "Инженерное дерево" in description
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ОВ не извлечён")
 def test_repeated_ventilation_marks_are_merged_into_logical_systems(graphs):
     for graph in graphs.values():
@@ -193,6 +201,7 @@ def test_repeated_ventilation_marks_are_merged_into_logical_systems(graphs):
         assert validation["networks_total"] == validation["unique_systems_total"]
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ОВ не извлечён")
 def test_physical_drawings_assign_elements_to_views_or_groups(graphs):
     for graph in graphs.values():
@@ -208,6 +217,7 @@ def test_physical_drawings_assign_elements_to_views_or_groups(graphs):
         assert member_ids == {node["id"] for node in graph["nodes"]}
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ОВ не извлечён")
 def test_hvac_graph_can_be_built_from_original_pdf_polygon():
     case = next(case for case in cases() if case["block_id"] == "46E6-AM6E-P9J")
@@ -238,6 +248,7 @@ def test_hvac_graph_can_be_built_from_original_pdf_polygon():
     assert evaluate_hvac_gate(graph)["complete"] is True
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ОВ не извлечён")
 def test_block_source_router_returns_structured_hvac(tmp_path):
     case = next(case for case in cases() if case["block_id"] == "46E6-AM6E-P9J")

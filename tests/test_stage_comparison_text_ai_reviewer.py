@@ -4,6 +4,9 @@ import pytest
 
 from backend.app.services.stage_comparison import text_ai_reviewer as ai
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def source(fragment_id: str, text: str, *, page: int, side: str) -> dict:
     return {

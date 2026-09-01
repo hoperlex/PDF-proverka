@@ -24,6 +24,9 @@ from backend.app.services.text_analysis.checklist_gates import (
 )
 from backend.app.services.text_analysis.object_signals import detect_object_signals
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 METADATA_DIR: Path = APP_DATA_DIR / "discipline_checklists_metadata"
 
 

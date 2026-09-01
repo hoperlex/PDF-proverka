@@ -59,6 +59,7 @@ def _crop_text(path) -> str:
         doc.close()
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
 def test_crop_isolates_target_text_all_rotations(tmp_path, rotation):
     src_path = tmp_path / "src.pdf"
@@ -76,6 +77,7 @@ def test_crop_isolates_target_text_all_rotations(tmp_path, rotation):
         doc.close()
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("rotation", [0, 90])
 def test_crop_centered_mediabox_cad_export(tmp_path, rotation):
     """CAD-экспорт с mediabox от (−w/2,−h/2): якорь cropbox ≠ якорь mediabox.
@@ -108,6 +110,7 @@ def test_crop_centered_mediabox_cad_export(tmp_path, rotation):
         doc.close()
 
 
+@pytest.mark.unit
 def test_crop_clamps_out_of_range_coords(tmp_path):
     src_path = tmp_path / "src.pdf"
     _make_pdf(src_path)
@@ -126,6 +129,7 @@ def test_crop_clamps_out_of_range_coords(tmp_path):
         doc.close()
 
 
+@pytest.mark.unit
 def test_crop_cropbox_overhangs_mediabox(tmp_path):
     """Сырой /CropBox со свесом за /MediaBox: якорь = пересечение.
 
@@ -153,6 +157,7 @@ def test_crop_cropbox_overhangs_mediabox(tmp_path):
         doc.close()
 
 
+@pytest.mark.unit
 def test_crop_rotate_not_multiple_of_90_raises(tmp_path):
     """/Rotate 45 (невалидный PDF): ядро и обёртка PyMuPDF нормализуют его
     по-разному → координатные системы противоречивы. Раньше кроп молча
@@ -174,6 +179,7 @@ def test_crop_rotate_not_multiple_of_90_raises(tmp_path):
         doc.close()
 
 
+@pytest.mark.unit
 def test_missing_fitz_raises_pdf_crop_error(tmp_path, monkeypatch):
     """Без PyMuPDF open_pdf обязан бросить PdfCropError (не ImportError) —
     иначе download-фолбэк в crop_cache мёртв."""
@@ -185,6 +191,7 @@ def test_missing_fitz_raises_pdf_crop_error(tmp_path, monkeypatch):
         open_pdf(src_path)
 
 
+@pytest.mark.unit
 def test_crop_write_is_atomic_no_tmp_leftover(tmp_path):
     src_path = tmp_path / "src.pdf"
     _make_pdf(src_path)
@@ -198,6 +205,7 @@ def test_crop_write_is_atomic_no_tmp_leftover(tmp_path):
         doc.close()
 
 
+@pytest.mark.unit
 def test_crop_bad_geometry_raises(tmp_path):
     src_path = tmp_path / "src.pdf"
     _make_pdf(src_path)
@@ -215,6 +223,7 @@ def test_crop_bad_geometry_raises(tmp_path):
         doc.close()
 
 
+@pytest.mark.unit
 def test_crop_bad_page_raises(tmp_path):
     src_path = tmp_path / "src.pdf"
     _make_pdf(src_path)
@@ -228,11 +237,13 @@ def test_crop_bad_page_raises(tmp_path):
         doc.close()
 
 
+@pytest.mark.unit
 def test_open_pdf_missing_raises(tmp_path):
     with pytest.raises(PdfCropError, match="open"):
         open_pdf(tmp_path / "нет_такого.pdf")
 
 
+@pytest.mark.integration
 def test_resolve_version_pdf_prefers_work_copy(tmp_path):
     (tmp_path / "02_work").mkdir(parents=True)
     (tmp_path / "01_input").mkdir(parents=True)
@@ -241,6 +252,7 @@ def test_resolve_version_pdf_prefers_work_copy(tmp_path):
     assert resolve_version_pdf(tmp_path) == tmp_path / "02_work" / "document.pdf"
 
 
+@pytest.mark.integration
 def test_resolve_version_pdf_single_input(tmp_path):
     (tmp_path / "01_input").mkdir(parents=True)
     (tmp_path / "01_input" / "a.pdf").write_bytes(b"%PDF-1.7 a")
@@ -250,6 +262,7 @@ def test_resolve_version_pdf_single_input(tmp_path):
     assert resolve_version_pdf(tmp_path) == tmp_path / "01_input" / "a.pdf"
 
 
+@pytest.mark.integration
 def test_resolve_version_pdf_ambiguous_or_missing(tmp_path):
     assert resolve_version_pdf(tmp_path) is None
     (tmp_path / "01_input").mkdir(parents=True)

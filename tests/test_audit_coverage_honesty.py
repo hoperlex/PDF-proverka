@@ -9,6 +9,12 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 _MOD = Path(__file__).resolve().parent.parent / "scripts" / "audit_coverage_honesty.py"
 _spec = importlib.util.spec_from_file_location("audit_coverage_honesty", _MOD)
 ach = importlib.util.module_from_spec(_spec)

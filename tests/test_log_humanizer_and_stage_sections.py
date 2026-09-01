@@ -23,6 +23,10 @@ from backend.app.services.common.log_humanizer import (
     split_known_prefix,
 )
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 # ─── 1. Гуманизатор ─────────────────────────────────────────────────
 

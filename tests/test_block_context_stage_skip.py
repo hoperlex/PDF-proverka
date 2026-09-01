@@ -25,6 +25,10 @@ from backend.app.pipeline.stages.gemma_enrichment.gemma_enrichment_contract impo
     STAGE02_BLOCKS_DIRNAME,
 )
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write_index(output_dir: Path, block_ids: list[str]) -> Path:
     blocks_dir = output_dir / STAGE02_BLOCKS_DIRNAME

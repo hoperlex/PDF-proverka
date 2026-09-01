@@ -50,6 +50,9 @@ from ci_redaction import (  # noqa: E402
     summarize_argv,
 )
 
+# Primary lane §5: network — поднимает настоящий uvicorn на свободном порту.
+pytestmark = pytest.mark.network
+
 SENTINEL = "SHORT_PRIVATE_SENTINEL"
 OPAQUE_SENTINEL = "q7z4m2n8p5r3t6v9"
 

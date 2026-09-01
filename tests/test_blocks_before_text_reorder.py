@@ -49,6 +49,7 @@ def _sample_02():
     }
 
 
+@pytest.mark.unit
 def test_compact_view_filters_clean_blocks_and_trims():
     view = build_compact_view(_sample_02())
     assert view["meta"]["total_blocks"] == 3
@@ -64,6 +65,7 @@ def test_compact_view_filters_clean_blocks_and_trims():
     assert f["highlight_regions"]
 
 
+@pytest.mark.unit
 def test_compact_view_findings_budget():
     many = {"block_analyses": [
         {"block_id": f"B{i}", "page": i, "sheet": None, "coverage_status": "ok",
@@ -77,6 +79,7 @@ def test_compact_view_findings_budget():
     assert view["meta"]["findings_truncated"] is True
 
 
+@pytest.mark.integration
 def test_write_compact_roundtrip(tmp_path):
     (tmp_path / "01_blocks_analysis.json").write_text(
         json.dumps(_sample_02(), ensure_ascii=False), encoding="utf-8")
@@ -86,12 +89,14 @@ def test_write_compact_roundtrip(tmp_path):
     assert data["stage"] == "01_blocks_for_text"
 
 
+@pytest.mark.unit
 def test_write_compact_missing_source(tmp_path):
     assert write_blocks_for_text_compact(tmp_path) is None
 
 
 # ─── Схемы (публичный контракт) ──────────────────────────────────────────────
 
+@pytest.mark.unit
 @pytest.mark.parametrize("base", ["backend/app/schemas"])
 def test_text_analysis_schema_has_new_field(base):
     d = json.loads((REPO / base / "text_analysis.json").read_text(encoding="utf-8"))
@@ -101,6 +106,7 @@ def test_text_analysis_schema_has_new_field(base):
     assert "items_verified_from_blocks" not in d.get("required", [])
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("base", ["backend/app/schemas"])
 def test_block_batch_schema_drops_legacy_field(base):
     d = json.loads((REPO / base / "block_batch.json").read_text(encoding="utf-8"))
@@ -109,6 +115,7 @@ def test_block_batch_schema_drops_legacy_field(base):
 
 # ─── Порядок этапов флаг-зависим ─────────────────────────────────────────────
 
+@pytest.mark.unit
 def test_stage_order_flag(monkeypatch):
     from backend.app.services.common import project_service as ps
     from backend.app.core import config as cfg
@@ -123,6 +130,7 @@ def test_stage_order_flag(monkeypatch):
     assert keys_on.index("block_retry") < keys_on.index("text_analysis")
 
 
+@pytest.mark.unit
 def test_audit_logger_cascade_order_flag(monkeypatch):
     from backend.app.services.common import audit_logger as al
     from backend.app.core import config as cfg
@@ -133,6 +141,7 @@ def test_audit_logger_cascade_order_flag(monkeypatch):
     assert keys.index("block_retry") < keys.index("text_analysis")
 
 
+@pytest.mark.unit
 def test_downstream_dependency_text_flag(monkeypatch):
     from backend.app.services.common import project_service as ps
     from backend.app.core import config as cfg
@@ -149,6 +158,7 @@ def test_downstream_dependency_text_flag(monkeypatch):
 
 # ─── Подстановка {BLOCKS_ANALYSIS_PATH} ──────────────────────────────────────
 
+@pytest.mark.unit
 def test_text_task_substitutes_blocks_path():
     from backend.app.pipeline.stages.prepare.task_builder import build_text_analysis_prompt
     prompt = build_text_analysis_prompt(

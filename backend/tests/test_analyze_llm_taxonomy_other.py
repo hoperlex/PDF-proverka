@@ -93,6 +93,10 @@ def _make_benchmark_dir(tmp_path: Path, suffix: str = "") -> Path:
 # ─── Tests: case selection ────────────────────────────────────────────────────
 
 class TestSelectOtherCases:
+    # Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+    # память».
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_script()
 
@@ -140,6 +144,8 @@ class TestSelectOtherCases:
 # ─── Tests: classification ────────────────────────────────────────────────────
 
 class TestClassifyCase:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_script()
 
@@ -246,6 +252,8 @@ class TestClassifyCase:
 # ─── Tests: analyze_other_cases ──────────────────────────────────────────────
 
 class TestAnalyzeOtherCases:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_script()
 
@@ -360,6 +368,8 @@ class TestAnalyzeOtherCases:
 # ─── Tests: output files ──────────────────────────────────────────────────────
 
 class TestOutputFiles:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_script()
 
@@ -438,6 +448,8 @@ class TestOutputFiles:
 # ─── Tests: markdown content ──────────────────────────────────────────────────
 
 class TestMarkdownContent:
+    pytestmark = pytest.mark.integration
+
     def setup_method(self):
         self.mod = _load_script()
 
@@ -575,6 +587,7 @@ class TestCLI:
         (bdir / "critic_v2_llm_taxonomy_decisions.json").write_text(json.dumps(tax))
         (bdir / "human_benchmark_summary.json").write_text(json.dumps({}))
 
+    @pytest.mark.network
     def test_cli_basic_run(self, tmp_path):
         bdir = tmp_path / "bench"
         self._write_minimal_benchmark(bdir)
@@ -589,6 +602,7 @@ class TestCLI:
         assert (out / "llm_taxonomy_other_analysis.json").exists()
         assert (out / "llm_taxonomy_other_analysis.md").exists()
 
+    @pytest.mark.network
     def test_cli_with_export_csv(self, tmp_path):
         bdir = tmp_path / "bench"
         self._write_minimal_benchmark(bdir)
@@ -603,6 +617,7 @@ class TestCLI:
         assert result.returncode == 0, f"CLI failed: {result.stderr}"
         assert (out / "llm_taxonomy_other_samples.csv").exists()
 
+    @pytest.mark.network
     def test_cli_missing_dir_exits_1(self, tmp_path):
         result = subprocess.run(
             [sys.executable, str(SCRIPT),
@@ -612,6 +627,7 @@ class TestCLI:
         )
         assert result.returncode == 1
 
+    @pytest.mark.network
     def test_cli_json_structure(self, tmp_path):
         bdir = tmp_path / "bench"
         self._write_minimal_benchmark(bdir)
@@ -628,6 +644,7 @@ class TestCLI:
         assert "suitability_summary" in data
         assert "llm_can_handle" in data["suitability_summary"]
 
+    @pytest.mark.network
     def test_cli_multiple_dirs(self, tmp_path):
         bdir1 = tmp_path / "bench1"
         bdir2 = tmp_path / "bench2"
@@ -647,6 +664,7 @@ class TestCLI:
         assert data["meta"]["total_other_cases"] == 4
         assert len(data["meta"]["source_dirs"]) == 2
 
+    @pytest.mark.integration
     def test_production_not_modified(self, tmp_path):
         bdir = tmp_path / "bench"
         self._write_minimal_benchmark(bdir)

@@ -11,6 +11,9 @@ import pytest
 
 from backend.app.services.findings import verdict_preservation as vp
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def _finding(fid: str, problem: str, sheet: str = "Лист 3", solution: str = "",
              category: str = "cable", severity: str = "КРИТИЧЕСКОЕ") -> dict:

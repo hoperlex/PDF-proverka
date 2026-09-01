@@ -33,6 +33,9 @@ from backend.app.services.audit_routing.plan import (
     RoutingStage,
 )
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 CODEX_ID = "codex/gpt-5.4"
 
 #: Флаги боевого центра на момент 11I (снято с `.env` инвентаризацией).

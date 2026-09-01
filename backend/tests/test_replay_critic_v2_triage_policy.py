@@ -95,6 +95,7 @@ def _make_llm_decision(
 
 
 class TestLoadBenchmarkRecords:
+    @pytest.mark.integration
     def test_loads_list(self, tmp_path: Path):
         records = [_make_record("F-001"), _make_record("F-002")]
         p = tmp_path / "human_benchmark_records.json"
@@ -102,10 +103,12 @@ class TestLoadBenchmarkRecords:
         loaded = _load_benchmark_records(tmp_path)
         assert len(loaded) == 2
 
+    @pytest.mark.unit
     def test_missing_file_returns_empty(self, tmp_path: Path):
         loaded = _load_benchmark_records(tmp_path)
         assert loaded == []
 
+    @pytest.mark.integration
     def test_loads_wrapped_dict(self, tmp_path: Path):
         records = [_make_record("F-001")]
         p = tmp_path / "human_benchmark_records.json"
@@ -115,6 +118,7 @@ class TestLoadBenchmarkRecords:
 
 
 class TestLoadLLMDecisions:
+    @pytest.mark.integration
     def test_loads_list(self, tmp_path: Path):
         decs = [_make_llm_decision("F-001"), _make_llm_decision("F-002")]
         p = tmp_path / "critic_v2_llm_taxonomy_decisions.json"
@@ -123,12 +127,17 @@ class TestLoadLLMDecisions:
         assert "F-001" in loaded
         assert "F-002" in loaded
 
+    @pytest.mark.unit
     def test_missing_file_returns_empty(self, tmp_path: Path):
         loaded = _load_llm_decisions(tmp_path)
         assert loaded == {}
 
 
 class TestRecordToQualityDecision:
+    # Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни
+    # сокетов.
+    pytestmark = pytest.mark.unit
+
     def test_basic_record(self):
         rec = _make_record("F-001", critic_decision="accept", critic_score=8, ev=EVIDENCE_VALID)
         det = _record_to_quality_decision(rec)
@@ -147,6 +156,8 @@ class TestRecordToQualityDecision:
 
 
 class TestLLMDecProxy:
+    pytestmark = pytest.mark.unit
+
     def test_proxy_attributes(self):
         d = _make_llm_decision(
             fid="F-001",
@@ -173,6 +184,8 @@ class TestLLMDecProxy:
 
 
 class TestReplayTriageOnRecords:
+    pytestmark = pytest.mark.unit
+
     def test_no_llm_called(self):
         """Verify replay never calls LLM (all providers would raise if called)."""
         records = [
@@ -218,6 +231,8 @@ class TestReplayTriageOnRecords:
 
 
 class TestComputeSectionBreakdown:
+    pytestmark = pytest.mark.unit
+
     def test_breakdown_by_section(self):
         records = [
             _make_record("F-001", section="AR"),
@@ -246,6 +261,8 @@ class TestComputeSectionBreakdown:
 
 
 class TestBuildTriageArtifacts:
+    pytestmark = pytest.mark.unit
+
     def test_all_artifact_keys_present(self):
         records = [_make_record("F-001", "accept", 8, EVIDENCE_VALID, "accepted")]
         triage, metrics = replay_triage_on_records(records, {})
@@ -263,6 +280,7 @@ class TestBuildTriageArtifacts:
 
 
 class TestReplayDoesNotModifyProduction:
+    @pytest.mark.network
     def test_no_write_to_project_dirs(self, tmp_path: Path):
         """Replay should only write to output_dir, not to any project directory."""
         import subprocess
@@ -297,6 +315,7 @@ class TestReplayDoesNotModifyProduction:
         # benchmark dir should not have triage files written to it
         assert not (bench_dir / "critic_v2_triage.json").exists()
 
+    @pytest.mark.integration
     def test_production_findings_not_modified(self, tmp_path: Path):
         """Verify replay never modifies 03_findings.json in project dirs."""
         project_dir = tmp_path / "projects" / "test_project"
@@ -325,6 +344,8 @@ class TestReplayDoesNotModifyProduction:
 
 class TestReplayProfiles:
     """Tests for profile parameter in replay functions."""
+    pytestmark = pytest.mark.unit
+
 
     def test_profile_parameter_accepted(self):
         """replay_triage_on_records accepts profile parameter."""
@@ -370,6 +391,7 @@ from backend.app.pipeline.stages.findings_review.critic_v2.triage import (  # no
 from backend.scripts.replay_critic_v2_triage_policy import ALL_PROFILES as _ALL  # noqa: E402
 
 
+@pytest.mark.unit
 def test_replay_all_profiles_includes_round1():
     """ALL_PROFILES must now include assisted_round1 so --profile all picks it up."""
     assert PROFILE_ASSISTED_ROUND1 in _ALL
@@ -383,6 +405,7 @@ def _with_text(rec: dict, *, title: str = "", description: str = "") -> dict:
     return rec
 
 
+@pytest.mark.unit
 def test_assisted_round1_routes_rd_pz_finding():
     # severity=РЕКОМЕНДАТЕЛЬНОЕ: not protected by strong-keep guardrail,
     # so rule C is allowed to downgrade.
@@ -400,6 +423,7 @@ def test_assisted_round1_routes_rd_pz_finding():
     assert triage[0].human_queue == "suggested_reject"
 
 
+@pytest.mark.unit
 def test_assisted_round1_never_emits_hidden():
     """Even on OCR + already-covered text, the round1 path must not emit
     hidden_by_critic."""
@@ -419,6 +443,7 @@ def test_assisted_round1_never_emits_hidden():
     assert metrics.hidden_by_critic_count == 0
 
 
+@pytest.mark.unit
 def test_assisted_round1_keeps_clean_findings_in_primary():
     """A clean finding without OCR / RD-PZ / already-covered markers must
     stay where conservative routed it."""

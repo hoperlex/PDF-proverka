@@ -29,6 +29,10 @@ from backend.app.pipeline.stages.block_grounding.md_mirror_reconcile import (
     reconcile_block,
 )
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 BLK_TEXT = "blk_" + "a" * 32
 BLK_IMAGE = "blk_" + "b" * 32
 

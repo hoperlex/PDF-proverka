@@ -15,6 +15,10 @@ from backend.app.main import app
 from backend.app.services.storage.storage_write_facade import V2Target
 from backend.app.services.storage.v2_primary_wiring import backup_version_before_destructive
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 _WMODE = "AUDIT_PROJECTS_V2_WRITE_MODE"
 _V2DIR = "AUDIT_PROJECTS_V2_DIR"
 

@@ -45,6 +45,9 @@ from backend.app.models.audit import (  # noqa: E402
     JobStatus,
 )
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 _OLD_TS = "2000-01-01T00:00:00"  # heartbeat сильно протух → кандидат в зомби
 
 

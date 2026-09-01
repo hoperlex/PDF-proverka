@@ -9,6 +9,7 @@ from backend.app.api.routers import findings as findings_router
 from backend.app.services.findings import findings_service
 
 
+@pytest.mark.integration
 def test_service_reads_textlayer_shadow_from_version_output(tmp_path, monkeypatch):
     payload = {
         "mode": "shadow",
@@ -28,6 +29,7 @@ def test_service_reads_textlayer_shadow_from_version_output(tmp_path, monkeypatc
     assert findings_service.get_textlayer_highlights_shadow("project", version_id="v2") == payload
 
 
+@pytest.mark.unit
 def test_service_returns_none_when_textlayer_shadow_is_absent(tmp_path, monkeypatch):
     monkeypatch.setattr(findings_service, "_get_version_output_dir", lambda *_args, **_kwargs: tmp_path)
     monkeypatch.setattr(
@@ -39,6 +41,7 @@ def test_service_returns_none_when_textlayer_shadow_is_absent(tmp_path, monkeypa
     assert findings_service.get_textlayer_highlights_shadow("project") is None
 
 
+@pytest.mark.integration
 def test_service_reads_migrated_v1_shadow_from_its_legacy_folder(tmp_path, monkeypatch):
     version_output = tmp_path / "v2-output"
     version_output.mkdir()
@@ -65,6 +68,7 @@ def test_service_reads_migrated_v1_shadow_from_its_legacy_folder(tmp_path, monke
     assert findings_service.get_textlayer_highlights_shadow("project", version_id="v001") == payload
 
 
+@pytest.mark.integration
 def test_router_exposes_textlayer_shadow_without_writing(monkeypatch):
     payload = {"mode": "shadow", "records": []}
     monkeypatch.setattr(findings_router, "_validate_version_id", lambda *_args, **_kwargs: None)
@@ -82,6 +86,7 @@ def test_router_exposes_textlayer_shadow_without_writing(monkeypatch):
     assert response.json() == payload
 
 
+@pytest.mark.unit
 def test_router_returns_404_when_shadow_is_absent(monkeypatch):
     monkeypatch.setattr(findings_router, "_validate_version_id", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(

@@ -31,6 +31,9 @@ from backend.app.services.audit_routing.plan import RoutingPlan
 
 from tests.test_audit_routing_plan import PROD_FLAGS, build_plan
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 CODEX_ID = "codex/gpt-5.4"
 
 

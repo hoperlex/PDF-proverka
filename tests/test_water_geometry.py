@@ -40,6 +40,7 @@ def _render(graph):return render_legend_markdown(graph) if _is_legend(graph) els
 def graphs():return {case["block_id"]:json.loads((OUT/f"{case['block_id']}.structure.json").read_text()) for case in cases()}
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 @pytest.mark.parametrize("case",cases(),ids=lambda case:case["block_id"])
 def test_vk_corpus_has_pdf_and_structured_description(case,graphs):
@@ -53,12 +54,14 @@ def test_vk_corpus_has_pdf_and_structured_description(case,graphs):
     assert graph["profile_id"] not in description
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_all_eleven_vk_families_are_present(graphs):
     assert len(graphs)==168
     assert {graph["profile_id"] for graph in graphs.values()}-{PROFILE_LEGEND}==set(ALL_WATER_PROFILES)
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_vk_references_are_integral(graphs):
     for graph in graphs.values():
@@ -73,6 +76,7 @@ def test_vk_references_are_integral(graphs):
             if edge.get("network_id"):assert edge["network_id"] in network_ids
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_vk_human_output_hides_internal_codes_and_states(graphs):
     for graph in graphs.values():
@@ -87,6 +91,7 @@ def test_vk_human_output_hides_internal_codes_and_states(graphs):
         assert not re.search(r"\b(?:route|network|node|circuit|system)-\d+\b",description)
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_vk_descriptions_state_evidence_depth(graphs):
     allowed={"engineering_graph","semantic_hierarchy","physical_hierarchy","geometry_inventory",
@@ -100,6 +105,7 @@ def test_vk_descriptions_state_evidence_depth(graphs):
         text=render_water_markdown(graph);assert "Уровень описания" in text and "Инженерное дерево" in text
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_vk_semantic_coverage_has_no_known_fact_losses():
     report=json.loads((VK/"VK_SEMANTIC_COVERAGE.json").read_text())
@@ -109,6 +115,7 @@ def test_vk_semantic_coverage_has_no_known_fact_losses():
     assert report["blocks_without_pdf_text_layer"]==27
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_vk_secondary_facts_are_preserved_without_fake_coordinates(graphs):
     graph=graphs["7JJW-ATHW-AYM"];facts=graph["secondary_facts"]["facts"]
@@ -119,6 +126,7 @@ def test_vk_secondary_facts_are_preserved_without_fake_coordinates(graphs):
     assert evaluate_water_gate(graph)["complete"] is False
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_vk_document_codes_and_slopes_do_not_become_system_elevations(graphs):
     graph=graphs["6VW4-PCVA-TCN"]
@@ -144,6 +152,7 @@ def _polygon(page,block):
     return value
 
 
+@pytest.mark.unit
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_vk_graph_builds_from_original_pdf_polygon():
     case,page,block=_source_case("ACNM-K9RG-GAW")
@@ -153,6 +162,7 @@ def test_vk_graph_builds_from_original_pdf_polygon():
     assert evaluate_water_gate(graph)["use"] is True
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(not MANIFEST.exists(), reason="внешний корпус ВК не извлечён")
 def test_router_returns_structured_vk(tmp_path):
     case,page,block=_source_case("ACNM-K9RG-GAW");output=tmp_path/"_output";output.mkdir()

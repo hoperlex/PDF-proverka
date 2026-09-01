@@ -8,6 +8,11 @@ from backend.app.services.section_optimization_service import (
     parse_specification_markdown,
 )
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 SPEC_MD = """
 ## СТРАНИЦА 1

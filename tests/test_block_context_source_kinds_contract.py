@@ -14,6 +14,11 @@ from __future__ import annotations
 import pathlib
 import re
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ROUTER = ROOT / "backend/app/pipeline/stages/block_grounding/block_source_router.py"
 BUILDER = ROOT / "backend/app/pipeline/stages/block_context/builder.py"

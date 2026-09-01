@@ -15,6 +15,9 @@ import pytest
 
 from backend.app.core.config import APP_DATA_DIR
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 METADATA_DIR: Path = APP_DATA_DIR / "discipline_checklists_metadata"
 
 EXPECTED_DISCIPLINES = {"AR", "EOM", "KJ", "KM", "MULTI", "OV", "SS", "VK"}

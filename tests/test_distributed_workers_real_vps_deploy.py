@@ -38,6 +38,7 @@ REVISION = "git:" + "d" * 40
 # ─── allowlist и denylist ────────────────────────────────────────────────────
 
 
+@pytest.mark.unit
 def test_bundle_includes_everything_the_pipeline_reads_as_a_file():
     """Пути, на которые `config.py` ссылается как на ФАЙЛЫ-скрипты, обязаны ехать.
 
@@ -62,6 +63,7 @@ def test_bundle_includes_everything_the_pipeline_reads_as_a_file():
         assert required in files, f"в бандле нет {required}"
 
 
+@pytest.mark.unit
 def test_bundle_carries_registry_but_not_discipline_profiles():
     """Реестр дисциплин — да, профили — нет.
 
@@ -79,11 +81,13 @@ def test_bundle_carries_registry_but_not_discipline_profiles():
     assert not leaked, f"профили дисциплин просочились в бандл: {leaked[:5]}"
 
 
+@pytest.mark.unit
 def test_bundle_has_no_secrets_or_data_dirs():
     files = deploy.collect_bundle_files(REPO_ROOT)
     assert deploy.audit_bundle_files(files) == []
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "path",
     [
@@ -107,6 +111,7 @@ def test_denylist_rejects_secret_paths(path):
     assert deploy._denied_reason(Path(path)) is not None, f"{path} должен быть запрещён"
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "path",
     [
@@ -122,6 +127,7 @@ def test_denylist_rejects_root_data_dirs(path):
     assert deploy._denied_reason(Path(path)) is not None
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "path",
     [
@@ -142,6 +148,7 @@ def test_denylist_does_not_reject_legitimate_code_packages(path):
     assert deploy._denied_reason(Path(path)) is None, f"{path} запрещён по ошибке"
 
 
+@pytest.mark.unit
 def test_prune_removes_bytecode_and_caches():
     assert deploy._should_prune(Path("backend/app/__pycache__/main.cpython-312.pyc"))
     assert deploy._should_prune(Path("audit_worker/x.pyc"))
@@ -152,6 +159,7 @@ def test_prune_removes_bytecode_and_caches():
 # ─── хэши и манифест ─────────────────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_tree_hash_is_order_independent_and_content_sensitive(tmp_path):
     (tmp_path / "a.txt").write_text("alpha", encoding="utf-8")
     (tmp_path / "b.txt").write_text("beta", encoding="utf-8")
@@ -164,6 +172,7 @@ def test_tree_hash_is_order_independent_and_content_sensitive(tmp_path):
     assert deploy.tree_hash(tmp_path, files) != before
 
 
+@pytest.mark.unit
 def test_manifest_has_every_required_field(tmp_path):
     files = deploy.collect_bundle_files(REPO_ROOT)
     manifest = deploy.build_manifest(REPO_ROOT, files, pipeline_revision=REVISION)
@@ -181,6 +190,7 @@ def test_manifest_has_every_required_field(tmp_path):
     assert "remote_audit_pilot_v1" in manifest["compatible_execution_profiles"]
 
 
+@pytest.mark.unit
 def test_manifest_worker_version_matches_package():
     from audit_worker import PROTOCOL_VERSION, __version__
 
@@ -188,6 +198,7 @@ def test_manifest_worker_version_matches_package():
     assert deploy.protocol_version(REPO_ROOT) == PROTOCOL_VERSION
 
 
+@pytest.mark.unit
 def test_release_name_encodes_tree_hash(tmp_path):
     files = deploy.collect_bundle_files(REPO_ROOT)
     manifest = deploy.build_manifest(
@@ -207,10 +218,12 @@ def built(tmp_path_factory):
     return deploy.build_artifact(REPO_ROOT, out, pipeline_revision=REVISION)
 
 
+@pytest.mark.unit
 def test_artifact_matches_its_manifest(built):
     assert deploy.verify_artifact(built.archive, built.manifest_path) == []
 
 
+@pytest.mark.integration
 def test_artifact_contains_manifest_inside(built):
     with tarfile.open(built.archive, "r:gz") as tar:
         names = tar.getnames()
@@ -220,6 +233,7 @@ def test_artifact_contains_manifest_inside(built):
     assert inside["tree_hash"] == built.manifest["tree_hash"]
 
 
+@pytest.mark.integration
 def test_artifact_has_no_forbidden_entries(built):
     with tarfile.open(built.archive, "r:gz") as tar:
         names = [m.name for m in tar.getmembers() if m.isfile()]
@@ -229,6 +243,7 @@ def test_artifact_has_no_forbidden_entries(built):
         assert deploy._denied_reason(Path(name)) is None, f"в архиве запрещённый путь {name}"
 
 
+@pytest.mark.integration
 def test_verify_detects_tampered_archive(built, tmp_path):
     """Подмена архива обязана ловиться по sha256, а не «выглядеть нормально»."""
     fake = tmp_path / built.archive.name
@@ -237,6 +252,7 @@ def test_verify_detects_tampered_archive(built, tmp_path):
     assert problems and any("sha256" in p for p in problems)
 
 
+@pytest.mark.integration
 def test_verify_detects_manifest_file_list_drift(built, tmp_path):
     manifest = json.loads(built.manifest_path.read_text(encoding="utf-8"))
     manifest["files"] = manifest["files"][:-1]
@@ -246,6 +262,7 @@ def test_verify_detects_manifest_file_list_drift(built, tmp_path):
     assert problems and any("состав расходится" in p for p in problems)
 
 
+@pytest.mark.unit
 def test_build_refuses_when_allowlist_path_is_missing(tmp_path):
     with pytest.raises(SystemExit):
         deploy.collect_bundle_files(tmp_path, include=("audit_worker/",))
@@ -254,6 +271,7 @@ def test_build_refuses_when_allowlist_path_is_missing(tmp_path):
 # ─── удалённая сторона: аргументы, без сети ──────────────────────────────────
 
 
+@pytest.mark.integration
 def test_remote_target_is_built_from_arguments_not_hardcoded():
     remote = deploy.Remote(host="198.51.100.7", user="someone", root="/srv/aw")
     assert remote.target == "someone@198.51.100.7"
@@ -262,6 +280,7 @@ def test_remote_target_is_built_from_arguments_not_hardcoded():
     assert "password" not in source.lower().replace("passwordless", "")
 
 
+@pytest.mark.unit
 def test_remote_commands_quote_the_root(monkeypatch):
     """Корень с пробелом не должен разваливать удалённую команду."""
     captured: list[str] = []
@@ -278,6 +297,7 @@ def test_remote_commands_quote_the_root(monkeypatch):
     assert captured and "'/srv/audit worker'" in captured[0]
 
 
+@pytest.mark.unit
 def test_switch_current_is_atomic():
     """Симлинк переключается через временный + `mv -T`, а не rm+ln."""
     captured: list[str] = []
@@ -296,6 +316,7 @@ def test_switch_current_is_atomic():
     assert "rm -f" not in script.split("ln -sfn")[0], "старый симлинк нельзя удалять заранее"
 
 
+@pytest.mark.unit
 def test_install_release_verifies_sha_before_unpacking():
     captured: list[str] = []
 
@@ -314,6 +335,7 @@ def test_install_release_verifies_sha_before_unpacking():
     )
 
 
+@pytest.mark.unit
 def test_venv_lives_outside_release():
     """venv не внутри релиза: иначе откат означал бы переустановку зависимостей."""
     captured: list[str] = []
@@ -332,6 +354,7 @@ def test_venv_lives_outside_release():
     assert '"$root/app/$rel/venv"' not in script
 
 
+@pytest.mark.unit
 def test_layout_keeps_code_and_data_apart():
     captured: list[str] = []
 
@@ -361,6 +384,7 @@ def smoke():
     return module
 
 
+@pytest.mark.unit
 def test_worker_env_has_no_secrets(smoke):
     body = smoke.worker_env_file(
         root="/srv/aw", central_url="https://example.test",
@@ -371,6 +395,7 @@ def test_worker_env_has_no_secrets(smoke):
         assert forbidden not in lowered, f"в worker.env просочилось «{forbidden}»"
 
 
+@pytest.mark.unit
 def test_worker_env_forbids_real_llm_and_points_at_fakes(smoke):
     body = smoke.worker_env_file(
         root="/srv/aw", central_url="https://example.test",
@@ -381,6 +406,7 @@ def test_worker_env_forbids_real_llm_and_points_at_fakes(smoke):
     assert "AUDIT_WORKER_REAL_AUDIT_MAX_SLOTS=1" in body
 
 
+@pytest.mark.unit
 def test_worker_env_sets_locale_and_pythonpath(smoke):
     """Две поправки, каждая из которых один раз уже стоила прогона."""
     body = smoke.worker_env_file(
@@ -394,6 +420,7 @@ def test_worker_env_sets_locale_and_pythonpath(smoke):
     assert "PYTHONPATH=/srv/aw/current" in body
 
 
+@pytest.mark.unit
 def test_worker_env_carries_revision_verbatim(smoke):
     body = smoke.worker_env_file(
         root="/srv/aw", central_url="https://example.test",
@@ -415,6 +442,7 @@ def _directives(unit: str) -> list[str]:
     ]
 
 
+@pytest.mark.unit
 def test_units_are_independent_of_each_other(smoke):
     """Ни одной директивы, связывающей агента и исполнителя (инвариант I-02)."""
     for kind in ("agent", "executor"):
@@ -424,6 +452,7 @@ def test_units_are_independent_of_each_other(smoke):
             assert not offenders, f"{kind}: связь {forbidden} запрещена ({offenders})"
 
 
+@pytest.mark.unit
 def test_units_use_kill_mode_process(smoke):
     """KillMode=process: рестарт юнита не вправе убивать идущий аудит."""
     for kind in ("agent", "executor"):
@@ -431,6 +460,7 @@ def test_units_use_kill_mode_process(smoke):
         assert "KillMode=process" in unit
 
 
+@pytest.mark.unit
 def test_units_read_environment_from_file_not_inline(smoke):
     """Секретов в юните нет; всё окружение — из файла 0600."""
     for kind in ("agent", "executor"):
@@ -440,6 +470,7 @@ def test_units_read_environment_from_file_not_inline(smoke):
         assert "bootstrap" not in unit.lower()
 
 
+@pytest.mark.unit
 def test_agent_unit_waits_for_network_executor_does_not(smoke):
     agent = smoke.systemd_unit(kind="agent", root="/srv/aw")
     executor = smoke.systemd_unit(kind="executor", root="/srv/aw")
@@ -449,6 +480,7 @@ def test_agent_unit_waits_for_network_executor_does_not(smoke):
     )
 
 
+@pytest.mark.unit
 def test_units_point_at_venv_python_and_current_release(smoke):
     for kind in ("agent", "executor"):
         unit = smoke.systemd_unit(kind=kind, root="/srv/aw")
@@ -458,6 +490,7 @@ def test_units_point_at_venv_python_and_current_release(smoke):
 # ─── smoke-скрипт: безопасность по умолчанию ─────────────────────────────────
 
 
+@pytest.mark.unit
 def test_smoke_never_offers_a_real_llm_switch(smoke):
     """Ключа включения настоящих моделей нет в РАЗБОРЕ АРГУМЕНТОВ.
 
@@ -473,12 +506,14 @@ def test_smoke_never_offers_a_real_llm_switch(smoke):
     assert not [o for o in options if "real" in o and "llm" in o]
 
 
+@pytest.mark.unit
 def test_smoke_refuses_remote_actions_without_the_flag(smoke):
     worker = smoke.Worker(host="h", user="u", root="/srv/aw", allow_actions=False)
     with pytest.raises(SystemExit):
         worker.act("echo nope")
 
 
+@pytest.mark.unit
 def test_smoke_host_is_a_required_argument(smoke):
     parser = smoke.build_parser()
     with pytest.raises(SystemExit):
@@ -488,12 +523,14 @@ def test_smoke_host_is_a_required_argument(smoke):
     assert args.mode == "test"
 
 
+@pytest.mark.unit
 def test_smoke_uses_non_eom_discipline(smoke):
     assert smoke.DISCIPLINE_SECTION != "EOM"
     assert smoke.DISCIPLINE_SECTION == "VK"
     assert smoke.DISCIPLINE_FOLDER == "ВК"
 
 
+@pytest.mark.unit
 def test_first_json_object_survives_trailing_human_text(smoke):
     """Подкоманды воркера печатают JSON, а следом — подсказку оператору."""
     text = '{\n "worker_id": "wrk_1",\n "token_stored": false\n}\nДальше: одобрите воркер.\n'

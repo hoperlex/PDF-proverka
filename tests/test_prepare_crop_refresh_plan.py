@@ -15,6 +15,12 @@ from backend.app.pipeline.stages.gemma_enrichment.gemma_enrichment_contract impo
 )
 from backend.app.pipeline.stages.prepare import prepare_service
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write_index(blocks_dir: Path, block_ids: list[str], *, policy: dict) -> None:
     blocks_dir.mkdir(parents=True, exist_ok=True)

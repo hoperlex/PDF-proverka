@@ -27,6 +27,10 @@ from audit_worker import agent as agent_module  # noqa: E402
 from audit_worker.agent import DELIVERY_ACKNOWLEDGED, delivery_is_terminal  # noqa: E402
 from audit_worker.local_store import LocalJobStore  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 JOB = "f4f2f214-3ab4-431b-894a-de75813f0326"
 ATTEMPT = "dd149bff-09b3-466f-862b-ebbb49269679"
 

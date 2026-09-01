@@ -19,6 +19,9 @@ if str(_ROOT) not in sys.path:
 
 from backend.app.services.common import discipline_service as ds  # noqa: E402
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture(autouse=True)
 def fresh_registry():

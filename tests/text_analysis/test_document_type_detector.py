@@ -24,6 +24,9 @@ from backend.app.services.text_analysis.document_type_detector import (
     detect_document_type,
 )
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 # ---------------------------------------------------------------------------
 # Module-level invariants.

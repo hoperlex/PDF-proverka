@@ -7,6 +7,9 @@ import pytest
 from backend.app.services import section_optimization_pipeline_service as pipeline
 from backend.app.services import section_optimization_replication_service as replication
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture(autouse=True)
 def isolated_storage(monkeypatch, tmp_path):

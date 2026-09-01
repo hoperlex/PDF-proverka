@@ -34,6 +34,10 @@ from backend.app.services.common.project_service import (
     ProjectNotResolvedError,
 )
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def projects_dir(tmp_path, monkeypatch):

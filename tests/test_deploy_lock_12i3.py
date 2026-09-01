@@ -31,6 +31,10 @@ from scripts.deploy_lock import (  # noqa: E402
     read_holder,
 )
 
+# Primary lane §5: network — конкуренцию за замок проверяют настоящие дочерние процессы;
+# kill — только уборка, восстановления после него не проверяется.
+pytestmark = pytest.mark.network
+
 
 def test_second_deploy_of_same_component_fails_immediately(tmp_path):
     with deploy_lock(COMPONENT_CENTER, operation="deploy", release="a", lock_dir=tmp_path):

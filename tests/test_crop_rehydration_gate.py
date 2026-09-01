@@ -16,6 +16,10 @@ import pytest
 
 from backend.app.pipeline.stages.block_context.contract import crops_materialized
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _make_blocks_dir(tmp_path, *, with_pngs=True, n=3):
     bd = tmp_path / "blocks_stage02_100"

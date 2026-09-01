@@ -25,6 +25,10 @@ from backend.app.services.findings import decision_carryover_service as dc
 from backend.app.services.knowledge_base import knowledge_base_service as kb
 from backend.app.models.expert_review import KnowledgeBaseEntry
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 # ─── Fixtures ────────────────────────────────────────────────────────────
 

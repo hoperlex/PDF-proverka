@@ -48,6 +48,11 @@ from backend.app.pipeline.stages.crop_blocks.block_markdown import (
     extract_chandra_block_description,
 )
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 SAMPLE = """\
 ## СТРАНИЦА 1

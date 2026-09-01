@@ -14,6 +14,10 @@ from backend.app.services.storage import storage_write_facade as swf
 from backend.app.services.storage.storage_write_facade import StorageWriteFacade, V2Target
 from backend.app.services.storage import v2_primary_prototype as proto
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 _WMODE = "AUDIT_PROJECTS_V2_WRITE_MODE"
 
 

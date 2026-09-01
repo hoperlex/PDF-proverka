@@ -12,6 +12,9 @@ from backend.app.services.text_analysis.object_signals import (
     signal_rules_by_name,
 )
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 # ---------------------------------------------------------------------------
 # Detector — null / empty / non-str safety.

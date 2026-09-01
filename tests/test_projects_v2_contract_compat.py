@@ -33,6 +33,10 @@ import backend.app.services.common.object_service as object_service
 import backend.app.services.storage.read_canary as RC
 from backend.app.services.storage.projects_v2_adapter import ProjectsV2Adapter
 
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 client = TestClient(app, raise_server_exceptions=False)
 
 OBJID = "testobj0001"

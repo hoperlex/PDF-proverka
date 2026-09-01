@@ -100,6 +100,10 @@ def _finding(
 # ─── Tests: neighbor_blocks ───────────────────────────────────────────────────
 
 class TestNeighborBlocks:
+    # Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни
+    # сокетов.
+    pytestmark = pytest.mark.unit
+
     def test_returns_blocks_near_evidence(self):
         blocks = [
             _block("B1", "First block"),
@@ -165,6 +169,8 @@ class TestNeighborBlocks:
 # ─── Tests: common_notes ─────────────────────────────────────────────────────
 
 class TestCommonNotes:
+    pytestmark = pytest.mark.unit
+
     def _long_notes_text(self, prefix: str = "") -> str:
         return f"{prefix}Общие указания: " + ("Применяемые нормативные требования. " * 20)
 
@@ -216,6 +222,8 @@ class TestCommonNotes:
 # ─── Tests: table_context ─────────────────────────────────────────────────────
 
 class TestTableContext:
+    pytestmark = pytest.mark.unit
+
     def _table_block(self, bid: str, page: int = 1) -> dict:
         text = (
             "Марка\t\tДиаметр\t\tКласс\t\tДлина\n"
@@ -269,6 +277,8 @@ class TestTableContext:
 # ─── Tests: cross_references ─────────────────────────────────────────────────
 
 class TestCrossReferences:
+    pytestmark = pytest.mark.unit
+
     def test_finds_sheet_reference(self):
         block = _block("B1", "Армирование выполнить согласно схемам. см. лист 3.", page=2)
         graph = _graph(
@@ -323,6 +333,8 @@ class TestCrossReferences:
 # ─── Tests: related_findings ─────────────────────────────────────────────────
 
 class TestRelatedFindings:
+    pytestmark = pytest.mark.unit
+
     def test_finds_same_category_finding(self):
         f1 = _finding("F-001", problem="Диаметр арматуры не соответствует", category="rebar")
         f2 = _finding("F-002", problem="Диаметр арматуры в спецификации неверный", category="rebar")
@@ -380,6 +392,7 @@ class TestContextCollector:
             _page(3, [content3]),
         )
 
+    @pytest.mark.unit
     def test_collect_one_returns_package(self):
         collector = ContextCollector(self._make_graph())
         finding = _finding("F-001", page=2, evidence=[{"block_id": "C1", "page": 2}])
@@ -387,6 +400,7 @@ class TestContextCollector:
         assert isinstance(pkg, FindingContextPackage)
         assert pkg.finding_id == "F-001"
 
+    @pytest.mark.unit
     def test_collect_one_finds_common_notes(self):
         collector = ContextCollector(self._make_graph())
         finding = _finding("F-001", page=2, evidence=[{"block_id": "C1", "page": 2}])
@@ -394,6 +408,7 @@ class TestContextCollector:
         assert len(pkg.common_notes) >= 1
         assert any(b.block_id == "GN1" for b in pkg.common_notes)
 
+    @pytest.mark.unit
     def test_collect_one_finds_neighbor_blocks(self):
         collector = ContextCollector(self._make_graph())
         finding = _finding("F-001", page=2, evidence=[{"block_id": "C1", "page": 2}])
@@ -402,6 +417,7 @@ class TestContextCollector:
         neighbor_ids = {b.block_id for b in pkg.neighbor_blocks}
         assert "C2" in neighbor_ids
 
+    @pytest.mark.unit
     def test_empty_collector_safe(self):
         collector = ContextCollector.empty()
         finding = _finding("F-001")
@@ -410,6 +426,7 @@ class TestContextCollector:
         assert pkg.collected_context_summary == "no_context"
         assert not pkg.has_useful_context
 
+    @pytest.mark.unit
     def test_collect_all_returns_stats(self):
         collector = ContextCollector(self._make_graph())
         findings = [
@@ -421,6 +438,7 @@ class TestContextCollector:
         assert isinstance(stats, ContextCollectionStats)
         assert stats.total_findings == 2
 
+    @pytest.mark.unit
     def test_stats_count_common_notes(self):
         collector = ContextCollector(self._make_graph())
         findings = [
@@ -429,12 +447,14 @@ class TestContextCollector:
         _, stats = collector.collect_all(findings)
         assert stats.findings_with_common_notes >= 1
 
+    @pytest.mark.unit
     def test_collect_all_empty_safe(self):
         collector = ContextCollector.empty()
         packages, stats = collector.collect_all([])
         assert packages == []
         assert stats.total_findings == 0
 
+    @pytest.mark.integration
     def test_no_production_mutation(self, tmp_path):
         """Collector reads project artifacts but never writes to them."""
         # Create a minimal project directory with production-like structure
@@ -461,6 +481,8 @@ class TestContextCollector:
 # ─── Tests: FindingContextPackage ────────────────────────────────────────────
 
 class TestFindingContextPackage:
+    pytestmark = pytest.mark.unit
+
     def _make_pkg(self) -> FindingContextPackage:
         pkg = FindingContextPackage(finding_id="F-001")
         pkg.common_notes = [
@@ -517,6 +539,7 @@ class TestFindingContextPackage:
 # ─── Tests: ContextCollector.save_artifact ───────────────────────────────────
 
 class TestSaveArtifact:
+    @pytest.mark.unit
     def test_saves_to_output_dir(self, tmp_path):
         collector = ContextCollector.empty()
         findings = [_finding("F-001")]
@@ -530,6 +553,7 @@ class TestSaveArtifact:
         assert "packages" in data
         assert data["stats"]["total_findings"] == 1
 
+    @pytest.mark.unit
     def test_artifact_json_valid(self, tmp_path):
         collector = ContextCollector.empty()
         packages = [FindingContextPackage("F-001"), FindingContextPackage("F-002")]
@@ -538,6 +562,7 @@ class TestSaveArtifact:
         data = json.loads((tmp_path / "critic_v2_context_packages.json").read_text())
         assert len(data["packages"]) == 2
 
+    @pytest.mark.integration
     def test_does_not_write_to_production_paths(self, tmp_path):
         """Verify artifact is written to scratch dir, not project _output."""
         scratch = tmp_path / "scratch"
@@ -557,6 +582,10 @@ class TestSaveArtifact:
 # ─── Tests: ContextCollector.from_project_dir ────────────────────────────────
 
 class TestFromProjectDir:
+    # Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+    # память».
+    pytestmark = pytest.mark.integration
+
     def test_missing_graph_returns_empty_collector(self, tmp_path):
         """from_project_dir with no document_graph.json doesn't crash."""
         (tmp_path / "_output").mkdir()

@@ -35,6 +35,10 @@ from tests.distributed_workers_helpers import (
     issue_test_registration_token, session_cookie,
 )
 
+# Primary lane §5: network — GatewayServer поднимается в отдельном потоке и клиент ходит
+# к нему по настоящему gRPC-каналу.
+pytestmark = pytest.mark.network
+
 
 BOOTSTRAP = "test-bootstrap-secret-12c-0123456789abcdef"
 

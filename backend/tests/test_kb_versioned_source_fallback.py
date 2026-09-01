@@ -12,6 +12,12 @@ import json
 
 import backend.app.services.knowledge_base.knowledge_base_service as kb
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _make_v2_version(version_dir, findings):
     """Создать v2-версию (02_work делает каталог projects_v2-версией) с findings."""

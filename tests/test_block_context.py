@@ -17,6 +17,9 @@ from backend.app.pipeline.stages.block_context.contract import (
     validate_block_context_summary,
 )
 
+# Primary lane §5: integration — работает в настоящих рабочих потоках.
+pytestmark = pytest.mark.integration
+
 
 def _index(tmp_path, *, with_png=True):
     blocks_dir = tmp_path / "blocks_stage02_100"

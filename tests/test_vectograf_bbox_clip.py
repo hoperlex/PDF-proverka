@@ -14,6 +14,11 @@ from backend.app.pipeline.stages.block_grounding.singleline_graph_geometry impor
     _point_in_polygon,
 )
 
+import pytest
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 PAGE_W, PAGE_H = 1000.0, 1000.0
 
 

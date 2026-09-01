@@ -26,6 +26,10 @@ import pytest  # noqa: E402
 
 from backend.app.pipeline.stages.findings_merge import runner as fm_runner  # noqa: E402
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _make_findings_file(tmpdir: Path, items: list[dict]) -> Path:
     out_dir = tmpdir / "_output"

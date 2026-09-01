@@ -7,6 +7,9 @@ import pytest
 from backend.app.models.usage import LLMResult
 from backend.app.services import section_optimization_agent_service as agent
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def _dossier() -> dict:
     return {

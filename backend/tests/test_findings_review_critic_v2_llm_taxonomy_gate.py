@@ -53,6 +53,9 @@ from backend.app.pipeline.stages.findings_review.critic_v2.llm_gate import (
     select_candidates,
 )
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def _det(

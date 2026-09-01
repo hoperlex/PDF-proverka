@@ -16,6 +16,10 @@ from backend.app.pipeline.stages.findings_merge.ground_highlights_textlayer impo
     extract_anchors,
 )
 
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 
 def _write_fixture(project_dir: Path, finding: dict) -> Path:
     pdf_path = project_dir / "drawing.pdf"

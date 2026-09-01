@@ -67,6 +67,7 @@ def _raw_review(evidence_project: str = "P2", evidence_block: str = "B-SCHEME") 
     }
 
 
+@pytest.mark.unit
 def test_rank_block_candidates_uses_profile_and_page_text():
     catalog = [
         {
@@ -96,6 +97,7 @@ def test_rank_block_candidates_uses_profile_and_page_text():
     assert ranked[0]["retrieval_score"] > ranked[1]["retrieval_score"]
 
 
+@pytest.mark.unit
 def test_validate_graphics_review_rejects_hallucinated_evidence():
     selected = [{
         "role": "target",
@@ -116,6 +118,7 @@ def test_validate_graphics_review_rejects_hallucinated_evidence():
     assert review["resolved_verdict"] == "needs_data"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_graphics_agent_attaches_selected_images(monkeypatch, tmp_path):
     monkeypatch.setenv("SECTION_OPTIMIZATION_GRAPHICS_SOURCE_BLOCKS", "0")
@@ -165,6 +168,7 @@ async def test_graphics_agent_attaches_selected_images(monkeypatch, tmp_path):
     assert meta["model_calls"] == 1
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_graphics_agent_does_not_call_model_without_relevant_target(monkeypatch):
     monkeypatch.setenv("SECTION_OPTIMIZATION_GRAPHICS_SOURCE_BLOCKS", "0")
@@ -190,6 +194,7 @@ async def test_graphics_agent_does_not_call_model_without_relevant_target(monkey
     assert meta["model_calls"] == 0
 
 
+@pytest.mark.unit
 def test_rank_block_candidates_limit_zero_disables_selection(tmp_path):
     """limit=0 обязан отключать отбор, а не молча оплачивать один vision-вызов.
 
@@ -205,6 +210,7 @@ def test_rank_block_candidates_limit_zero_disables_selection(tmp_path):
     assert len(rank_block_candidates(catalog, "схема щита", limit=2)) == 2
 
 
+@pytest.mark.integration
 def test_image_index_matches_what_runner_actually_sends(tmp_path):
     """image_index обязан указывать на тот же блок, что и вложение с этим номером.
 
@@ -241,6 +247,7 @@ def test_image_index_matches_what_runner_actually_sends(tmp_path):
         assert Path(source["image_path"]).resolve() == sent
 
 
+@pytest.mark.unit
 def test_page_context_map_prefers_richest_duplicate_page():
     """При дублирующихся номерах страниц побеждает самая полная запись.
 

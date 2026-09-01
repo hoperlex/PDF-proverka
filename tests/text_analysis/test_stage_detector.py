@@ -28,6 +28,9 @@ from backend.app.services.text_analysis.stage_detector import (
 )
 from backend.app.services.text_analysis.stage_gates import DocumentStage
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 # ---------------------------------------------------------------------------
 # Result envelope.

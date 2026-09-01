@@ -20,6 +20,12 @@ import check_ui_contract_parity as UC  # noqa: E402
 from backend.app.services.storage.projects_v2_adapter import ProjectsV2Adapter  # noqa: E402
 from backend.app.main import app  # noqa: E402
 
+import pytest
+
+# Primary lane §5: integration — поднимает приложение целиком in-process
+# (ASGI/TestClient).
+pytestmark = pytest.mark.integration
+
 OBJF = "213_Mosfilmovskaya_31A_KingSons"
 OBJ_DISPLAY = '213. Мосфильмовская 31А "King&Sons"'
 OID = "0b540226"

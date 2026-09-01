@@ -112,6 +112,7 @@ def _read(tmp_path: Path, payload, *, now=None):
 
 # ─── 1–7. Числа: «использовано» превращается в «осталось» ───────────────────
 
+@pytest.mark.integration
 def test_five_hour_window_parsed(tmp_path):
     now = time.time()
     reading = _read(tmp_path, _config(
@@ -123,6 +124,7 @@ def test_five_hour_window_parsed(tmp_path):
     assert window is not None and window.used_pct == 16.0
 
 
+@pytest.mark.integration
 def test_seven_day_window_parsed(tmp_path):
     now = time.time()
     reading = _read(tmp_path, _config(
@@ -136,6 +138,7 @@ def test_seven_day_window_parsed(tmp_path):
     assert reading.window("seven_day").used_pct == 12.0
 
 
+@pytest.mark.integration
 def test_remaining_is_hundred_minus_utilization(tmp_path):
     now = time.time()
     reading = _read(tmp_path, _config(
@@ -146,6 +149,7 @@ def test_remaining_is_hundred_minus_utilization(tmp_path):
     assert reading.window("seven_day").remaining_pct == 88.0
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("used,expected", [(0, 100.0), (100, 0.0), (100.4, 0.0)])
 def test_boundary_utilization_values(tmp_path, used, expected):
     now = time.time()
@@ -155,6 +159,7 @@ def test_boundary_utilization_values(tmp_path, used, expected):
     assert reading.window("five_hour").remaining_pct == expected
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("bad", [-500, 250, "16", True, None, float("nan")])
 def test_invalid_utilization_rejected(tmp_path, bad):
     now = time.time()
@@ -166,6 +171,7 @@ def test_invalid_utilization_rejected(tmp_path, bad):
     assert reading.windows == ()
 
 
+@pytest.mark.integration
 def test_reset_timestamp_parsed_as_utc(tmp_path):
     # Момент наблюдения задан явно: дата сброса проверяется по календарю, а не
     # по часам машины, на которой идут тесты.
@@ -177,6 +183,7 @@ def test_reset_timestamp_parsed_as_utc(tmp_path):
     assert reading.window("five_hour").reset_at == pytest.approx(1787130600.32886)
 
 
+@pytest.mark.integration
 def test_fetched_at_is_snapshot_time_not_read_time(tmp_path):
     now = time.time()
     fetched = now - 2013
@@ -190,6 +197,7 @@ def test_fetched_at_is_snapshot_time_not_read_time(tmp_path):
 
 # ─── 8–14. Исходы, каждый из которых нормальный ─────────────────────────────
 
+@pytest.mark.integration
 def test_fresh_cache_is_ready_snapshot(tmp_path):
     now = time.time()
     reading = _read(tmp_path, _config(
@@ -205,6 +213,7 @@ def test_fresh_cache_is_ready_snapshot(tmp_path):
     assert snapshot.is_stale(now=now) is False
 
 
+@pytest.mark.integration
 def test_stale_cache_keeps_number_but_marks_state(tmp_path):
     """Протухший снимок — «последнее известное», а не «текущее» и не пустота."""
     from audit_worker.providers.manager import _staleness_applied
@@ -223,6 +232,7 @@ def test_stale_cache_keeps_number_but_marks_state(tmp_path):
     assert applied.reason_code == quota.REASON_LOCAL_CACHE_STALE
 
 
+@pytest.mark.integration
 def test_missing_file(tmp_path):
     reading = clu.read_local_usage(
         config_dir=tmp_path / "nope", home_dir=tmp_path / "nope", now=time.time()
@@ -231,16 +241,19 @@ def test_missing_file(tmp_path):
     assert reading.ok is False
 
 
+@pytest.mark.integration
 def test_missing_cache_key(tmp_path):
     reading = _read(tmp_path, {"oauthAccount": {"accountUuid": "acc-secret-uuid"}})
     assert reading.reason == clu.REASON_MISSING
 
 
+@pytest.mark.integration
 def test_malformed_json(tmp_path):
     reading = _read(tmp_path, "{ это не json ")
     assert reading.reason == clu.REASON_SCHEMA_UNSUPPORTED
 
 
+@pytest.mark.integration
 def test_unexpected_schema(tmp_path):
     now = time.time()
     reading = _read(tmp_path, _config(
@@ -249,12 +262,14 @@ def test_unexpected_schema(tmp_path):
     assert reading.reason == clu.REASON_SCHEMA_UNSUPPORTED
 
 
+@pytest.mark.integration
 def test_snapshot_without_fetched_at_is_not_trusted(tmp_path):
     """Без метки снимка возраст неизвестен — значит и свежесть недоказуема."""
     reading = _read(tmp_path, _config(utilization={"five_hour": _window(16)}))
     assert reading.reason == clu.REASON_SCHEMA_UNSUPPORTED
 
 
+@pytest.mark.integration
 def test_future_fetched_at_rejected(tmp_path):
     now = time.time()
     reading = _read(tmp_path, _config(
@@ -266,6 +281,7 @@ def test_future_fetched_at_rejected(tmp_path):
 
 # ─── 15–17. Граница безопасности ───────────────────────────────────────────
 
+@pytest.mark.integration
 def test_unknown_fields_ignored(tmp_path):
     now = time.time()
     reading = _read(tmp_path, _config(
@@ -280,6 +296,7 @@ def test_unknown_fields_ignored(tmp_path):
     assert {w.window_id for w in reading.windows} == {"five_hour"}
 
 
+@pytest.mark.integration
 def test_no_secret_ever_leaves_the_parser(tmp_path):
     now = time.time()
     reading = _read(tmp_path, _config(
@@ -300,6 +317,7 @@ def test_no_secret_ever_leaves_the_parser(tmp_path):
     assert "owner@example.com" not in blob
 
 
+@pytest.mark.integration
 def test_quota_failure_does_not_touch_provider_availability(tmp_path):
     """Нет кеша — закрыта КВОТА. Установка и вход живут отдельными полями."""
     reading = clu.read_local_usage(config_dir=tmp_path, home_dir=tmp_path, now=time.time())
@@ -337,6 +355,7 @@ def _wire_payload(remaining, reset_at, *, state="ready"):
     }]
 
 
+@pytest.mark.contract
 def test_same_cache_produces_same_wire_digest():
     pytest.importorskip("google.protobuf")
     from contracts.agent_stream.v1.adapters import provider_status_digest
@@ -346,6 +365,7 @@ def test_same_cache_produces_same_wire_digest():
     assert first == second and first != ""
 
 
+@pytest.mark.contract
 def test_changed_quota_changes_wire_digest():
     pytest.importorskip("google.protobuf")
     from contracts.agent_stream.v1.adapters import provider_status_digest
@@ -355,6 +375,7 @@ def test_changed_quota_changes_wire_digest():
     assert before != after
 
 
+@pytest.mark.contract
 def test_wire_carries_local_cache_percentage():
     """Проводной контракт довозит остаток и источник до центра как есть."""
     pytest.importorskip("google.protobuf")
@@ -412,6 +433,7 @@ def _center_snapshot(**overrides):
     return snapshot
 
 
+@pytest.mark.integration
 def test_center_accepts_local_cache_percentage():
     from backend.app.services.distributed_workers import provider_accounts
 
@@ -423,6 +445,7 @@ def test_center_accepts_local_cache_percentage():
     assert len(clean["quota"]["secondary_windows"]) == 1
 
 
+@pytest.mark.integration
 def test_center_drops_unknown_reason_code():
     from backend.app.services.distributed_workers import provider_accounts
 
@@ -432,6 +455,7 @@ def test_center_drops_unknown_reason_code():
     assert clean["quota"]["reason_code"] is None
 
 
+@pytest.mark.integration
 def test_center_never_serializes_secrets():
     from backend.app.services.distributed_workers import provider_accounts
 
@@ -450,6 +474,7 @@ def _ui_quota(state, *, settings=None):
     )
 
 
+@pytest.mark.integration
 def test_ui_exposes_both_windows_ordered_by_constraint():
     from backend.app.services.distributed_workers import provider_accounts
 
@@ -465,6 +490,7 @@ def test_ui_exposes_both_windows_ordered_by_constraint():
     assert view["isEstimated"] is False
 
 
+@pytest.mark.integration
 def test_ui_reports_observation_age_not_read_time():
     from backend.app.services.distributed_workers import provider_accounts
 
@@ -473,6 +499,7 @@ def test_ui_reports_observation_age_not_read_time():
     assert view["ageSec"] == pytest.approx(38, abs=2)
 
 
+@pytest.mark.integration
 def test_ui_derives_reason_when_worker_sent_none():
     """Проводной контракт кода не несёт — центр обязан вывести его сам."""
     from backend.app.services.distributed_workers import provider_accounts
@@ -492,6 +519,7 @@ def test_ui_derives_reason_when_worker_sent_none():
     assert view["availability"] == "available"
 
 
+@pytest.mark.integration
 def test_codex_official_source_unchanged():
     """Codex остаётся `official_app_server_rpc` с high и без пометки «оценка»."""
     from backend.app.services.distributed_workers import provider_accounts

@@ -16,6 +16,12 @@ import v2lib                              # noqa: E402
 import refresh_migrated_snapshot as rms   # noqa: E402
 import scan_migrated_drift as sd          # noqa: E402
 
+import pytest
+
+# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
+# память».
+pytestmark = pytest.mark.integration
+
 DOC = "DOC-NEW"
 VER = "v002"
 

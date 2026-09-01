@@ -4,6 +4,9 @@ import pytest
 from backend.app.pipeline.stages.block_grounding.alia_remaining_geometry import (
  ALL_REMAINING_PROFILES,build_remaining_graph,evaluate_remaining_gate,render_remaining_markdown)
 from backend.app.pipeline.stages.block_grounding.profiled_graph_localization import ru_profile
+
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
 ROOT=Path(__file__).resolve().parents[1];SS=ROOT/"experiments"/"блоки разных дисциплин"/"СС";M=SS/"ALIA_REMAINING_CORPUS.json"
 # Внешний исследовательский корпус (~2 ГБ) в контракт CI не входит и на диске
 # может отсутствовать. Читать манифест на импорте без гарда нельзя: отсутствие

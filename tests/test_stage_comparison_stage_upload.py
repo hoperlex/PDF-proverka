@@ -8,6 +8,9 @@ import pytest
 
 from backend.app.services.stage_comparison import scanner, stage_storage, stage_upload
 
+# Primary lane §5: unit — только память: ни ФС, ни потоков, ни процессов, ни сокетов.
+pytestmark = pytest.mark.unit
+
 
 def _pdf_bytes(label: str) -> bytes:
     document = fitz.open()
