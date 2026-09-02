@@ -1,0 +1,190 @@
+{
+  "tool": "ci_evidence_bundle",
+  "manifest_version": "1",
+  "label": "полоса network под профилем CI-раннера: 4 ядра (taskset 0-3), 10 конкурирующих счётчиков на тех же ядрах, 5 полных прогонов на c6ed543997b1 (провенанс подтверждён расписками полос)",
+  "generated_at": "2026-09-02T15:18:29Z",
+  "run_dir": "/home/ciuser/network-runner-profile/reports",
+  "file_count": 22,
+  "total_bytes": 4350633,
+  "tree_digest_rule": "ci_runtime_probe._norm_artifact_digest (путь + содержимое, детерминированный порядок)",
+  "tree_sha256": "3541884c8def7ba1ebcbe25c414653dbaa9e695ec75ecf3a7afff700cd07d013",
+  "lanes": {
+    "network.1": {
+      "exit_code": 0,
+      "probe_mode": "ci",
+      "report_status": "ok",
+      "selected": 904,
+      "passed": 898,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 6,
+      "source_commit": "c6ed543997b18a4746bfff907b1e7ac1fd610ae4",
+      "source_commit_origin": "QR_SOURCE_COMMIT"
+    },
+    "network.2": {
+      "exit_code": 0,
+      "probe_mode": "ci",
+      "report_status": "ok",
+      "selected": 904,
+      "passed": 898,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 6,
+      "source_commit": "c6ed543997b18a4746bfff907b1e7ac1fd610ae4",
+      "source_commit_origin": "QR_SOURCE_COMMIT"
+    },
+    "network.3": {
+      "exit_code": 0,
+      "probe_mode": "ci",
+      "report_status": "ok",
+      "selected": 904,
+      "passed": 898,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 6,
+      "source_commit": "c6ed543997b18a4746bfff907b1e7ac1fd610ae4",
+      "source_commit_origin": "QR_SOURCE_COMMIT"
+    },
+    "network.4": {
+      "exit_code": 0,
+      "probe_mode": "ci",
+      "report_status": "ok",
+      "selected": 904,
+      "passed": 898,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 6,
+      "source_commit": "c6ed543997b18a4746bfff907b1e7ac1fd610ae4",
+      "source_commit_origin": "QR_SOURCE_COMMIT"
+    },
+    "network.5": {
+      "exit_code": 0,
+      "probe_mode": "ci",
+      "report_status": "ok",
+      "selected": 904,
+      "passed": 898,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 6,
+      "source_commit": "c6ed543997b18a4746bfff907b1e7ac1fd610ae4",
+      "source_commit_origin": "QR_SOURCE_COMMIT"
+    }
+  },
+  "files": [
+    {
+      "path": "lane.network.1.events.jsonl",
+      "bytes": 742638,
+      "sha256": "0f53bb95ef8d79742197727cd32068197615e3b0454fcafbadce84efdadf4500"
+    },
+    {
+      "path": "lane.network.1.json",
+      "bytes": 1920,
+      "sha256": "344e0fa1a5cdcdb07d5539fbbd3ea7dd6cbd1e78149a70b41f1190bf017704c4"
+    },
+    {
+      "path": "lane.network.1.xml",
+      "bytes": 122861,
+      "sha256": "be9c599a9429ab82e91e44afb2dca93cbf0a2b9a475dab022e988dd400e848f1"
+    },
+    {
+      "path": "lane.network.2.events.jsonl",
+      "bytes": 742659,
+      "sha256": "f0ee691770d0849aa07782d945b10a894781581194aa1a9f38869cff8abcb20d"
+    },
+    {
+      "path": "lane.network.2.json",
+      "bytes": 1920,
+      "sha256": "8b69416062d8f095db1a3070e5572cb31ef36ffce301c71106055ed5a393cc1f"
+    },
+    {
+      "path": "lane.network.2.xml",
+      "bytes": 122862,
+      "sha256": "eb1e3b95970d3cfcfed259315b72407bc84de21289e255eb752af2fe5e94fb11"
+    },
+    {
+      "path": "lane.network.3.events.jsonl",
+      "bytes": 742672,
+      "sha256": "175605a1a3af6a398d46b7c044e4852e3102a2e529fba6560fbc7e9937b1f40b"
+    },
+    {
+      "path": "lane.network.3.json",
+      "bytes": 1920,
+      "sha256": "ae879e36415714aaf98fca09d3f586402437dc15c215bd4c872baf65c307d3e7"
+    },
+    {
+      "path": "lane.network.3.xml",
+      "bytes": 122861,
+      "sha256": "ad75d712fa43e7faa5d50ffebc3c499269377838b628df3413ac9c0458ab1054"
+    },
+    {
+      "path": "lane.network.4.events.jsonl",
+      "bytes": 742664,
+      "sha256": "eb402b65d0eec391f52014ecef5e60296828ad3e45a42d99338d7e83c307e4c8"
+    },
+    {
+      "path": "lane.network.4.json",
+      "bytes": 1920,
+      "sha256": "d188673b00a1e810651e04792315d344bfd2b0698bc3d1c86e7159da8ac84d89"
+    },
+    {
+      "path": "lane.network.4.xml",
+      "bytes": 122861,
+      "sha256": "00886bdfa1b6f3620ba83b9715751f237a4e1bd30d879ff23140dd5c82590310"
+    },
+    {
+      "path": "lane.network.5.events.jsonl",
+      "bytes": 742635,
+      "sha256": "4efc06b49a3cf1cf38ecb1e9c1cc0dba8f33d02c57fdb0160ef9abbda5c459ae"
+    },
+    {
+      "path": "lane.network.5.json",
+      "bytes": 1920,
+      "sha256": "7ed99bf1d1f4c40e632750d47cbcf436e1897b45f557e0cc3d21d37fecff6940"
+    },
+    {
+      "path": "lane.network.5.xml",
+      "bytes": 122862,
+      "sha256": "471e49d6f8d22a95feb3377453f67a9f82da5d4d3ed531197371c081bfc6f32f"
+    },
+    {
+      "path": "network_profile.log",
+      "bytes": 840,
+      "sha256": "08450d387629e7eaca69087f6b03d52177738be7d5d8aac162b2a74e127e0b11"
+    },
+    {
+      "path": "network_runner_profile.sh",
+      "bytes": 3988,
+      "sha256": "65cf67b5fa8ed3954535081574b9fef388203abc20f1d46d1b93fe4272f91042"
+    },
+    {
+      "path": "run1.log",
+      "bytes": 1726,
+      "sha256": "bae927f7c16710f26370f7729b5a0e01a6171a369e24d7d6bde01906426291d1"
+    },
+    {
+      "path": "run2.log",
+      "bytes": 1726,
+      "sha256": "26bd6eb896d4904ced86046c0cc7d7e589c49c037ffbbe65b92dc6f9d7cced37"
+    },
+    {
+      "path": "run3.log",
+      "bytes": 1726,
+      "sha256": "ce9cec73cac7420bde360e577794e11b38404b4e0209c4e74620fe93d09275d0"
+    },
+    {
+      "path": "run4.log",
+      "bytes": 1726,
+      "sha256": "b00efd0f59a1a921005a2fe1462f7da9d0ddb6d5ae4e67e9b35c58c0627668e9"
+    },
+    {
+      "path": "run5.log",
+      "bytes": 1726,
+      "sha256": "77ad2e3b361a96d959bc9bbf1028f09e9897966abbf667cdcda5c33ee970ec3f"
+    }
+  ],
+  "archive": {
+    "path": "/home/ciuser/evidence-0.0.03/network-runner-profile.tar.gz",
+    "sha256": "56cf24a4b8ec0c139e6f58cac2ee0cb2b9d7bb04c367a208ad4b1421c68768f5",
+    "note": "детерминированный tar.gz: владелец, права и время обнулены"
+  }
+}
