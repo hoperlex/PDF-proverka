@@ -1,45 +1,53 @@
 """
 test_norms_status_index_fallback.py
 -----------------------------------
-Regression-тесты для классификационной верификации норм.
+Regression-тесты адаптера `norms/external_provider.py`.
+
+КОНТРАКТ — `status_index-only`. Единственный источник истины по статусам норм
+это `norms/tools/status_index.json`, который `norms/tools/build_status_index.py`
+детерминированно собирает ровно из двух входов: `vault/*.md` и
+`tools/status_overrides.yaml`. Провайдер его только ЧИТАЕТ. `norms_db.json`,
+`missing_norms_vault.json` и сам vault источниками статуса НЕ являются
+(`norms/tools/README.md` прямо запрещает seed из `norms_db.json`), WebSearch и
+WebFetch запрещены концептуально: нормы нет в индексе → `found=False`,
+`resolution_reason=not_in_index` и очередь на ручное добавление.
+
+Почему файл переписан. Прежняя редакция проверяла другой контракт, которого у
+провайдера не было никогда: четыре класса `authoritative / known_unverified /
+missing / unsupported` в поле `classification`, сборку индекса из
+`norms_db.json` и `missing_norms_vault.json`, функцию `diagnostics()` и атрибуты
+`NORMS_DB_PATH`, `NORMS_VAULT_PATH`, `MISSING_NORMS_VAULT_PATHS`. Ни одного из
+них в модуле нет, поэтому все 33 узла падали на setup фикстуры с AttributeError
+за доли секунды и не проверяли ничего. Тот контракт восстановлению не подлежит:
+он и есть запрещённый legacy fallback на `norms_db.json`.
+
+Классификационные проверки `norms/_core.py` (verified_via, счётчики, ведро
+missing/unsupported) вынесены на свой уровень — tests/test_norms_core_classification.py.
 
 Покрытие:
-
-1. **Mode A** — status_index.json отсутствует, vault отсутствует:
-   - load_status_index() возвращает безопасный fallback или пустой каркас.
-   - resolve_norm_status() не падает.
-   - Известные из norms_db / missing_norms_vault → known_unverified.
-   - Неизвестные с supported family → missing.
-   - Произвольный текст без family → unsupported.
-
-2. **Mode B** — корпус и индекс присутствуют:
-   - vault-нормы → authoritative.
-   - Override-only → authoritative.
-   - Норма, известная только из norms_db (нет в vault и без override) →
-     known_unverified, **не** authoritative.
-
-3. Override приоритетнее всего:
-   - active/replaced/cancelled из overrides отражаются корректно.
-
-4. **Нормализация** — разные варианты записи дают одну и ту же норму.
-
-5. Полные классификационные счётчики `_core.generate_deterministic_checks`
-   разделяют known_unverified и missing.
+  1. индекса нет → безопасный пустой каркас, not_in_index / unsupported_family;
+  2. authoritative-индекс: vault-запись, override_only, устаревшая редакция,
+     умолчания для минимальной записи;
+  3. норма вне индекса не подменяется соседней (регресс на substring-матч);
+  4. aliases, приоритет собственного кода записи над чужим alias;
+  5. нормализация форм записи;
+  6. определение семейства для всех поддерживаемых префиксов;
+  7. детерминизм: независимость от порядка записей, стабильная схема payload,
+     семантика кеша и force_reload.
 
 Запуск:
-    python3 -m pytest tests/test_norms_status_index_fallback.py -q
+    python -m pytest tests/test_norms_status_index_fallback.py -q
 """
 from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
-from textwrap import dedent
 
 import pytest
 
-# Primary lane §5: integration — пишет во временную ФС, а `unit` по §5 — «только
-# память».
+# Primary lane §5: integration — пишет синтетический индекс во временную ФС, а
+# `unit` по §5 — «только память».
 pytestmark = pytest.mark.integration
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -48,346 +56,391 @@ if str(_ROOT) not in sys.path:
 
 
 # ---------------------------------------------------------------------------
-# Утилиты setup
+# Синтетический индекс
+# ---------------------------------------------------------------------------
+# Корпус норм (`norms/vault/**` и производный status_index.json) в репозитории
+# не лежит и подвозится артефактом только в enforce CI (§3.3 quality/runtime
+# contract v1). Эти тесты его НЕ требуют: они строят индекс той же схемы во
+# временном каталоге, поэтому исход не зависит от наличия корпуса.
+
+def _entry(code: str, **override) -> dict:
+    """Запись индекса в схеме norms/tools/README.md с разумными умолчаниями."""
+    base = {
+        "code": code,
+        "aliases": [code],
+        "type": code.split()[0],
+        "year": None,
+        "title": f"Синтетическая запись {code}",
+        "file": None,
+        "doc_status": "active",
+        "edition_status": None,
+        "replacement_doc": None,
+        "current_version": None,
+        "details": None,
+        "source_url": None,
+        "last_verified": None,
+        "parse_confidence": "high",
+        "source": "vault",
+        "authoritative": True,
+        "has_text": True,
+    }
+    base.update(override)
+    return base
+
+
+#: Полный синтетический корпус: vault, override_only, устаревшая редакция,
+#: запись с явным authoritative=false и «голая» запись из одного поля code.
+def _authoritative_entries() -> list[dict]:
+    return [
+        _entry(
+            "СП 256.1325800.2016",
+            aliases=["СП 256.1325800.2016", "СП 256_1325800_2016", "СП 31-110-2003"],
+            year=2016,
+            title="Электроустановки жилых и общественных зданий",
+            file="СП 256_1325800_2016_document.md",
+        ),
+        _entry(
+            "СП 30.13330.2016",
+            year=2016,
+            edition_status="outdated",
+            current_version="СП 30.13330.2020",
+            details="В базе хранится актуальная редакция 2020",
+        ),
+        _entry(
+            "СНиП 2.04.01-85",
+            doc_status="replaced",
+            replacement_doc="СП 30.13330.2020",
+            source="override_only",
+            has_text=False,
+            aliases=["СНиП 2.04.01-85", "СНиП 2.04.01-85*"],
+        ),
+        _entry(
+            "ГОСТ 9388-60",
+            doc_status="cancelled",
+            source="override_only",
+            has_text=False,
+        ),
+        _entry(
+            "ГОСТ 21.205-93",
+            doc_status="unknown",
+            source="override_only",
+            has_text=False,
+        ),
+        # Запись, которую сборщик пометил НЕ authoritative. Провайдер обязан
+        # передать флаг как есть, а не повысить его по своему усмотрению.
+        _entry("ВСН 59-88", authoritative=False, has_text=False),
+        # Минимальная запись: всё, кроме code, отсутствует — проверяем умолчания.
+        {"code": "МДС 12-29.2006"},
+    ]
+
+
+def _write_index(provider, path: Path, entries: list[dict]) -> Path:
+    path.write_text(
+        json.dumps({"meta": {"source": "vault", "total": len(entries)},
+                    "norms": entries}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    provider.NORMS_STATUS_INDEX_PATH = path
+    provider._reset_cache()
+    return path
+
+
+# ---------------------------------------------------------------------------
+# Фикстуры
 # ---------------------------------------------------------------------------
 
-def _reset_module_cache(provider_mod):
-    provider_mod._reset_cache()
+@pytest.fixture
+def provider(monkeypatch, tmp_path):
+    """Провайдер, отвязанный от машинного индекса.
 
+    По умолчанию путь указывает на НЕсуществующий файл — это «индекса нет».
+    Кеш модуля глобальный, поэтому сбрасывается и до, и после теста.
+    """
+    from norms import external_provider as ep
 
-def _set_paths(monkeypatch, provider_mod, *, status_index, norms_db,
-               vault, missing_paths):
-    monkeypatch.setattr(provider_mod, "NORMS_STATUS_INDEX_PATH", Path(status_index))
-    monkeypatch.setattr(provider_mod, "NORMS_DB_PATH", Path(norms_db))
-    monkeypatch.setattr(provider_mod, "NORMS_VAULT_PATH", Path(vault))
     monkeypatch.setattr(
-        provider_mod, "MISSING_NORMS_VAULT_PATHS",
-        tuple(Path(p) for p in missing_paths),
-    )
-    _reset_module_cache(provider_mod)
+        ep, "NORMS_STATUS_INDEX_PATH", tmp_path / "absent_status_index.json")
+    ep._reset_cache()
+    yield ep
+    ep._reset_cache()
 
 
 @pytest.fixture
-def empty_sandbox(tmp_path, monkeypatch):
-    """Полностью пустое окружение: ни индекса, ни vault, ни norms_db, ни missing."""
-    from norms import external_provider as ep
-    _set_paths(
-        monkeypatch, ep,
-        status_index=tmp_path / "no_status_index.json",
-        norms_db=tmp_path / "no_norms_db.json",
-        vault=tmp_path / "no_vault",
-        missing_paths=[tmp_path / "no_missing.json"],
-    )
-    return ep
-
-
-@pytest.fixture
-def db_only_sandbox(tmp_path, monkeypatch):
-    """Mode A: только norms_db, без vault и без status_index."""
-    from norms import external_provider as ep
-    db_path = tmp_path / "norms_db.json"
-    db_path.write_text(
-        json.dumps({
-            "meta": {},
-            "norms": {
-                "СП 256.1325800.2016": {
-                    "doc_number": "СП 256.1325800.2016",
-                    "title": "Электроустановки жилых и общественных зданий",
-                    "status": "active",
-                    "edition_status": "ok",
-                    "current_version": "СП 256.1325800.2016",
-                },
-                "ГОСТ 12.1.004-91": {
-                    "doc_number": "ГОСТ 12.1.004-91",
-                    "title": "Пожарная безопасность. Общие требования",
-                    "status": "active",
-                },
-            },
-        }, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    _set_paths(
-        monkeypatch, ep,
-        status_index=tmp_path / "no_status_index.json",
-        norms_db=db_path,
-        vault=tmp_path / "no_vault",
-        missing_paths=[tmp_path / "no_missing.json"],
-    )
-    return ep
-
-
-@pytest.fixture
-def overrides_only_sandbox(tmp_path, monkeypatch):
-    """Mode A: только status_overrides.yaml без vault и без status_index."""
-    from norms import external_provider as ep
-    overrides_dir = tmp_path / "tools"
-    overrides_dir.mkdir()
-    (overrides_dir / "status_overrides.yaml").write_text(
-        dedent("""
-            overrides:
-              СП 7.13130.2013:
-                doc_status: active
-                edition_status: current
-              ВСН 59-88:
-                doc_status: replaced
-                replaced_by: СП 256.1325800.2016
-              ГОСТ 9388-60:
-                doc_status: cancelled
-              ГОСТ 21.205-93:
-                doc_status: unknown
-        """).strip(),
-        encoding="utf-8",
-    )
-    _set_paths(
-        monkeypatch, ep,
-        status_index=overrides_dir / "no_status_index.json",  # отсутствует
-        norms_db=tmp_path / "no_norms_db.json",
-        vault=tmp_path / "no_vault",
-        missing_paths=[tmp_path / "no_missing.json"],
-    )
-    return ep
-
-
-@pytest.fixture
-def missing_only_sandbox(tmp_path, monkeypatch):
-    """Mode A: только missing_norms_vault.json."""
-    from norms import external_provider as ep
-    missing_path = tmp_path / "missing_norms_vault.json"
-    missing_path.write_text(
-        json.dumps({
-            "version": 1,
-            "norms": {
-                "СП 999.13330.2099": {
-                    "doc_number": "СП 999.13330.2099",
-                    "family": "СП",
-                    "status": "pending",
-                    "first_seen_at": "2026-04-01T00:00:00",
-                },
-            },
-        }, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    _set_paths(
-        monkeypatch, ep,
-        status_index=tmp_path / "no_status_index.json",
-        norms_db=tmp_path / "no_norms_db.json",
-        vault=tmp_path / "no_vault",
-        missing_paths=[missing_path],
-    )
-    return ep
-
-
-@pytest.fixture
-def vault_index_sandbox(tmp_path, monkeypatch):
-    """Mode B: подготовленный status_index.json. vault не нужен — индекс уже собран."""
-    from norms import external_provider as ep
-    status_path = tmp_path / "status_index.json"
-    status_path.write_text(
-        json.dumps({
-            "meta": {"source": "vault"},
-            "norms": [
-                {
-                    "code": "СП 256.1325800.2016",
-                    "aliases": ["СП 256.1325800.2016"],
-                    "type": "СП",
-                    "year": 2016,
-                    "title": "Электроустановки",
-                    "doc_status": "active",
-                    "edition_status": None,
-                    "replacement_doc": None,
-                    "source": "vault",
-                    "authoritative": True,
-                    "has_text": True,
-                },
-                {
-                    "code": "ВСН 59-88",
-                    "aliases": ["ВСН 59-88"],
-                    "type": "ВСН",
-                    "doc_status": "replaced",
-                    "replacement_doc": "СП 256.1325800.2016",
-                    "source": "override_only",
-                    "authoritative": True,
-                    "has_text": False,
-                },
-            ],
-        }, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    # vault: пустой каталог, чтобы файл vault.exists() = True (но без файлов).
-    vault_dir = tmp_path / "vault"
-    vault_dir.mkdir()
-
-    db_path = tmp_path / "norms_db.json"
-    db_path.write_text(
-        json.dumps({
-            "meta": {},
-            "norms": {
-                # ИЗВЕСТНА только в norms_db, нет в status_index
-                "СП 50.13330.2024": {
-                    "doc_number": "СП 50.13330.2024",
-                    "title": "Тепловая защита",
-                    "status": "active",
-                },
-            },
-        }, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    _set_paths(
-        monkeypatch, ep,
-        status_index=status_path,
-        norms_db=db_path,
-        vault=vault_dir,
-        missing_paths=[tmp_path / "no_missing.json"],
-    )
-    return ep
+def indexed(provider, tmp_path):
+    """Провайдер с непустым authoritative-индексом."""
+    _write_index(provider, tmp_path / "status_index.json", _authoritative_entries())
+    return provider
 
 
 # ---------------------------------------------------------------------------
-# 1. Mode A — отсутствие всех источников
+# 1. Индекса нет — деградация без падений
 # ---------------------------------------------------------------------------
 
-def test_empty_mode_returns_safe_fallback(empty_sandbox):
-    """status_index отсутствует и нечего собрать → пустой каркас, без падений."""
-    data = empty_sandbox.load_status_index()
-    assert isinstance(data, dict)
-    assert data.get("norms") == []
+def test_missing_index_returns_empty_skeleton(provider):
+    """Файла индекса нет → пустой валидный каркас, а не исключение."""
+    data = provider.load_status_index()
+    assert data == {"meta": {}, "norms": []}
 
 
-def test_empty_mode_diagnostics_reports_mode_A(empty_sandbox):
-    diag = empty_sandbox.diagnostics()
-    assert diag["mode"] in ("A_empty", "A_fallback_from_overrides")
-    assert diag["status_index"]["exists"] is False
-    assert diag["vault"]["exists"] is False
-
-
-def test_empty_mode_supported_family_returns_missing(empty_sandbox):
-    r = empty_sandbox.resolve_norm_status("СП 256.1325800.2016")
-    assert r["classification"] == "missing"
+def test_missing_index_supported_family_goes_to_manual_queue(provider):
+    """Поддерживаемое семейство без индекса → not_in_index + ручная очередь."""
+    r = provider.resolve_norm_status("СП 256.1325800.2016")
     assert r["found"] is False
+    assert r["matched_code"] is None
+    assert r["resolution_reason"] == "not_in_index"
+    assert r["detected_family"] == "СП"
+    assert r["supported_family"] is True
+    assert r["needs_manual_addition"] is True
+    assert r["authoritative"] is False
+    assert r["status"] == "unknown"
+    assert r["source"] == "not_found"
+
+
+def test_missing_index_unsupported_family(provider):
+    """Семейство не распознано → unsupported_family, в очередь НЕ ставим."""
+    r = provider.resolve_norm_status("какой-то произвольный текст")
+    assert r["resolution_reason"] == "unsupported_family"
+    assert r["detected_family"] is None
+    assert r["supported_family"] is False
+    assert r["needs_manual_addition"] is False
+    assert r["found"] is False
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\n\t ", "**  **", None])
+def test_blank_query_is_not_found(provider, blank):
+    """Пустой запрос — это not_found, а не «неподдерживаемое семейство»."""
+    r = provider.resolve_norm_status(blank)
+    assert r["found"] is False
+    assert r["resolution_reason"] == "not_found"
+    assert r["detected_family"] is None
+    assert r["supported_family"] is False
+    assert r["normalized_query"] == ""
+
+
+# ---------------------------------------------------------------------------
+# 2. Authoritative-индекс
+# ---------------------------------------------------------------------------
+
+def test_vault_entry_is_authoritative(indexed):
+    r = indexed.resolve_norm_status("СП 256.1325800.2016")
+    assert r["found"] is True
+    assert r["matched_code"] == "СП 256.1325800.2016"
+    assert r["resolution_reason"] == "exact"
+    assert r["authoritative"] is True
+    assert r["status"] == "active"
+    assert r["doc_status"] == "active"
+    assert r["source"] == "vault"
+    assert r["has_text"] is True
+    assert r["needs_manual_addition"] is False
+    assert r["title"] == "Электроустановки жилых и общественных зданий"
+    assert r["file"] == "СП 256_1325800_2016_document.md"
+    assert r["year"] == 2016
+
+
+def test_override_only_entry_is_manual_override(indexed):
+    """Запись из status_overrides.yaml: authoritative, но без текста."""
+    r = indexed.resolve_norm_status("СНиП 2.04.01-85")
+    assert r["found"] is True
+    assert r["resolution_reason"] == "manual_override"
+    assert r["source"] == "override_only"
+    assert r["authoritative"] is True
+    assert r["status"] == "replaced"
+    assert r["replacement_doc"] == "СП 30.13330.2020"
+    assert r["has_text"] is False
+
+
+def test_cancelled_entry_reports_cancelled(indexed):
+    r = indexed.resolve_norm_status("ГОСТ 9388-60")
+    assert r["found"] is True
+    assert r["status"] == "cancelled"
+    assert r["doc_status"] == "cancelled"
+    assert r["resolution_reason"] == "manual_override"
+
+
+def test_unknown_doc_status_is_found_but_unknown(indexed):
+    """`unknown` в индексе — это ЗНАНИЕ о незнании, а не отсутствие записи."""
+    r = indexed.resolve_norm_status("ГОСТ 21.205-93")
+    assert r["found"] is True
+    assert r["doc_status"] == "unknown"
+    assert r["status"] == "unknown"
+    assert r["needs_manual_addition"] is False
+
+
+def test_outdated_edition_maps_to_outdated_edition(indexed):
+    """active + edition_status=outdated → сводный статус outdated_edition."""
+    r = indexed.resolve_norm_status("СП 30.13330.2016")
+    assert r["status"] == "outdated_edition"
+    assert r["doc_status"] == "active"
+    assert r["edition_status"] == "outdated"
+    assert r["current_version"] == "СП 30.13330.2020"
+
+
+def test_minimal_entry_uses_documented_defaults(indexed):
+    """Запись из одного `code`: doc_status unknown, source vault, has_text False."""
+    r = indexed.resolve_norm_status("МДС 12-29.2006")
+    assert r["found"] is True
+    assert r["doc_status"] == "unknown"
+    assert r["status"] == "unknown"
+    assert r["source"] == "vault"
+    assert r["has_text"] is False
+    assert r["authoritative"] is True
+    assert r["detected_family"] == "МДС"
+
+
+def test_provider_does_not_promote_entry_to_authoritative(indexed):
+    """authoritative приходит ИЗ индекса; провайдер его не назначает сам."""
+    r = indexed.resolve_norm_status("ВСН 59-88")
+    assert r["found"] is True
     assert r["authoritative"] is False
 
 
-def test_empty_mode_unsupported_family_returns_unsupported(empty_sandbox):
-    r = empty_sandbox.resolve_norm_status("какой-то произвольный текст")
-    assert r["classification"] == "unsupported"
+# ---------------------------------------------------------------------------
+# 3. Нормы нет в индексе — и её нельзя подменить соседней
+# ---------------------------------------------------------------------------
+
+def test_norm_absent_from_populated_index_is_not_in_index(indexed):
+    """Индекс непустой, но нормы в нём нет → not_in_index, не «похожая»."""
+    r = indexed.resolve_norm_status("СП 50.13330.2024")
+    assert r["found"] is False
+    assert r["matched_code"] is None
+    assert r["resolution_reason"] == "not_in_index"
+    assert r["supported_family"] is True
+    assert r["needs_manual_addition"] is True
+
+
+@pytest.mark.parametrize("query", ["СП 25", "СП 2", "СП 25.13330.2020"])
+def test_prefix_of_another_code_is_not_a_match(indexed, query):
+    """Регресс. «СП 25» — это СП 25.13330 (основания на вечномёрзлых грунтах),
+    а не «СП 256.1325800.2016»: обрыв внутри числового токена матчем не считаем.
+    """
+    r = indexed.resolve_norm_status(query)
+    assert r["found"] is False
+    assert r["matched_code"] is None
+    assert r["resolution_reason"] == "not_in_index"
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_ambiguous_prefix_is_refused(provider, tmp_path, reverse):
+    """«СП 30» при двух редакциях в индексе неразрешим → not_in_index.
+
+    Выбор «первой по файлу» записи означал бы, что редакция нормы зависит от
+    порядка строк в индексе.
+    """
+    entries = [_entry("СП 30.13330.2016"), _entry("СП 30.13330.2020")]
+    if reverse:
+        entries.reverse()
+    _write_index(provider, tmp_path / "ambiguous.json", entries)
+    r = provider.resolve_norm_status("СП 30")
+    assert r["found"] is False
+    assert r["resolution_reason"] == "not_in_index"
+
+
+def test_code_with_trailing_clause_still_resolves(indexed):
+    """Код + хвост («, п. 7.4.2») резолвится: код целиком присутствует в запросе."""
+    r = indexed.resolve_norm_status("СП 256.1325800.2016, п. 7.4.2")
+    assert r["found"] is True
+    assert r["matched_code"] == "СП 256.1325800.2016"
+    assert r["resolution_reason"] == "alias"
+
+
+def test_unsupported_family_with_populated_index(indexed):
+    """Непустой индекс не превращает мусорный запрос в норму."""
+    r = indexed.resolve_norm_status("см. проектную документацию раздела ЭОМ")
+    assert r["found"] is False
+    assert r["resolution_reason"] == "unsupported_family"
     assert r["supported_family"] is False
 
 
 # ---------------------------------------------------------------------------
-# 2. Mode A — норма известна только из norms_db / missing_norms_vault
+# 4. Aliases
 # ---------------------------------------------------------------------------
 
-def test_db_only_known_norm_is_known_unverified(db_only_sandbox):
-    """Норма есть в norms_db, но не в status_index → known_unverified."""
-    r = db_only_sandbox.resolve_norm_status("СП 256.1325800.2016")
+def test_alias_resolves_to_canonical_code(indexed):
+    r = indexed.resolve_norm_status("СП 31-110-2003")
     assert r["found"] is True
-    assert r["classification"] == "known_unverified"
-    assert r["authoritative"] is False
-    assert r["source"] in {"norms_db", "missing_norms_vault"}
-
-
-def test_db_only_unknown_norm_is_missing(db_only_sandbox):
-    r = db_only_sandbox.resolve_norm_status("СП 99999.99999.9999")
-    assert r["classification"] == "missing"
-    assert r["found"] is False
-
-
-def test_missing_vault_only_norm_is_known_unverified(missing_only_sandbox):
-    """Норма есть только в missing_norms_vault.json → known_unverified."""
-    r = missing_only_sandbox.resolve_norm_status("СП 999.13330.2099")
-    assert r["classification"] == "known_unverified"
-    assert r["found"] is True
-    assert r["source"] == "missing_norms_vault"
-    assert r["authoritative"] is False
-
-
-# ---------------------------------------------------------------------------
-# 3. Overrides всегда дают authoritative
-# ---------------------------------------------------------------------------
-
-def test_overrides_only_active(overrides_only_sandbox):
-    r = overrides_only_sandbox.resolve_norm_status("СП 7.13130.2013")
-    assert r["classification"] == "authoritative"
-    assert r["status"] == "active"
+    assert r["matched_code"] == "СП 256.1325800.2016"
+    assert r["resolution_reason"] == "alias"
     assert r["authoritative"] is True
-    assert r["source"] == "override_only"
 
 
-def test_overrides_only_replaced(overrides_only_sandbox):
-    r = overrides_only_sandbox.resolve_norm_status("ВСН 59-88")
-    assert r["classification"] == "authoritative"
-    assert r["status"] == "replaced"
-    assert r["replacement_doc"] == "СП 256.1325800.2016"
+def test_alias_written_with_underscores_matches_canonical(indexed):
+    """`_` и `.` в коде эквивалентны — это тот же canonical, а не alias-ветка."""
+    r = indexed.resolve_norm_status("СП 256_1325800_2016")
+    assert r["matched_code"] == "СП 256.1325800.2016"
+    assert r["resolution_reason"] == "exact"
 
 
-def test_overrides_only_cancelled(overrides_only_sandbox):
-    r = overrides_only_sandbox.resolve_norm_status("ГОСТ 9388-60")
-    assert r["classification"] == "authoritative"
-    assert r["status"] == "cancelled"
+@pytest.mark.parametrize("reverse", [False, True])
+def test_own_code_wins_over_foreign_alias(provider, tmp_path, reverse):
+    """Регресс. Alias одной записи не должен перекрывать СОБСТВЕННЫЙ код другой.
 
-
-def test_overrides_only_unknown(overrides_only_sandbox):
-    r = overrides_only_sandbox.resolve_norm_status("ГОСТ 21.205-93")
-    assert r["classification"] == "authoritative"
-    assert r["doc_status"] == "unknown"
-
-
-# ---------------------------------------------------------------------------
-# 4. Mode B — норма из vault vs только из norms_db
-# ---------------------------------------------------------------------------
-
-def test_vault_norm_is_authoritative(vault_index_sandbox):
-    r = vault_index_sandbox.resolve_norm_status("СП 256.1325800.2016")
-    assert r["classification"] == "authoritative"
-    assert r["authoritative"] is True
-    assert r["status"] == "active"
-    assert r["source"] == "vault"
-
-
-def test_override_only_in_status_index_is_authoritative(vault_index_sandbox):
-    r = vault_index_sandbox.resolve_norm_status("ВСН 59-88")
-    assert r["classification"] == "authoritative"
-    assert r["status"] == "replaced"
-    assert r["source"] == "override_only"
-
-
-def test_db_only_norm_not_authoritative_even_with_vault_present(vault_index_sandbox):
-    """Норма есть в norms_db, но НЕТ в status_index → known_unverified.
-
-    Это ключевой регресс-тест: нельзя называть authoritative то, что не
-    подтверждено vault'ом или override'ом, даже если корпус частично есть.
+    «СНиП 2.04.01-85» — и alias актуального СП 30.13330.2020, и отдельная
+    запись со статусом replaced. Ответом обязана быть собственная запись:
+    иначе заменённый документ отвечает active, и это зависит от порядка строк
+    в индексе.
     """
-    r = vault_index_sandbox.resolve_norm_status("СП 50.13330.2024")
-    assert r["classification"] == "known_unverified"
-    assert r["authoritative"] is False
-    assert r["source"] == "norms_db"
+    entries = [
+        _entry("СП 30.13330.2020", aliases=["СП 30.13330.2020", "СНиП 2.04.01-85"]),
+        _entry(
+            "СНиП 2.04.01-85",
+            doc_status="replaced",
+            replacement_doc="СП 30.13330.2020",
+            source="override_only",
+            has_text=False,
+        ),
+    ]
+    if reverse:
+        entries.reverse()
+    _write_index(provider, tmp_path / "alias_clash.json", entries)
+    r = provider.resolve_norm_status("СНиП 2.04.01-85")
+    assert r["matched_code"] == "СНиП 2.04.01-85"
+    assert r["status"] == "replaced"
+    assert r["resolution_reason"] == "manual_override"
 
 
 # ---------------------------------------------------------------------------
-# 5. Нормализация — разные написания
+# 5. Нормализация форм записи
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("variant", [
     "СП 256.1325800.2016",
     " СП 256.1325800.2016 ",
     "сп 256.1325800.2016",
-    "СП  256.1325800.2016",        # двойные пробелы
+    "СП  256.1325800.2016",                 # двойные пробелы
+    "СП\t256.1325800.2016",                 # табуляция
+    "**СП 256.1325800.2016**",              # markdown
+    "*СП 256.1325800.2016*",
+    "СП 256.1325800.2016.",                 # хвостовая пунктуация
     "СП 256.1325800.2016 (ред. 29.01.2024)",
+    "СП 256.1325800.2016 ред. 29.01.2024",
+    "СП 256.1325800.2016 (изм. 1-6)",
+    "СП 256.1325800.2016 (действует)",
+    "СП 256.1325800.2016 (утв. приказом)",
     "СП 256.1325800.2016 с изменениями",
-    "**СП 256.1325800.2016**",     # markdown
+    "СП 256.1325800.2016 с изменением № 1",
 ])
-def test_normalization_variants_resolve_to_same_norm(variant, vault_index_sandbox):
-    r = vault_index_sandbox.resolve_norm_status(variant)
-    assert r["classification"] == "authoritative"
+def test_normalization_variants_resolve_to_same_norm(indexed, variant):
+    r = indexed.resolve_norm_status(variant)
+    assert r["found"] is True, f"не разобрана форма записи: {variant!r}"
     assert r["matched_code"] == "СП 256.1325800.2016"
+    assert r["query"] == variant
+    assert r["status"] == "active"
+
+
+def test_query_is_returned_verbatim(indexed):
+    """`query` — вход как есть, `normalized_query` — результат разбора."""
+    r = indexed.resolve_norm_status("  **СП 256.1325800.2016** (ред. 29.01.2024) ")
+    assert r["query"] == "  **СП 256.1325800.2016** (ред. 29.01.2024) "
+    assert r["normalized_query"] == "СП 256.1325800.2016"
 
 
 # ---------------------------------------------------------------------------
-# 6. Семейство — каждое поддерживаемое определяется
+# 6. Определение семейства
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("raw,expected_family", [
     ("СП 1.13130.2020", "СП"),
+    ("СанПиН 2.1.3684-21", "СанПиН"),
     ("ГОСТ 12.1.004-91", "ГОСТ"),
     ("ГОСТ Р 50571.5.54-2013", "ГОСТ Р"),
     ("СНиП 2.04.01-85", "СНиП"),
@@ -395,72 +448,133 @@ def test_normalization_variants_resolve_to_same_norm(variant, vault_index_sandbo
     ("МДС 12-29.2006", "МДС"),
     ("РД 34.21.122-87", "РД"),
     ("ПУЭ-7", "ПУЭ"),
+    ("СО 153.34.21.122-2003", "СО"),
     ("Постановление Правительства РФ от 28.05.2007 N 87", "ПП РФ"),
     ("Федеральный закон 123-ФЗ", "ФЗ"),
+    ("123-ФЗ", "ФЗ"),
 ])
-def test_family_detection(raw, expected_family, empty_sandbox):
-    r = empty_sandbox.resolve_norm_status(raw)
+def test_family_detection(provider, raw, expected_family):
+    """Семейство определяется по строке запроса даже при пустом индексе."""
+    r = provider.resolve_norm_status(raw)
     assert r["detected_family"] == expected_family
+    assert r["supported_family"] is True
+    assert r["resolution_reason"] == "not_in_index"
+
+
+def test_family_table_matches_norms_toolchain(provider):
+    """Список семейств — одна политика на две реализации.
+
+    Провайдер объявляет «те же семейства, что Norms-main маркирует supported»,
+    а фактическая таблица разъехалась с `norms/tools/norms_api.py`: там был
+    СанПиН, здесь его не было, и любой СанПиН вне индекса уезжал в
+    unsupported_norms вместо очереди на добавление документа.
+    """
+    tools = _ROOT / "norms" / "tools"
+    if str(tools) not in sys.path:
+        sys.path.insert(0, str(tools))
+    import norms_api  # noqa: PLC0415 — тулчейн лежит вне пакета norms
+
+    assert ([name for name, _ in provider._FAMILY_PATTERNS]
+            == [name for name, _ in norms_api._FAMILY_PATTERNS])
+
+
+@pytest.mark.parametrize("raw", [
+    "просто текст",
+    "Требования пожарной безопасности",
+    "п. 7.4.2",
+    "12.1.004-91",
+])
+def test_family_not_detected(provider, raw):
+    r = provider.resolve_norm_status(raw)
+    assert r["detected_family"] is None
+    assert r["resolution_reason"] == "unsupported_family"
 
 
 # ---------------------------------------------------------------------------
-# 7. _core.generate_deterministic_checks — распределение по 4-м категориям
+# 7. Детерминизм, схема payload и кеш
 # ---------------------------------------------------------------------------
 
-def test_generate_deterministic_checks_splits_known_unverified_from_missing(
-    vault_index_sandbox,
-):
-    """Известная только в norms_db и неизвестная нигде должны попадать в
-    РАЗНЫЕ ведра: known_unverified и missing соответственно."""
-    from norms import _core
-    norms_data = {
-        "norms": {
-            # vault → authoritative
-            "СП 256.1325800.2016": {
-                "cited_as": ["СП 256.1325800.2016"],
-                "affected_findings": ["F-1"],
-                "finding_norms": {"F-1": "СП 256.1325800.2016"},
-            },
-            # только norms_db → known_unverified
-            "СП 50.13330.2024": {
-                "cited_as": ["СП 50.13330.2024"],
-                "affected_findings": ["F-2"],
-                "finding_norms": {"F-2": "СП 50.13330.2024"},
-            },
-            # нигде → missing
-            "СП 99999.99999.9999": {
-                "cited_as": ["СП 99999.99999.9999"],
-                "affected_findings": ["F-3"],
-                "finding_norms": {"F-3": "СП 99999.99999.9999"},
-            },
-            # без распознанного семейства → unsupported
-            "ничего нет": {
-                "cited_as": ["ничего нет"],
-                "affected_findings": ["F-4"],
-                "finding_norms": {"F-4": "ничего нет"},
-            },
-        }
-    }
-    result = _core.generate_deterministic_checks(norms_data)
-    meta = result["meta"]
-    assert meta["authoritative"] == 1
-    assert meta["known_unverified"] == 1
-    assert meta["missing"] == 1
-    assert meta["unsupported"] == 1
-    # known_unverified ≠ missing
-    assert any(
-        c["verified_via"] == "norms_known_unverified"
-        for c in result["checks"]
+#: Схема ответа — общая для found и not-found: потребитель (`norms/_core.py`)
+#: читает одни и те же ключи, не проверяя ветку.
+_PAYLOAD_KEYS = {
+    "query", "normalized_query", "found", "matched_code", "status",
+    "doc_status", "edition_status", "authoritative", "resolution_reason",
+    "detected_family", "supported_family", "needs_manual_addition", "has_text",
+    "replacement_doc", "current_version", "title", "file", "type", "year",
+    "details", "source_url", "last_verified", "parse_confidence", "source",
+}
+
+
+@pytest.mark.parametrize("query", [
+    "СП 256.1325800.2016",      # найдена
+    "СП 50.13330.2024",         # not_in_index
+    "просто текст",             # unsupported_family
+    "",                         # not_found
+])
+def test_payload_schema_is_stable(indexed, query):
+    assert set(indexed.resolve_norm_status(query)) == _PAYLOAD_KEYS
+
+
+@pytest.mark.parametrize("query", [
+    "СП 256.1325800.2016", "СП 31-110-2003", "СП 50.13330.2024", "просто текст",
+])
+def test_repeated_calls_are_identical(indexed, query):
+    assert indexed.resolve_norm_status(query) == indexed.resolve_norm_status(query)
+
+
+def test_result_does_not_depend_on_entry_order(provider, tmp_path):
+    """Тот же корпус в обратном порядке даёт тот же ответ."""
+    forward = _authoritative_entries()
+    _write_index(provider, tmp_path / "forward.json", forward)
+    queries = ["СП 256.1325800.2016", "СНиП 2.04.01-85", "СП 31-110-2003",
+               "ГОСТ 9388-60", "СП 50.13330.2024"]
+    first = {q: provider.resolve_norm_status(q) for q in queries}
+
+    _write_index(provider, tmp_path / "reverse.json", list(reversed(forward)))
+    second = {q: provider.resolve_norm_status(q) for q in queries}
+    assert first == second
+
+
+def test_index_is_cached_until_force_reload(provider, tmp_path):
+    """Индекс читается один раз; перечитать — только явным force_reload."""
+    path = _write_index(
+        provider, tmp_path / "cached.json", [_entry("СП 256.1325800.2016")])
+    assert provider.resolve_norm_status("СП 256.1325800.2016")["found"] is True
+
+    path.write_text(
+        json.dumps({"meta": {}, "norms": [_entry("ГОСТ 12.1.004-91")]},
+                   ensure_ascii=False),
+        encoding="utf-8",
     )
-    assert "known_unverified_norms" in result
-    assert len(result["known_unverified_norms"]) == 1
+    # Без force_reload виден прежний снимок.
+    assert provider.resolve_norm_status("СП 256.1325800.2016")["found"] is True
+    assert provider.resolve_norm_status("ГОСТ 12.1.004-91")["found"] is False
+
+    provider.load_status_index(force_reload=True)
+    assert provider.resolve_norm_status("СП 256.1325800.2016")["found"] is False
+    assert provider.resolve_norm_status("ГОСТ 12.1.004-91")["found"] is True
 
 
-def test_fallback_status_index_does_not_promote_norms_db_to_authoritative(
-    db_only_sandbox,
-):
-    """Если статус-индекс пуст и собирается из norms_db, нормы оттуда НЕ должны
-    стать authoritative — должны оставаться known_unverified."""
-    r = db_only_sandbox.resolve_norm_status("СП 256.1325800.2016")
-    assert r["authoritative"] is False
-    assert r["classification"] == "known_unverified"
+def test_provider_never_writes_to_index(provider, tmp_path):
+    """Адаптер только читает: содержимое и mtime индекса не меняются."""
+    path = _write_index(
+        provider, tmp_path / "readonly.json", _authoritative_entries())
+    before = (path.read_bytes(), path.stat().st_mtime_ns)
+    for q in ["СП 256.1325800.2016", "СП 50.13330.2024", "мусор", ""]:
+        provider.resolve_norm_status(q)
+    assert (path.read_bytes(), path.stat().st_mtime_ns) == before
+
+
+def test_public_api_is_status_index_only(provider):
+    """Контракт модуля: никаких norms_db / vault / missing-vault входов.
+
+    Прежняя редакция тестов патчила у провайдера NORMS_DB_PATH,
+    NORMS_VAULT_PATH и MISSING_NORMS_VAULT_PATHS. Их появление означало бы
+    возврат legacy fallback на norms_db.json, запрещённого norms/tools/README.md.
+    """
+    assert provider.__all__ == [
+        "NORMS_STATUS_INDEX_PATH", "load_status_index", "resolve_norm_status"]
+    for forbidden in ("NORMS_DB_PATH", "NORMS_VAULT_PATH",
+                      "MISSING_NORMS_VAULT_PATHS"):
+        assert not hasattr(provider, forbidden), (
+            f"{forbidden} у провайдера — это legacy fallback на norms_db.json")

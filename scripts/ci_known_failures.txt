@@ -8,89 +8,38 @@
 # ─── Владельцы и сроки (требование G0, W0-INT-01) ───────────────────────────
 #
 # Каждая запись обязана иметь владельца, задачу закрытия и срок пересмотра:
-# долг без владельца не сокращается, а зарастает. Ниже записи сгруппированы
-# по ПРИЧИНЕ, потому что у 33 из 35 причина одна.
+# долг без владельца не сокращается, а зарастает. Записи сгруппированы по
+# ПРИЧИНЕ: так видно, что закрывается одной задачей, а что разными.
 #
-# Кол-во: 35
+# Кол-во: 2
 
-# ── Группа 1: тесты норм не исполняются — отказ на setup (33 записи) ────────
+# ── Закрыто волной 0.0.03: группа «тесты норм» (было 33 записи) ─────────────
 #
-# Причина установлена волной 0.0.03 и она НЕ та, что была записана здесь
-# раньше. Прежняя редакция утверждала: записи существуют только из-за
-# отсутствия norms/vault и после provisioning обязаны исчезнуть. Это неверно,
-# и оставлять такое утверждение в baseline нельзя — оно назначает не того
-# владельца и обещает закрытие долга от события, которое на него не влияет.
+# История оставлена намеренно: она объясняет, почему счётчик группы упал сразу
+# на 33 и почему это НЕ перезапись baseline под красный прогон.
 #
-# Что измерено. Все 33 узла падают на setup фикстуры с AttributeError:
-# tests/test_norms_status_index_fallback.py монкейпатчит у
-# norms.external_provider атрибуты NORMS_DB_PATH, NORMS_VAULT_PATH и
-# MISSING_NORMS_VAULT_PATHS, которых у модуля нет (__all__ провайдера —
-# NORMS_STATUS_INDEX_PATH, load_status_index, resolve_norm_status; сам
-# NORMS_DB_PATH живёт в norms/_core.py). `git log -S NORMS_VAULT_PATH --
-# norms/external_provider.py` пуст: этих атрибутов у провайдера не было
-# никогда. Отказ наступает за доли секунды, ДО любого обращения к файловой
-# системе, а сами тесты работают на tmp_path и синтетических деревьях.
+# Записи держались не на том, на чём было записано. Прежняя редакция этого файла
+# утверждала: причина — отсутствующий norms/vault, и после provisioning записи
+# исчезнут. Проверка опровергла: все 33 узла падали на setup фикстуры с
+# AttributeError, потому что тест монкейпатчил у norms.external_provider
+# атрибуты (NORMS_DB_PATH, NORMS_VAULT_PATH, MISSING_NORMS_VAULT_PATHS),
+# которых у модуля не было никогда. Тест был написан под четырёхклассовый
+# fallback-провайдер, резолвящий нормы из norms_db.json, — то есть ровно под
+# тот legacy-контур, который norms/tools/README.md запрещает прямым текстом.
 #
-# Следствия, которые обязаны быть названы прямо:
-#   * появление norms/vault не изменит ни одного из 33 исходов;
-#   * пока записи висят в baseline, 33 теста нормативного контура не
-#     проверяют ничего, и зелёный гейт это маскирует;
-#   * прежнее условие пересмотра «при первом же успешном provisioning»
-#     недостижимо в принципе.
+# Поэтому чинились ТЕСТЫ, а не провайдер: дописать в провайдер недостающие
+# атрибуты значило бы вернуть запрещённый fallback. Тесты переписаны под
+# фактический контракт status_index-only, проверки классификации уровня _core
+# вынесены в tests/test_norms_core_classification.py.
 #
-# Записи оставлены нетронутыми намеренно: правкой baseline это не лечится, а
-# правка тестов или провайдера меняет контракт fallback-провайдера — это
-# отдельная задача с собственным владельцем, а не уборка CI. Тесты никогда не
-# были зелёными, поэтому неизвестно, какие из них пройдут после починки, а
-# какие вскроют дефект провайдера; оценка этого — часть той же задачи.
+# Записи сняты по зелёному ПРЯМОМУ прогону, а не по факту появления корпуса:
+#   python -m pytest tests/test_norms_status_index_fallback.py \
+#                    tests/test_norms_core_classification.py
 #
-#   владелец: владелец нормативного контура (tests/test_norms_status_index_fallback.py
-#     и norms/external_provider.py)
-#   задача закрытия: привести тест и провайдер к одному контракту; после этого
-#     записи уходят из baseline по факту зелёного прогона — не по факту корпуса
-#   пересмотр: следующая волна после 0.0.03; проверка одной командой —
-#     `python -m pytest tests/test_norms_status_index_fallback.py`
-#
-# Про norm corpus отдельно. Он остаётся обязательным для enforce по §3.3, но к
-# этим 33 записям отношения не имеет. Источник владельцем не назван; шаг CI
-# «Provisioning norm corpus» переведён волной 0.0.03 в source-agnostic
-# fail-closed режим и ждёт конфигурации. Что обязан предоставить владелец —
-# docs/ops/NORM_ARTIFACT_SOURCE.md. norms/tools/README.md по-прежнему прямо
-# запрещает собирать vault из norms_db.json: это внешний вход.
-
-tests.test_norms_status_index_fallback::test_db_only_known_norm_is_known_unverified
-tests.test_norms_status_index_fallback::test_db_only_norm_not_authoritative_even_with_vault_present
-tests.test_norms_status_index_fallback::test_db_only_unknown_norm_is_missing
-tests.test_norms_status_index_fallback::test_empty_mode_diagnostics_reports_mode_A
-tests.test_norms_status_index_fallback::test_empty_mode_returns_safe_fallback
-tests.test_norms_status_index_fallback::test_empty_mode_supported_family_returns_missing
-tests.test_norms_status_index_fallback::test_empty_mode_unsupported_family_returns_unsupported
-tests.test_norms_status_index_fallback::test_fallback_status_index_does_not_promote_norms_db_to_authoritative
-tests.test_norms_status_index_fallback::test_family_detection[\u0412\u0421\u041d 59-88-\u0412\u0421\u041d]
-tests.test_norms_status_index_fallback::test_family_detection[\u0413\u041e\u0421\u0422 12.1.004-91-\u0413\u041e\u0421\u0422]
-tests.test_norms_status_index_fallback::test_family_detection[\u0413\u041e\u0421\u0422 \u0420 50571.5.54-2013-\u0413\u041e\u0421\u0422 \u0420]
-tests.test_norms_status_index_fallback::test_family_detection[\u041c\u0414\u0421 12-29.2006-\u041c\u0414\u0421]
-tests.test_norms_status_index_fallback::test_family_detection[\u041f\u0423\u042d-7-\u041f\u0423\u042d]
-tests.test_norms_status_index_fallback::test_family_detection[\u041f\u043e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 \u041f\u0440\u0430\u0432\u0438\u0442\u0435\u043b\u044c\u0441\u0442\u0432\u0430 \u0420\u0424 \u043e\u0442 28.05.2007 N 87-\u041f\u041f \u0420\u0424]
-tests.test_norms_status_index_fallback::test_family_detection[\u0420\u0414 34.21.122-87-\u0420\u0414]
-tests.test_norms_status_index_fallback::test_family_detection[\u0421\u041d\u0438\u041f 2.04.01-85-\u0421\u041d\u0438\u041f]
-tests.test_norms_status_index_fallback::test_family_detection[\u0421\u041f 1.13130.2020-\u0421\u041f]
-tests.test_norms_status_index_fallback::test_family_detection[\u0424\u0435\u0434\u0435\u0440\u0430\u043b\u044c\u043d\u044b\u0439 \u0437\u0430\u043a\u043e\u043d 123-\u0424\u0417-\u0424\u0417]
-tests.test_norms_status_index_fallback::test_generate_deterministic_checks_splits_known_unverified_from_missing
-tests.test_norms_status_index_fallback::test_missing_vault_only_norm_is_known_unverified
-tests.test_norms_status_index_fallback::test_normalization_variants_resolve_to_same_norm[ \u0421\u041f 256.1325800.2016 ]
-tests.test_norms_status_index_fallback::test_normalization_variants_resolve_to_same_norm[**\u0421\u041f 256.1325800.2016**]
-tests.test_norms_status_index_fallback::test_normalization_variants_resolve_to_same_norm[\u0421\u041f  256.1325800.2016]
-tests.test_norms_status_index_fallback::test_normalization_variants_resolve_to_same_norm[\u0421\u041f 256.1325800.2016 (\u0440\u0435\u0434. 29.01.2024)]
-tests.test_norms_status_index_fallback::test_normalization_variants_resolve_to_same_norm[\u0421\u041f 256.1325800.2016 \u0441 \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f\u043c\u0438]
-tests.test_norms_status_index_fallback::test_normalization_variants_resolve_to_same_norm[\u0421\u041f 256.1325800.2016]
-tests.test_norms_status_index_fallback::test_normalization_variants_resolve_to_same_norm[\u0441\u043f 256.1325800.2016]
-tests.test_norms_status_index_fallback::test_override_only_in_status_index_is_authoritative
-tests.test_norms_status_index_fallback::test_overrides_only_active
-tests.test_norms_status_index_fallback::test_overrides_only_cancelled
-tests.test_norms_status_index_fallback::test_overrides_only_replaced
-tests.test_norms_status_index_fallback::test_overrides_only_unknown
-tests.test_norms_status_index_fallback::test_vault_norm_is_authoritative
+# Восстановленные тесты сразу нашли три дефекта самого провайдера (ложный
+# authoritative-матч по обрывку кода, неоднозначный префикс, чужой alias поверх
+# собственного кода) — они исправлены там же и закрыты регрессами. Разбор —
+# в docs/architecture/receipts/W0-INT-01.json.
 
 # ── Группа 2: устаревший characterization contract (1 запись) ───────────────
 #

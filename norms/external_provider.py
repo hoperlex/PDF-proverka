@@ -35,6 +35,12 @@ NORMS_STATUS_INDEX_PATH = Path(
 # ─── Определение семейства ────────────────────────────────────────────────
 # Порядок важен: узкие шаблоны до широких.
 _FAMILY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    # Таблица обязана совпадать с norms/tools/norms_api.py::_FAMILY_PATTERNS —
+    # это одна и та же политика «какие семейства мы умеем принимать». СанПиН
+    # там был, здесь его не было, и любой СанПиН вне индекса уезжал в
+    # unsupported_norms («ревизия поддержки семейств») вместо очереди на
+    # добавление документа.
+    ("СанПиН", re.compile(r"^\s*СанПиН\s+\d", re.IGNORECASE)),
     ("ГОСТ Р", re.compile(r"^\s*ГОСТ\s+Р\b", re.IGNORECASE)),
     ("ГОСТ", re.compile(r"^\s*ГОСТ\b", re.IGNORECASE)),
     ("СНиП", re.compile(r"^\s*СНиП\b", re.IGNORECASE)),
@@ -94,6 +100,24 @@ def _match_key(s: str) -> str:
     return re.sub(r"\s+", "", s).replace("_", ".").lower()
 
 
+# Разделители токенов внутри кода нормы ПОСЛЕ _match_key: пробелы вырезаны,
+# «_» приведён к «.», остаются «.», «-», «/», «:».
+_CODE_BOUNDARY_CHARS = frozenset(".-/:")
+
+
+def _is_boundary_prefix(query_key: str, index_key: str) -> bool:
+    """True, если query_key — префикс index_key, обрывающийся на границе токена.
+
+    «сп256» → «сп256.1325800.2016»: обрыв на «.», префикс легитимен.
+    «сп25»  → «сп256.1325800.2016»: обрыв внутри числа — это другая норма.
+    """
+    if not query_key or len(index_key) <= len(query_key):
+        return False
+    if not index_key.startswith(query_key):
+        return False
+    return index_key[len(query_key)] in _CODE_BOUNDARY_CHARS
+
+
 # ─── Кеш ──────────────────────────────────────────────────────────────────
 _index_cache: dict | None = None
 _lookup_cache: dict[str, str] | None = None       # match-key → canonical code
@@ -129,6 +153,12 @@ def load_status_index(force_reload: bool = False) -> dict:
     lookup: dict[str, str] = {}
     alias_kind: dict[str, str] = {}
     by_code: dict[str, dict] = {}
+
+    # Два прохода, и порядок принципиален. Собственный код записи ВСЕГДА
+    # сильнее чужого alias: иначе alias записи «СП 30.13330.2020»
+    # («СНиП 2.04.01-85») перекрывал одноимённую запись самого СНиП, и
+    # заменённый документ отвечал статусом active — зависимость результата от
+    # порядка записей в файле индекса.
     for entry in data.get("norms", []):
         code = entry["code"]
         by_code[code] = entry
@@ -136,6 +166,10 @@ def load_status_index(force_reload: bool = False) -> dict:
         if canon_key and canon_key not in lookup:
             lookup[canon_key] = code
             alias_kind[canon_key] = "canonical"
+
+    for entry in data.get("norms", []):
+        code = entry["code"]
+        canon_key = _match_key(code)
         for alias in entry.get("aliases") or []:
             ak = _match_key(alias)
             if not ak or ak == canon_key:
@@ -191,15 +225,30 @@ def _resolve_in_index(normalized: str) -> tuple[str | None, str]:
         return None, "none"
     if key in _lookup_cache:
         return _lookup_cache[key], _alias_kind_cache.get(key, "canonical")
-    # substring-fallback: аккуратный, минимизирует длину разницы.
-    best: tuple[str, int] | None = None
+
+    # substring-fallback. Разрешены ровно два безопасных случая:
+    #   1) ключ индекса целиком присутствует в запросе — «код + хвост»
+    #      («СП 256.1325800.2016 п. 7.4.2»);
+    #   2) запрос — префикс кода, обрывающийся на ГРАНИЦЕ токена
+    #      («СП 256» → «СП 256.1325800.2016»).
+    # Обрыв внутри числового токена запрещён: «СП 25» — это СП 25.13330
+    # (основания на вечномёрзлых грунтах), и матч его в «СП 256.1325800.2016»
+    # подменял одну норму другой, помечая результат found/authoritative.
+    best_score: int | None = None
+    best_codes: list[str] = []
     for k, code in _lookup_cache.items():
-        if key in k or k in key:
-            score = abs(len(k) - len(key))
-            if best is None or score < best[1]:
-                best = (code, score)
-    if best:
-        return best[0], "substring"
+        if not (k in key or _is_boundary_prefix(key, k)):
+            continue
+        score = abs(len(k) - len(key))
+        if best_score is None or score < best_score:
+            best_score, best_codes = score, [code]
+        elif score == best_score and code not in best_codes:
+            best_codes.append(code)
+    # Ничья между РАЗНЫМИ кодами («СП 30» при наличии редакций 2016 и 2020)
+    # без домысла неразрешима: честнее вернуть not_in_index и отправить норму
+    # в очередь на ручное добавление, чем выбрать по порядку записей в файле.
+    if len(best_codes) == 1:
+        return best_codes[0], "substring"
     return None, "none"
 
 

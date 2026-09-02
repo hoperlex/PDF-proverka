@@ -83,7 +83,17 @@ capabilities и строгость gates не изменились: `--ci` у La
 только комментарии, владелец и условие пересмотра группы.
 
 Версия контракта прежняя: правила §5, §6 и §7 не тронуты, ни один порог не
-сдвинут. Переиздание оформлено здесь, потому что §2 требует нового receipt на
+сдвинут.
+
+**Изменение состава baseline от 2026-09-02.** Из `scripts/ci_known_failures.txt`
+сняты 33 записи группы «тесты норм». Это не пересборка baseline и не подгонка
+под прогон: записи сняты поимённо, по зелёному ПРЯМОМУ прогону восстановленных
+тестов, и ни одна из них не зависела от корпуса норм — их причиной был отказ на
+setup фикстуры. Правило §3.3 «прогон без выбранного корпуса не создаёт baseline»
+не нарушено: `ci_regression_gate.py --record` не запускался, состав изменён
+вручную с обоснованием в шапке файла. Оставшиеся записи принадлежат WEB и ENG.
+
+ Переиздание оформлено здесь, потому что §2 требует нового receipt на
 любое изменение зафиксированного входа до интеграции.
 
 | Вход | SHA-256 |
@@ -96,9 +106,9 @@ capabilities и строгость gates не изменились: `--ci` у La
 | `frontend/package-lock.json` | `c679604b25329bdbcf89f80017011a0c51c07e770e326865b093f63633097040` |
 | `frontend/package.json` | `65749f5180ea6fd1e2d99f35c103365f9188f7e2cabaef3db53e8f051eef2075` |
 | `frontend/tsconfig.distributed.json` | `a3d3fb949642421af5563073f04658160534b04e78c3ebad895d4454eb487863` |
-| `.github/workflows/ci.yml` | `5e7ee26ad2ddc644d3d47a45ab179459f26f512e9fe20f3a128f1d86e8e2a38b` |
+| `.github/workflows/ci.yml` | `21ee8320db83ff70ac3ca103a5b3af68f3aa312502fd9961aa4c5d4fc17bdcb1` |
 | `scripts/ci_regression_gate.py` | `42fc15209950558781481aaa25d84d6f11a1333acb78eb22644b3a8b50f6f529` |
-| `scripts/ci_known_failures.txt` | `5cedcdd61eaa56e393f6acf9ee0856b8e93c646d0390ed24335c98f396a5eec2` |
+| `scripts/ci_known_failures.txt` | `1e71d9da145b727697af02cdca720ee0f54c71527a46cafa212909d8126da45b` |
 | `tests/conftest.py` | `395646bd3f738f1da345bb75f2627844f8e27d447991c04ce305b97d13594706` |
 | `backend/tests/conftest.py` | `8df70ba9cc4b1070574148b1b8cbd44cabe98c8316039c9f67f360858aac67e8` |
 
