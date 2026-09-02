@@ -205,6 +205,38 @@ class FakeAgent:
         await asyncio.sleep(0)
 
 
+async def wait_for(probe, timeout, interval=0.01):
+    """Bounded-ожидание ИМЕННО того факта, который проверяет тест.
+
+    Возвращает первое истинное значение `probe()` или None по исчерпании срока.
+    Между опросами обязательно отдаёт управление циклу: производственный код
+    шлюза живёт в этом же loop'е, и опрос без `await` его просто заморозил бы.
+    """
+    deadline = asyncio.get_running_loop().time() + timeout
+    while True:
+        value = probe()
+        if value:
+            return value
+        if asyncio.get_running_loop().time() >= deadline:
+            return None
+        await asyncio.sleep(interval)
+
+
+# Срок ожидания применения центром ОДНОГО сообщения потока. Это не удлинение
+# ожидания: `wait_for` выходит по факту, а не по сроку, и типичный выход —
+# первый же опрос. Срок нужен только чтобы отказ оставался bounded и читаемым;
+# он на порядок ниже per-test бюджета полосы (180 с, §7 quality/runtime v1).
+CENTER_APPLY_TIMEOUT = 10.0
+
+
+async def wait_for_attempt_state(attempt_id, state, settings, timeout=CENTER_APPLY_TIMEOUT):
+    """Дождаться, пока центр доведёт попытку до `state`."""
+    return await wait_for(
+        lambda: (repositories.get_attempt(attempt_id, settings=settings) or {}).get("state") == state,
+        timeout,
+    )
+
+
 @pytest_asyncio.fixture()
 async def running_gateway(gateway_env):
     config = GatewayConfig(
@@ -385,10 +417,18 @@ async def test_p_q_heartbeat_and_capabilities_use_existing_domain(running_gatewa
     agent = FakeAgent(worker, port)
     await agent.connect(epoch=1)
     await agent.send("heartbeat", stream_pb.Heartbeat(worker_id=worker["worker_id"], connection_id=agent.connection_id, observed_at=adapters.timestamp_from_epoch(time.time()), worker_state=common_pb.WORKER_STATE_BUSY, active_slots=1, max_slots=2, active_attempts=[], resources=common_pb.ResourceSummary(executor_status="online"), accepting_jobs=True))
-    await asyncio.sleep(0.1)
+    # Отправка в поток не упорядочена относительно применения центром: heartbeat
+    # разбирается `_read_loop`, а запись уходит в поток через `database.run_db`.
+    # Ждём сам проверяемый факт вместо фиксированной паузы.
+    assert await wait_for(
+        lambda: repositories.get_worker(worker["worker_id"], settings=gateway_env)["worker_state"] == "busy",
+        CENTER_APPLY_TIMEOUT,
+    ), "центр не применил heartbeat за отведённый срок"
     fresh = repositories.get_worker(worker["worker_id"], settings=gateway_env)
     assert fresh["worker_state"] == "busy" and fresh["connection_status"] == "online"
     await agent.send("capabilities_changed", stream_pb.CapabilitiesChanged(capabilities=capabilities("caps-2")))
+    # Пауза, а не ожидание: проверяемый факт (`job_types`) одинаков у caps-1 и
+    # caps-2, поэтому опозданием центра он сломан быть не может.
     await asyncio.sleep(0.1)
     fresh = repositories.get_worker(worker["worker_id"], settings=gateway_env)
     assert json.loads(fresh["capabilities"])["job_types"] == ["test_pipeline_v1"]
@@ -406,8 +446,32 @@ async def test_r_u_scheduler_atomic_offer_and_lost_delivery_recovery(running_gat
     offer = offer_response.job_offer
     stored = repositories.get_attempt(job["attempt_id"], settings=gateway_env)
     assert stored["state"] == "source_uploading"
-    offer_row = gateway_repository.pending_offers(worker["worker_id"], settings=gateway_env)[0]
-    assert offer_row["attempt_id"] == offer.attempt_id and offer_row["delivered_at"]
+
+    # Получение offer клиентом и запись `delivered_at` — РАЗНЫЕ сигналы, и между
+    # ними лежит производственный порядок операций. Планировщик шлюза сначала
+    # кладёт ответ в outbound queue (`_enqueue`, синхронно), и только следующим
+    # `await` фиксирует доставку — `mark_offer_delivered` уходит в поток через
+    # `database.run_db` = `asyncio.to_thread`. Ровно этот `await` и отдаёт
+    # управление отправителю, поэтому клиент штатно получает offer РАНЬШЕ, чем
+    # UPDATE успевает коммитнуться. Порядок в проде правильный и менять его
+    # нельзя: запись до enqueue пометила бы доставленным offer, который ещё не
+    # отправлен. Прежняя редакция читала БД сразу после `read_until` и получала
+    # `delivered_at = None`: измерено 6 падений из 20 под нагрузкой LA1 ~20–24
+    # (`assert ... and None`) при задержке записи 0.26–24.2 мс.
+    # Ждём сам проверяемый факт. Срок ожидания — аренда offer'а: после её
+    # истечения планировщик сам переводит offer в `expired`, а
+    # `mark_offer_delivered` пишет только `WHERE status='offered'`, то есть
+    # ждать дольше аренды бессмысленно по построению.
+    def delivered_offer_row():
+        rows = gateway_repository.pending_offers(worker["worker_id"], settings=gateway_env)
+        return rows[0] if rows and rows[0]["delivered_at"] else None
+
+    offer_row = await wait_for(delivered_offer_row, server.config.offer_timeout_sec)
+    assert offer_row is not None, (
+        "центр не отметил offer доставленным за срок его аренды; последний снимок "
+        f"gateway_job_offers: {gateway_repository.pending_offers(worker['worker_id'], settings=gateway_env)}"
+    )
+    assert offer_row["attempt_id"] == offer.attempt_id
     # Disconnect before accept: expiry recovers the same authoritative attempt.
     await agent.close()
     await asyncio.sleep(1.1)
@@ -426,9 +490,14 @@ async def test_v_x_job_accept_duplicate_and_wrong_worker(running_gateway, gatewa
     offer = (await agent.read_until("job_offer")).job_offer
     accept = stream_pb.JobAccept(job_id=offer.job_id, attempt_id=offer.attempt_id, worker_id=worker["worker_id"], execution_revision="", accepted_at=adapters.timestamp_from_epoch(time.time()), source_sha256_verified=True, source_manifest_version=1)
     await agent.send("job_accept", accept)
-    await asyncio.sleep(0.1)
-    assert repositories.get_attempt(job["attempt_id"], settings=gateway_env)["state"] == "accepted_by_worker"
+    assert await wait_for_attempt_state(job["attempt_id"], "accepted_by_worker", gateway_env), (
+        "центр не применил job_accept за отведённый срок; фактическое состояние: "
+        f"{repositories.get_attempt(job['attempt_id'], settings=gateway_env)['state']}"
+    )
     await agent.send("job_accept", accept)
+    # Пауза, а не ожидание: здесь утверждается, что дубликат НЕ изменил уже
+    # достигнутое состояние. Ожиданием отрицание не выражается, а опоздание
+    # центра этот assert сломать не может — состояние уже `accepted_by_worker`.
     await asyncio.sleep(0.1)
     assert repositories.get_attempt(job["attempt_id"], settings=gateway_env)["state"] == "accepted_by_worker"
     attacker = FakeAgent(other, port)
@@ -449,6 +518,8 @@ async def test_y_z_job_decline_typed_and_requeues_temporary(running_gateway, gat
     await agent.connect(epoch=1)
     offer = (await agent.read_until("job_offer")).job_offer
     await agent.send("job_decline", stream_pb.JobDecline(job_id=offer.job_id, attempt_id=offer.attempt_id, worker_id=worker["worker_id"], reason=stream_pb.JOB_DECLINE_REASON_NO_SLOT, safe_detail="temporary"))
+    # Пауза, а не ожидание: множество допустимых состояний включает исходное
+    # `source_uploading`, поэтому опоздание центра assert не ломает.
     await asyncio.sleep(0.1)
     assert repositories.get_attempt(job["attempt_id"], settings=gateway_env)["state"] in {"assigned", "source_uploading"}
     await agent.close()
@@ -507,7 +578,10 @@ async def test_ag_ah_progress_and_invalid_state_transition(running_gateway, gate
     wrong_job = await agent.read_until("error")
     assert wrong_job.error.code == common_pb.ERROR_CODE_JOB_CONFLICT
     await agent.send("progress", adapters.progress_from_http({"job_id": job["job_id"], "attempt_id": job["attempt_id"], "stage_id": "stage", "status": "running", "current": 1, "total": 2, "observed_at": time.time()}))
-    await asyncio.sleep(0.1)
+    assert await wait_for(
+        lambda: repositories.get_attempt(job["attempt_id"], settings=gateway_env)["progress_snapshot"],
+        CENTER_APPLY_TIMEOUT,
+    ), "центр не применил progress за отведённый срок"
     assert json.loads(repositories.get_attempt(job["attempt_id"], settings=gateway_env)["progress_snapshot"])["current"] == 1
     await agent.send("job_status", stream_pb.JobStatusUpdate(job_id=job["job_id"], attempt_id=job["attempt_id"], state=common_pb.JOB_STATE_COMPLETED))
     error = await agent.read_until("error")
@@ -574,8 +648,10 @@ async def test_ai_al_cancel_delivery_duplicate_ack_and_restart(running_gateway, 
     assert (await reconnect.read_until("cancel")).cancel.command_id == command["command_id"]
     ack = stream_pb.CancelAck(command_id=command["command_id"], job_id=job["job_id"], attempt_id=job["attempt_id"], stage=stream_pb.CANCEL_ACK_STAGE_CANCELLED, acknowledged_at=adapters.timestamp_from_epoch(time.time()))
     await reconnect.send("cancel_ack", ack)
-    await asyncio.sleep(0.1)
-    assert repositories.get_attempt(job["attempt_id"], settings=gateway_env)["state"] == "cancelled"
+    assert await wait_for_attempt_state(job["attempt_id"], "cancelled", gateway_env), (
+        "центр не применил cancel_ack за отведённый срок; фактическое состояние: "
+        f"{repositories.get_attempt(job['attempt_id'], settings=gateway_env)['state']}"
+    )
     await reconnect.close()
 
 
@@ -657,10 +733,21 @@ async def test_aq_av_real_validation_lost_ack_resends_and_retention_persisted(
                 job_id=offer.job_id, attempt_id=offer.attempt_id, state=state
             ),
         )
-    await asyncio.sleep(0.1)
-    assert repositories.get_attempt(job["attempt_id"], settings=gateway_env)["state"] == "result_received"
+    # Четыре job_status уходят в поток подряд, а применяет их центр по одному:
+    # `_read_loop` разбирает сообщения последовательно, и каждый переход — это
+    # отдельная запись через `database.run_db` = `asyncio.to_thread`. Прежняя
+    # редакция давала на все четыре фиксированные 100 мс и под нагрузкой видела
+    # промежуточное состояние: измерено 19 падений из 20 при LA1 ~104
+    # (`assert 'running' == 'result_received'` — 11 раз,
+    # `'completed_locally'` — 7, `'accepted_by_worker'` — 1).
+    assert await wait_for_attempt_state(job["attempt_id"], "result_received", gateway_env), (
+        "центр не довёл попытку до result_received за отведённый срок; фактическое состояние: "
+        f"{repositories.get_attempt(job['attempt_id'], settings=gateway_env)['state']}"
+    )
     ready = stream_pb.ResultReady(job_id=job["job_id"], attempt_id=job["attempt_id"], result_package=common_pb.PackageTransferDescriptor(transfer_id="upload-test", direction=common_pb.PACKAGE_DIRECTION_AGENT_TO_CENTER, protocol=common_pb.PACKAGE_TRANSFER_PROTOCOL_HTTPS_RESUMABLE_V1, package_type="result", size_bytes=archive.stat().st_size, sha256=result_sha), execution_revision="rev-test", stage_status_summary=adapters.canonical_json_message({}, schema="s", schema_version=1), provider_action_ledger_summary=adapters.canonical_json_message({}, schema="l", schema_version=1), ready_at=adapters.timestamp_from_epoch(time.time()))
     await agent.send("result_ready", ready)
+    # Пауза, а не ожидание: утверждается ОТСУТСТВИЕ исхода валидации. Ожидание
+    # пустого списка вернулось бы мгновенно и ничего бы не проверило.
     await asyncio.sleep(0.1)
     assert await running_gateway[0].domain.pending_result_outcomes(worker["worker_id"]) == []
     updated, report = job_service.finalize_result(
@@ -819,6 +906,9 @@ async def test_stress_20_concurrent_fake_workers(running_gateway, gateway_env):
         return agent
 
     agents = await asyncio.gather(*(connect_and_heartbeat(worker) for worker in workers))
+    # Пауза, а не ожидание: каждый агент уже дождался `event_ack`, а `_read_loop`
+    # разбирает сообщения по порядку — значит hello и heartbeat применены до
+    # ack'а. Синхронизация здесь уже есть, и она round-trip'ом сильнее паузы.
     await asyncio.sleep(0.1)
     assert await server.registry.count() == 20
     assert server.metrics.snapshot()["heartbeats_total"] == 20

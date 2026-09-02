@@ -1,0 +1,372 @@
+{
+  "type": "determinism_receipt",
+  "task_id": "W0-INT-01",
+  "package": "NB-1 — последний известный недетерминированный узел полосы `network` (находка docs/architecture/receipts/W0-INT-01-network-determinism.json → findings[NB-1]); попутно обнаружен и закрыт NB-1b того же класса в том же файле",
+  "produced_for": "интегратор W0-INT-01",
+  "produced_by": "владелец распределённого контура",
+  "captured_at": "2026-09-02",
+  "revision": "1 (2026-09-02)",
+  "base_commit": "e9811876e447e1e4c9c42189401758a7960bebd0",
+  "not_an_acceptance": "Это расписка ДВУХ узлов полосы `network`, а не приёмка среза 0.0.03 и не G0 receipt. Она закрывает находку NB-1 предыдущей расписки и найденный по ходу работы второй узел того же класса. Второй блокер enforce (источник norms/vault, пакет A) здесь не трогался: probe в профиле --ci помечает его как WARN/OPTIONAL_NORM_CORPUS_ABSENT, под --enforce те же прогоны отказали бы с NORM_ARTIFACT_MISSING. Перевод CI в --enforce остаётся за пакетом C.",
+  "profile": {
+    "user": "ciuser, uid=1001 — §3.1 требует uid != 0; сессия-владелец работает под root, поэтому вся доказательная база снята НЕ ею. uid записан самим раннером в каждой lane-расписке: \"uid\": 1001.",
+    "python": "3.12.3 — норматив §3.1",
+    "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.39, 8 ядер",
+    "node_npm": "Node 22.23.1 / npm 10.9.8 — пины §3.1 выполнены; дистрибутив подан явно через PATH=/opt/node-v22.23.1/bin. В PATH у ciuser по умолчанию Node 18 — это ровно дефект provisioning CR-5, а не дефект платформы.",
+    "checkout": "git archive e9811876 → /home/ciuser/nb1/src, права ciuser, 2362 файла, без .git. ОТДЕЛЬНЫЙ чекаут: в общем рабочем дереве параллельно правят свои файлы другие агенты волны (на момент снятия там были изменены .github/workflows/ci.yml, norms/external_provider.py, scripts/ci_known_failures.txt, tests/test_norms_status_index_fallback.py, QUALITY_RUNTIME_CONTRACT_V1.md), и снимать evidence на нём значило бы мерить чужой код. В чекаут переносился РОВНО один файл — tests/test_agent_gateway_12b.py.",
+    "venv": "/home/ciuser/acceptance-0.0.03/venv — переиспользован венв приёмки 0.0.03, собранный командой workflow `pip install -c constraints-qr-v1.txt -r requirements-dev.txt`",
+    "pip_check": "No broken requirements found (exit 0)",
+    "pip_freeze_sha256": "557e95885700a44013febcc6559fa8ee278923507b71df8adba761e1e247f99c — ПОБАЙТНО совпадает с reference §4.1; тот же хэш независимо записал раннер в каждой lane-расписке",
+    "isolated_state": "все восемь переменных §3.2 выставлены дословно, включая AUDITMANAGER_DEPLOY_LOCK_DIR; run-root отдельный — /home/ciuser/nb1/run-root",
+    "locale_time": "TZ=UTC, LC_ALL=C.UTF-8, PYTHONHASHSEED=0 — §3.1",
+    "provenance": "QR_SOURCE_COMMIT=e9811876e447e1e4c9c42189401758a7960bebd0 — в дереве без .git probe иначе отказывает по SOURCE_COMMIT_UNKNOWN (§8). Сокращённый SHA §8 не принимает.",
+    "probe_ci_mode": "network → report ok, exit 0, probe_exit_code 0. Единственное отклонение — norm_artifact WARN/OPTIONAL_NORM_CORPUS_ABSENT (advisory в --ci, блокер только в --enforce).",
+    "seed_and_order": "Плагинов случайного порядка в наборе нет, pytest.ini их не подключает, PYTHONHASHSEED=0 зафиксирован. Порядок нод полосы детерминирован сбором по путям.",
+    "how_load_was_made": "управляемая нагрузка — счётные процессы `while :; do :; done`, запущенные ОТ ROOT (16, 24, 48, 64, 88 штук на 8 ядрах). От root намеренно: инвентаризация остатков считает процессы с uid 1001, и нагрузка не должна в неё попадать. Кроме неё на машине параллельно работали другие агенты волны — их вклад в LA записан вместе с моим, разделить их я не могу и не заявляю, что могу.",
+    "moving_tree": "Ветка dev двигалась во время работы: на старте HEAD был e9811876, на момент сдачи — e5a2d8d6. Мой файл соседями не менялся; изменения в рабочем дереве на момент сдачи — ровно tests/test_agent_gateway_12b.py и эта расписка."
+  },
+  "root_cause": {
+    "nb_1": {
+      "node": "tests/test_agent_gateway_12b.py::test_r_u_scheduler_atomic_offer_and_lost_delivery_recovery",
+      "one_sentence": "Тест синхронизировался на получении offer'а клиентом, а утверждал про запись `delivered_at` в базе центра — это два разных сигнала, между которыми лежит производственный порядок операций, и клиент штатно опережает запись.",
+      "mechanism": "backend/app/agent_gateway/service.py::_outbound_loop, ветка выдачи offer'а: `self._enqueue(session, self._response(session, job_offer=offer))` — синхронная постановка в outbound queue, затем `session.sent_offers.add(...)`, и только СЛЕДУЮЩИМ оператором `await self.domain.mark_offer_delivered(offer.attempt_id)`. Именно этот `await` отдаёт управление циклу, и генератор Connect успевает забрать сообщение из очереди и отдать его в поток. Сама запись доставки уходит в отдельный поток исполнения через `database.run_db` = `asyncio.to_thread` (backend/app/services/distributed_workers/database.py:298), то есть ждёт ещё и планировщика ОС. Клиент получает offer раньше коммита UPDATE — по построению, а не по случайности.",
+      "why_the_neighbouring_facts_did_not_race": "Строка `gateway_job_offers` и переход попытки в `source_uploading` пишутся ОДНОЙ транзакцией `repositories.claim_next_job_for_worker(..., gateway_offer=...)` ещё до того, как сообщение собрано (backend/app/agent_gateway/domain.py::claim_offer). Поэтому `pending_offers(...)[0]` и `stored[\"state\"] == \"source_uploading\"` наблюдаются надёжно, а падала всегда и только вторая половина конъюнкции — `offer_row[\"delivered_at\"]`.",
+      "measured_window": "Инструментальное измерение задержки между получением offer'а клиентом и появлением непустого `delivered_at` (временный измеритель жил только в приватном чекауте, в дерево не вносился): 25 повторов при LA1 20.4–21.1 / LA5 18.9–19.0 — min 0.264 мс, медиана 1.334 мс, max 9.164 мс, «первое чтение промахнулось» 9 раз из 25; 15 повторов при LA1 57.7–71.1 / LA5 31.8–49.6 — min 0.287 мс, медиана 0.619 мс, max 24.235 мс, промах первого чтения 5 раз из 15. Ни разу строка offer'а не исчезла раньше записи доставки. Доля промахов первого чтения 33–36 % — при том что окно измеряется миллисекундами, а тест давал ему НОЛЬ.",
+      "production_is_right": "Порядок «enqueue → отметка доставки» намеренный: обратный порядок пометил бы доставленным offer, который ещё не отправлен, и при обрыве соединения между записью и отправкой центр считал бы доставленным то, чего воркер не получал; аренда вернула бы попытку в `assigned`, а `delivered_at` уже стоял бы — телеметрия доставки врала бы. Указание владельца «не переносить запись перед enqueue» подтверждено разбором кода, а не принято на веру, и не нарушено: production не изменён ни одной строкой."
+    },
+    "nb_1b": {
+      "node": "tests/test_agent_gateway_12b.py::test_aq_av_real_validation_lost_ack_resends_and_retention_persisted",
+      "discovered": "не входил ни в задание, ни в список известных недетерминированных узлов; выпал в первом же прогоне полосы, снятом ПОД УПРАВЛЯЕМОЙ НАГРУЗКОЙ уже после правки NB-1 (LA1 29.3 → 40.7)",
+      "one_sentence": "Тест отправляет в поток ЧЕТЫРЕ job_status подряд, даёт на их применение фиксированные 100 мс и утверждает финальное состояние — под нагрузкой центр успевает применить не все.",
+      "mechanism": "`_read_loop` разбирает сообщения потока строго последовательно, и каждый переход состояния — отдельная запись через `database.run_db` = `asyncio.to_thread`. Фиксированная пауза не связана ни с одним наблюдаемым фактом: она либо велика (тест тормозит), либо мала (тест врёт). Сигнатуры падений прямо показывают, сколько сообщений успело примениться: `assert 'running' == 'result_received'` (успело одно) — 11 раз из 19, `'completed_locally'` (два) — 7, `'accepted_by_worker'` (ноль) — 1.",
+      "production_is_right": "Последовательный разбор потока и запись состояний вне event loop — намеренная конструкция; ни то, ни другое не менялось.",
+      "same_class": "Тот же дефект, что NB-1 и что закрытые в волне 0.0.03 три теста пакета B: синхронизация на соседнем сигнале (или на часах) вместо самого проверяемого факта."
+    }
+  },
+  "the_fix": {
+    "shape": "bounded-ожидание ИМЕННО проверяемого факта. Ни одно существующее ожидание не удлинено, ни один production-порядок не переставлен.",
+    "helpers_added": {
+      "wait_for(probe, timeout, interval=0.01)": "возвращает первое истинное значение `probe()` или None по исчерпании срока; между опросами обязателен `await asyncio.sleep(interval)`, потому что шлюз живёт в ТОМ ЖЕ event loop и опрос без отдачи управления заморозил бы производственный код, которого тест ждёт",
+      "wait_for_attempt_state(attempt_id, state, settings)": "частный случай для доминирующей формы «центр должен довести попытку до состояния X»",
+      "CENTER_APPLY_TIMEOUT = 10.0": "срок ожидания применения центром ОДНОГО сообщения потока. Это не удлинение ожидания: выход происходит по факту, а не по сроку, и типичный выход — первый же опрос. Срок нужен только чтобы отказ оставался bounded и читаемым, и он на порядок ниже per-test бюджета полосы (180 с, §7)."
+    },
+    "nb_1_deadline_is_the_offer_lease": "для NB-1 срок взят не константой, а из production-конфигурации прогона — `server.config.offer_timeout_sec`. Это единственная осмысленная граница: по истечении аренды планировщик сам переводит offer в `expired` (`recover_expired_offers`), а `mark_offer_delivered` пишет `WHERE ... AND status='offered'`, то есть после истечения аренды `delivered_at` не появится НИКОГДА и ждать дольше бессмысленно по построению. В фикстуре `running_gateway` аренда равна 1.0 с — запас ~41x к худшей измеренной задержке (24.235 мс при LA1 ~68).",
+    "identity_check_kept_separate": "проверка `offer_row[\"attempt_id\"] == offer.attempt_id` НЕ втянута в предикат ожидания и осталась отдельным утверждением — иначе ожидание маскировало бы выдачу чужой попытки.",
+    "diagnostics_on_failure": "каждое новое ожидание при исчерпании срока падает не по `assert ... and None`, а с текстом причины и ФАКТИЧЕСКИМ наблюдённым значением (состояние попытки, снимок `gateway_job_offers`). Следующий отказ будет читаемым, а не загадкой.",
+    "tests_got_faster_not_more_patient": "ожидание выходит по факту, поэтому пять фиксированных пауз по 100 мс заменены на выходы за единицы миллисекунд. Измерено на модуле целиком: 49 passed за 7.35 / 7.20 с до правок и за 28.25–30.31 с при LA1 ~100 (сравнение при равной нагрузке — в evidence_matrix.f_module_runs).",
+    "converted_sites": [
+      "test_p_q_heartbeat_and_capabilities_use_existing_domain — heartbeat: ждём `worker_state == busy`",
+      "test_v_x_job_accept_duplicate_and_wrong_worker — первый job_accept: ждём `accepted_by_worker`",
+      "test_ag_ah_progress_and_invalid_state_transition — progress: ждём появления `progress_snapshot`",
+      "test_ai_al_cancel_delivery_duplicate_ack_and_restart — cancel_ack: ждём `cancelled`",
+      "test_aq_av_real_validation_lost_ack_resends_and_retention_persisted — цепочка из четырёх job_status: ждём `result_received` (NB-1b, воспроизведён)",
+      "test_r_u_scheduler_atomic_offer_and_lost_delivery_recovery — ждём непустой `delivered_at` (NB-1, воспроизведён)"
+    ],
+    "sites_deliberately_left_as_fixed_pauses": {
+      "принцип": "фиксированная пауза оставлена там, где опоздание центра НЕ МОЖЕТ сломать утверждение; в коде у каждой такой паузы стоит однострочное объяснение, чтобы её не «починили» вслепую",
+      "capabilities_changed": "проверяемый `job_types` одинаков у caps-1 и caps-2 — утверждение истинно и до применения",
+      "duplicate_job_accept": "утверждается, что дубликат НЕ изменил уже достигнутое состояние; ожиданием отрицание не выражается",
+      "job_decline": "множество допустимых состояний включает исходное `source_uploading`",
+      "pending_result_outcomes_empty": "утверждается ОТСУТСТВИЕ исхода валидации; ожидание пустого списка вернулось бы мгновенно и ничего бы не проверило",
+      "twenty_agents_registry_count": "каждый агент уже дождался `event_ack`, а `_read_loop` разбирает сообщения по порядку — hello и heartbeat применены до ack'а; синхронизация здесь уже есть и она round-trip'ом сильнее паузы",
+      "measured_not_assumed": "эти пять точек прошли 10 полных прогонов модуля при LA1 96.7–107.5 / LA5 92.4–104.5 без единого падения — единственной падавшей точкой была цепочка из четырёх job_status"
+    }
+  },
+  "changed_files": [
+    {
+      "path": "tests/test_agent_gateway_12b.py",
+      "sha256_at_base_commit": "d850c7557bb045acb84cb078e40bcf6068501f95ae692819448eeb11ffe761ab",
+      "sha256_final": "9c251dee79c1acbbd8da5c18823ac7b53b76394528f44566bcf72c083670c053",
+      "sha256_after_nb1_only": "e083f2b1dcc7a699119edf98c1f9e86d7b03b6056b56695666b530165a14c912",
+      "diff_size": "+100 −10 строк (из них 45 — комментарии механизма и объяснения оставленных пауз)",
+      "what": "добавлены `wait_for`, `wait_for_attempt_state` и константа CENTER_APPLY_TIMEOUT; шесть точек синхронизации переведены с чтения-сразу/фиксированной паузы на bounded-ожидание самого проверяемого факта; пять оставшихся пауз снабжены объяснением, почему опоздание центра их не ломает"
+    }
+  ],
+  "production_code_touched": {
+    "files": [],
+    "statement": "НИ ОДНОГО production-файла не изменено. Причины обоих падений названы в production-коде (backend/app/agent_gateway/service.py::_outbound_loop — порядок «enqueue → mark_offer_delivered»; тот же service.py::_read_loop — последовательный разбор потока; backend/app/services/distributed_workers/database.py::run_db — исполнение записи в отдельном потоке), но production ведёт себя правильно и намеренно; неверными были утверждения тестов. Перенос записи доставки перед enqueue пометил бы доставленным неотправленный offer — прямо то, что запретил владелец, и запрет подтверждается разбором кода."
+  },
+  "prohibitions_check": {
+    "no_skip_no_xfail_no_quarantine": "выборка полосы не изменилась: `pytest -m network --collect-only -q` даёт 864/7365 collected, 6501 deselected И ДО правки, И ПОСЛЕ. В файле нет ни одного `pytest.mark.skip`, `skipif`, `xfail`; единственное вхождение подстроки `skip` — поле домена `skipped_duplicates` в другом тесте. Во всех прогонах полосы skipped = 6 — те же шесть, что и до работ.",
+    "no_new_baseline_entries": "scripts/ci_known_failures.txt не открывался и не менялся",
+    "no_widening_of_existing_waits": "ни один существующий срок не увеличен. Пять фиксированных пауз по 100 мс не расширены, а УБРАНЫ и заменены ожиданием по факту; типичное время выхода — единицы миллисекунд, то есть тесты стали быстрее. Единственный новый числовой срок — CENTER_APPLY_TIMEOUT = 10 с, и это граница отказа, а не время ожидания; для NB-1 срок вообще не число, а production-конфигурация (`server.config.offer_timeout_sec`).",
+    "forbidden_paths_untouched": "scripts/**, .github/workflows/**, pytest.ini, norms/**, docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md, scripts/ci_known_failures.txt, docs/architecture/receipts/W0-INT-01.json, tests/test_norms_status_index_fallback.py, tests/test_ci_provision_norms.py, tests/distributed_workers_helpers.py, tests/test_agent_grpc_client_12c.py, tests/test_distributed_workers_*.py — не менялись. Из репозитория изменён РОВНО один файл плюс эта расписка.",
+    "measurement_code_not_in_the_tree": "временный измеритель окна (tests/test_nb1_measure.py) существовал ТОЛЬКО в приватном чекауте /home/ciuser/nb1/src и удалён до снятия любой доказательной партии на итоговом коде; в рабочем дереве репозитория его не было никогда.",
+    "no_commits": "рабочее дерево не коммитилось, git-история не трогалась"
+  },
+  "evidence_matrix": {
+    "0_reproduction_before_fix": {
+      "nb_1_first_attempt": "падение воспроизвелось на ПЕРВОМ же прогоне узла в чистом окружении при LA1 13.05 / LA5 11.86 — `AssertionError: assert ('b42b2342-…' == 'b42b2342-…' and None)`, tests/test_agent_gateway_12b.py:410. Диагноз владельца подтверждён до строки: обе первые проверки прошли, упала только конъюнкция по `delivered_at`.",
+      "nb_1_batch_moderate_load": {
+        "runs": 20,
+        "failures": 6,
+        "failed_runs": [
+          2,
+          6,
+          8,
+          9,
+          12,
+          14
+        ],
+        "loadavg": "LA1 19.58 → 24.34, LA5 13.32 → 16.67",
+        "seconds_min_max": "3.31 / 5.40",
+        "signature": "все 6 падений одной сигнатуры: tests/test_agent_gateway_12b.py:410 AssertionError, вторая половина конъюнкции = None; ни одной посторонней сигнатуры",
+        "orphan_processes": 0,
+        "listeners_left": 0
+      },
+      "nb_1_batch_heavy_load": {
+        "runs": 20,
+        "failures": 6,
+        "failed_runs": [
+          2,
+          10,
+          16,
+          17,
+          18,
+          19
+        ],
+        "loadavg": "LA1 67.47 → 69.34, LA5 57.29 → 63.90",
+        "seconds_min_max": "8.61 / 13.56",
+        "signature": "те же 6 падений одной сигнатуры на строке 410; FAILED только по узлу NB-1",
+        "orphan_processes": 0,
+        "listeners_left": 0
+      },
+      "nb_1b_how_found": "первый прогон полосы под управляемой нагрузкой на коде с уже исправленным NB-1: exit 1, 858 passed / 1 failed, единственное падение — test_aq_av… на строке 702, LA1 29.34 → 40.74 / LA5 13.54 → 37.31, длительность 604 с",
+      "nb_1b_batch_moderate_load": {
+        "runs": 15,
+        "failures": 0,
+        "loadavg": "LA1 35.95 → 37.97, LA5 37.28 → 37.80",
+        "note": "модуль 12b целиком при LA ~37 ни разу не упал — при такой нагрузке 100 мс ещё хватает. Это измерение границы, а не опровержение: оно показывает, что дефект зависит от нагрузки, и объясняет, почему узел не выпадал в прогонах на затихшей машине."
+      },
+      "nb_1b_batch_node_heavy_load": {
+        "runs": 20,
+        "failures": 19,
+        "loadavg": "LA1 94.47 → 105.02, LA5 59.53 → 91.52",
+        "seconds_min_max": "12.05 / 19.08",
+        "signatures": "все 19 на строке 702: `'running' == 'result_received'` 11 раз, `'completed_locally'` 7, `'accepted_by_worker'` 1 — то есть видно, сколько именно сообщений успело примениться",
+        "orphan_processes": 0,
+        "listeners_left": 0
+      },
+      "nb_1b_batch_module_heavy_load": {
+        "runs": 10,
+        "failures": 6,
+        "loadavg": "LA1 104.49 → 107.48, LA5 92.42 → 102.63",
+        "significance": "весь модуль (49 нод) при LA1 ~105: падала РОВНО одна точка — строка 702. Остальные пять фиксированных пауз выдержали 10 полных прогонов при этой нагрузке, и это и есть измерение, на котором основано решение их не трогать.",
+        "orphan_processes": 0,
+        "listeners_left": 0
+      },
+      "conclusion": "Оба узла воспроизведены и измерены как функция загрузки, а не как случайность: NB-1 — 30 % красных и при LA1 ~20, и при LA1 ~68; NB-1b — 0 % при LA1 ~37 и 95 % при LA1 ~100."
+    },
+    "a_nb1_20_repeats_after_fix_same_stand": {
+      "runs": 20,
+      "failures": 0,
+      "timeouts": 0,
+      "orphan_processes": 0,
+      "listeners_left": 0,
+      "loadavg": "LA1 18.42 → 19.12, LA5 24.47 → 26.28",
+      "seconds_min_max": "3.30 / 4.49",
+      "significance": "контрольный опыт к nb_1_batch_moderate_load: LA1 сопоставим (18.4–19.1 против 19.6–24.3), LA5 ВЫШЕ (24.5–26.3 против 13.3–16.7) — стенд не легче, а тяжелее. 6 красных из 20 стали 0 из 20.",
+      "code_version_caveat": "снято на промежуточной редакции (только правка NB-1, sha256 e083f2b1…). Побайтно итоговому файлу соответствуют части (c), (d), (e), (f)."
+    },
+    "b_nb1_20_repeats_after_fix_heavy_load": {
+      "runs": 20,
+      "failures": 0,
+      "timeouts": 0,
+      "orphan_processes": 0,
+      "listeners_left": 0,
+      "loadavg": "LA1 63.83 → 68.83, LA5 41.52 → 56.79",
+      "seconds_min_max": "9.44 / 13.53",
+      "significance": "прямой контрольный опыт: на том же стенде (LA1 67.5–69.3) до правки 6 красных из 20, после правки 0 из 20. Изменилась только правка, нагрузка сохранена.",
+      "code_version_caveat": "та же промежуточная редакция e083f2b1…"
+    },
+    "c_nb1_20_repeats_on_final_code": {
+      "runs": 20,
+      "failures": 0,
+      "timeouts": 0,
+      "orphan_processes": 0,
+      "listeners_left": 0,
+      "loadavg": "LA1 101.61 → 110.81, LA5 104.53 → 107.49",
+      "seconds_min_max": "15.78 / 21.58",
+      "significance": "побайтно итоговый файл (9c251dee…) при нагрузке ВПЯТЕРО выше той, на которой узел падал в 30 % случаев"
+    },
+    "d_nb1b_20_repeats_on_final_code_same_stand": {
+      "runs": 20,
+      "failures": 0,
+      "timeouts": 0,
+      "orphan_processes": 0,
+      "listeners_left": 0,
+      "loadavg": "LA1 100.07 → 108.95, LA5 102.97 → 105.41",
+      "seconds_min_max": "9.33 / 20.46",
+      "significance": "контрольный опыт к nb_1b_batch_node_heavy_load: тот же стенд (LA1 ~94–105 до правки, ~100–109 после), 19 красных из 20 стали 0 из 20"
+    },
+    "e_module_10_runs_on_final_code_heavy_load": {
+      "runs": 10,
+      "failures": 0,
+      "timeouts": 0,
+      "orphan_processes": 0,
+      "listeners_left": 0,
+      "tests_per_run": "49 passed",
+      "loadavg": "LA1 96.72 → 103.57, LA5 101.14 → 104.48",
+      "seconds_min_max": "33.67 / 42.39",
+      "significance": "контрольный опыт к nb_1b_batch_module_heavy_load на той же нагрузке: 6 красных из 10 стали 0 из 10"
+    },
+    "f_five_consecutive_full_network_lane_runs": {
+      "command": "python scripts/ci_test_lane.py --lane network --use-lane-marker --ci",
+      "runs": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "selected": 865,
+          "passed": 859,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 6,
+          "deselected": 6501,
+          "duration_seconds": 256.982,
+          "report_status": "ok",
+          "probe_exit_code": 0,
+          "timed_out_node": null,
+          "loadavg": "LA1 23.25 → 1.23, LA5 32.35 → 14.52"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "selected": 865,
+          "passed": 859,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 6,
+          "deselected": 6501,
+          "duration_seconds": 259.418,
+          "report_status": "ok",
+          "probe_exit_code": 0,
+          "timed_out_node": null,
+          "loadavg": "LA1 1.23 → 0.92, LA5 14.52 → 6.38"
+        },
+        {
+          "run": 3,
+          "exit_code": 0,
+          "selected": 865,
+          "passed": 859,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 6,
+          "deselected": 6501,
+          "duration_seconds": 276.241,
+          "report_status": "ok",
+          "probe_exit_code": 0,
+          "timed_out_node": null,
+          "loadavg": "LA1 0.92 → 10.51, LA5 6.38 → 6.22"
+        },
+        {
+          "run": 4,
+          "exit_code": 0,
+          "selected": 865,
+          "passed": 859,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 6,
+          "deselected": 6501,
+          "duration_seconds": 264.811,
+          "report_status": "ok",
+          "probe_exit_code": 0,
+          "timed_out_node": null,
+          "loadavg": "LA1 10.51 → 2.04, LA5 6.22 → 5.90"
+        },
+        {
+          "run": 5,
+          "exit_code": 0,
+          "selected": 865,
+          "passed": 859,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 6,
+          "deselected": 6501,
+          "duration_seconds": 257.106,
+          "report_status": "ok",
+          "probe_exit_code": 0,
+          "timed_out_node": null,
+          "loadavg": "LA1 2.04 → 2.47, LA5 5.90 → 3.42"
+        }
+      ],
+      "honest_note_on_load": "Загрузка записана честно и она НИЗКАЯ на прогонах 2–5. Первый прогон стартовал при LA1 23.25 / LA5 32.35 — остаток моей нагрузочной партии и работы соседних агентов волны; к прогону 2 машина затихла (LA1 0.92) не по моему выбору: параллельные агенты закончили. Ждать возвращения нагрузки я не стал — это прямо разрешено заданием. Нагрузочная часть доказательств полосы вынесена в side_checks.lane_under_load, где та же полоса прогнана под управляемой нагрузкой ДО и ПОСЛЕ правки: именно она, а не эти пять проходов, доказывает снятие зависимости от загрузки. Пять последовательных проходов остаются пятью последовательными и доказывают отсутствие регрессии и стабильность выборки.",
+      "selection_identical_across_runs": "865 selected / 859 passed / 0 failed / 0 errors / 6 skipped / 6501 deselected в каждом из пяти",
+      "runner_recorded_profile": "в каждой из пяти расписок раннера: uid 1001, python 3.12.3, node 22.23.1, npm 10.9.8, pip_freeze_sha256 557e9588…, python_lock_sha256 e701df30…, source_provenance PASS, report_status ok, probe_exit_code 0"
+    },
+    "g_process_and_port_inventory": {
+      "method": "перед и после КАЖДОГО прогона (и повтора узла, и полосы) снимается число процессов с uid 1001 и число слушающих сокетов, чьи владельцы имеют uid 1001. Нагрузочные счётчики намеренно запускались от root, чтобы не попадать в инвентарь.",
+      "baseline_is_meaningful": "до начала работ у ciuser не было ни одного процесса, поэтому «остаток» здесь — буквально всё, что оставил прогон, а не разница с шумом",
+      "pairs_taken": "219 пар до/после: 20+20 (NB-1 до правки, средний и тяжёлый стенд), 20+20 (NB-1 после правки), 20 (NB-1 на итоговом коде), 20+20 (NB-1b до и после правки), 15+10+10+2 (модуль 12b), 25 (измеритель окна), 2 (пробные), 5+5 полос, 2+2 полос под нагрузкой и 1 полоса на вершине ветки. Во ВСЕХ 219 парах: до 0 процессов / 0 слушателей, после 0 процессов / 0 слушателей.",
+      "leftover_after_cleanup": "ноль процессов, ноль слушателей во всех парах; ни одного файла leftovers.txt не создано"
+    }
+  },
+  "acceptance": {
+    "verdict": "матрица сошлась",
+    "failures_total": 0,
+    "timeouts_total": 0,
+    "orphan_processes_total": 0,
+    "listeners_left_total": 0,
+    "runs_on_final_code": "72 (20 повторов NB-1 + 20 повторов NB-1b + 10 полных прогонов модуля 12b по 49 нод + 5 полных полос + 2 полосы под управляемой нагрузкой + 15 прогонов модуля на среднем стенде) — 0 падений",
+    "runs_before_fix": "92 (20+20 повторов NB-1, 20 повторов NB-1b, 10+15 прогонов модуля, 5 полос, 2 полосы под нагрузкой) — 32 падения тестов, ровно две различимые сигнатуры и ни одной посторонней",
+    "why_not_just_green_runs": "Зелёный прогон здесь сам по себе не значил бы ничего: до правки NB-1 был зелёным в 70 % повторов, а NB-1b — в 100 % при LA1 ~37. Утверждение держится на двух контрольных опытах на одном стенде при одной нагрузке (NB-1: 6 красных из 20 → 0 из 20 при LA1 ~68; NB-1b: 19 красных из 20 → 0 из 20 при LA1 ~100; модуль целиком: 6 из 10 → 0 из 10) и на прямом измерении механизма NB-1 — доля промахов первого чтения 33–36 % при окне записи 0.26–24.2 мс."
+  },
+  "side_checks": {
+    "lane_under_load": "Полоса `network` прогнана под управляемой нагрузкой (24 счётных процесса на 8 ядрах) ДО и ПОСЛЕ правки NB-1b, по два прохода. ДО: проход 1 — exit 1, 858 passed / 1 failed (test_aq_av…, строка 702), 604.5 с, LA1 29.34 → 40.74 / LA5 13.54 → 37.31; проход 2 — exit 0, 859 passed, 551.3 с, LA1 40.74 → 38.80 / LA5 37.31 → 38.52. ПОСЛЕ: проход 1 — exit 0, 859 passed, 520.1 с, LA1 30.56 → 38.28 / LA5 63.09 → 41.73; проход 2 — exit 0, 859 passed, 542.8 с, LA1 38.28 → 31.50 / LA5 41.73 → 36.85. Это контрольный опыт на уровне полосы: тот же стенд, красное стало зелёным, LA5 на входе после правки даже выше.",
+    "module_selection_guard": "`pytest -m network --collect-only -q` на базовой и на итоговой редакции файла: 864/7365 collected, 6501 deselected — побайтно одинаково. Под skip/xfail ничего не спрятано.",
+    "whole_module_runs": "модуль tests/test_agent_gateway_12b.py целиком (49 нод) прогнан 37 раз: 2 при LA1 ~30–42, 15 при LA1 ~37, 10 при LA1 ~105 до правки NB-1b (6 красных) и 10 при LA1 ~100 после (0 красных).",
+    "lane_on_moving_tip": "Пока работа шла, ветка dev ушла вперёд на три коммита соседних агентов волны (e9811876 → e5a2d8d6). Файл tests/test_agent_gateway_12b.py ими НЕ трогался (`git log e9811876..e5a2d8d6 -- <файл>` пуст), поэтому вся доказательная матрица, снятая на чекауте e9811876, остаётся применимой. Дополнительно сделан отдельный чекаут вершины e5a2d8d6 с наложенной правкой и один полный прогон полосы: exit 0, 904 selected / 898 passed / 0 failed / 6 skipped / 6580 deselected, report ok, probe_exit_code 0, 279.7 с, LA1 0.39 → 0.76 / LA5 2.22 → 1.27, остаток 0 процессов / 0 слушателей. Рост выборки с 865 до 904 — работа соседних агентов, не моя."
+  },
+  "findings": [
+    {
+      "id": "NB-1b",
+      "severity": "средняя",
+      "status": "закрыт этой работой",
+      "summary": "В полосе `network` был ВТОРОЙ недетерминированный узел того же класса, не числившийся ни в одном списке",
+      "node": "tests/test_agent_gateway_12b.py::test_aq_av_real_validation_lost_ack_resends_and_retention_persisted",
+      "how_it_stayed_invisible": "он не выпадал ни в пяти прогонах полосы предыдущего пакета, ни в пяти прогонах этой работы на затихшей машине, ни в 15 прогонах модуля при LA1 ~37. Он показывается только при LA1 выше ~60: при LA1 ~100 падает в 95 % повторов. Пять зелёных проходов полосы на тихой машине его не видят вовсе.",
+      "lesson": "«Пять зелёных проходов полосы» — не доказательство детерминизма, если загрузка при этих проходах не записана. Именно поэтому нагрузка здесь фиксировалась по каждому прогону, а не описывалась словами."
+    },
+    {
+      "id": "NB-4",
+      "severity": "низкая",
+      "status": "не дефект; зафиксировано как измеренная граница",
+      "summary": "В файле остались пять фиксированных пауз по 100 мс, и это осознанное решение, а не недосмотр",
+      "detail": "Каждая из пяти проверяет факт, который опозданием центра сломать нельзя (инвариант, отрицание, множество с исходным состоянием, уже выполненный round-trip). Все пять выдержали 10 полных прогонов модуля при LA1 96.7–107.5 / LA5 92.4–104.5. У каждой в коде стоит однострочное объяснение, чтобы её не «починили» вслепую.",
+      "what_would_change_the_answer": "если какая-то из них когда-нибудь упадёт — механизм у неё будет тот же, и лечение то же: ожидание проверяемого факта через `wait_for`."
+    },
+    {
+      "id": "NB-5",
+      "severity": "низкая",
+      "status": "к сведению интегратора",
+      "summary": "Полоса выросла с 852 отобранных до 865 между базовыми коммитами 68a830b9 и e9811876",
+      "detail": "предыдущая расписка фиксировала 852 selected / 846 passed / 6 skipped, эта — 865 / 859 / 6. Разница в 13 нод — результат принятых работ волны, а не дрейф выборки. Число skipped не изменилось: те же 6.",
+      "why_it_matters": "сравнивать счётчики полосы между двумя расписками напрямую нельзя; сравнивать надо ДО/ПОСЛЕ на одном коммите, что здесь и сделано (864/7365 collected и там, и там)."
+    }
+  ],
+  "what_this_does_not_prove": [
+    "Не доказывает, что полоса `network` детерминирована ЦЕЛИКОМ. Доказано ровно про два узла: их механизмы названы, воспроизведены под записанной нагрузкой и сняты контрольным опытом. Про остальные 863 ноды известно лишь то, что они прошли 5 полных проходов на тихой машине и 2 под нагрузкой LA1 ~30–40; при LA1 ~100 полоса целиком НЕ прогонялась ни разу (лимит §7 — 1200 с на полосу, а при такой нагрузке проход не укладывается).",
+    "Ровно поэтому нельзя утверждать, что NB-1b был последним. Он сам был найден только тогда, когда полосу впервые прогнали под управляемой нагрузкой; узел того же класса, показывающийся при LA1 > 150, эта работа обнаружить не могла.",
+    "Не доказывает поведение на CI-раннере GitHub. Всё снято на восьмиядерной машине разработчика; образ ubuntu-24.04 не воспроизводился. На двухъядерном раннере то же соотношение LA/ядро достигается при вчетверо меньшем LA, то есть механизмы включались бы ЛЕГЧЕ — но именно от этого входа оба теста теперь и отвязаны.",
+    "Не является приёмкой clean-room и не является G0 receipt: §3.3 контракта прямо говорит, что прогон без выбранного корпуса норм G0-распиской не считается. Корпус отсутствует, probe помечает это как OPTIONAL_NORM_CORPUS_ABSENT, профиль --enforce не проверялся.",
+    "Не проверяет пакет A: norms/vault не подключался, baseline не пересобирался, corpus-зависимые записи baseline не разбирались.",
+    "Не доказывает отсутствие деградации вне полосы `network`. Прогонялась только она. Полосы unit, contract, integration, chaos и aggregate-гейт не гонялись: изменён один тестовый файл, помеченный целиком `pytest.mark.network`, но формально другие полосы не проверены.",
+    "Не доказывает, что зелёная полоса означает исправный распределённый контур: оба теста проверяют семантику транспорта шлюза, а не корректность аудита.",
+    "Управляемая нагрузка — это счётные процессы, то есть конкуренция ТОЛЬКО за CPU. Конкуренция за диск, за память и за файловые блокировки SQLite так не воспроизводится; узел, чувствительный к ним, этой работой не был бы найден.",
+    "Вклад соседних агентов волны в LA не отделён от моего: записанные LA1/LA5 — это загрузка машины целиком, а не только нагрузка стенда."
+  ],
+  "reproduce": {
+    "checkout": "git archive e9811876e447e1e4c9c42189401758a7960bebd0 | tar -x -C <работа>/src; затем наложить tests/test_agent_gateway_12b.py из рабочего дерева (sha256 9c251dee…)",
+    "venv": "python3 -m venv <работа>/venv && <работа>/venv/bin/python -m pip install -c constraints-qr-v1.txt -r requirements-dev.txt && python -m pip check && python -m pip freeze | sha256sum  # 557e9588…",
+    "node": "PATH обязан отдавать Node 22.23.1 / npm 10.9.8 непривилегированному пользователю (здесь /opt/node-v22.23.1/bin), иначе probe в --ci падает по PLATFORM_NODE_VERSION_MISMATCH",
+    "env": "восемь переменных §3.2 (AUDIT_DISABLE_DOTENV=1, PAID_API_ENABLED=false, PORTAL_AUTH_ENABLED=false, AUDIT_APP_DATA_DIR, AUDIT_PROJECTS_DIR, AUDIT_OBJECTS_FILE, AUDIT_ACTION_LOG_DIR, AUDITMANAGER_DEPLOY_LOCK_DIR) плюс TZ=UTC, LC_ALL=C.UTF-8, PYTHONHASHSEED=0 и QR_SOURCE_COMMIT=<ПОЛНЫЙ 40-символьный sha> — сокращённый SHA §8 не принимает",
+    "run_as": "setpriv --reuid=1001 --regid=1001 --init-groups --reset-env env HOME=/home/ciuser PATH=... <команда> — под root прогон непригоден по §3.1",
+    "load": "нагрузка от root: N процессов `while :; do :; done`; здесь N = 16 (LA1 ~20), 24 (LA1 ~30–40), 48/64/88 (LA1 ~68 и ~105). LA снимается из /proc/loadavg перед и после КАЖДОГО прогона.",
+    "nb1_node": "python -m pytest tests/test_agent_gateway_12b.py::test_r_u_scheduler_atomic_offer_and_lost_delivery_recovery -q  # 20 раз",
+    "nb1b_node": "python -m pytest tests/test_agent_gateway_12b.py::test_aq_av_real_validation_lost_ack_resends_and_retention_persisted -q  # 20 раз",
+    "module": "python -m pytest tests/test_agent_gateway_12b.py -q  # 10 раз",
+    "lane": "python scripts/ci_test_lane.py --lane network --use-lane-marker --ci  # 5 раз подряд",
+    "reproduce_the_defects": "вернуть tests/test_agent_gateway_12b.py к базовому коммиту и прогнать под нагрузкой: NB-1 краснеет примерно в 30 % повторов уже при LA1 ~20; NB-1b требует LA1 выше ~60 и при LA1 ~100 краснеет в 19 повторах из 20. На тихой машине НЕ ВОСПРОИЗВОДИТСЯ ни один из них — это и есть причина, по которой их не видели раньше.",
+    "harness": "/home/ciuser/nb1/evidence/harness/ — repeat.sh (повторы узла с инвентаризацией), lane.sh и lane_loaded.sh (прогоны полосы), load.sh (нагрузка), inv.sh (инвентаризация процессов и слушателей uid 1001), runenv.sh (переменные §3.2), а также обе редакции изменённого файла",
+    "raw_evidence": "/home/ciuser/nb1/evidence/ — ВНЕ дерева репозитория. before-fix-under-load/, before-fix-heavy-load/ (NB-1 до правки), after-fix-under-load/, after-fix-heavy-load/, after-fix2-node-nb1/ (NB-1 после), before-fix2-node-aqav/, before-fix2-module-heavy/, before-fix2-module-12b/ (NB-1b до правки), after-fix2-node-aqav/, after-fix2-module-heavy/ (NB-1b после), measure-lag/ (измерение окна, lag.jsonl и lag-heavy.jsonl), lane-network/ (пять итоговых прогонов полосы с JUnit и расписками раннера), lane-network-before-fix2/, lane-network-loaded-before-fix2/, lane-network-loaded/, lane-network-tip/ (полоса на вершине ветки e5a2d8d6), module-12b/, smoke/, harness/. В каждом каталоге summary.tsv с LA1/LA5 и инвентаризацией по каждому прогону и полные логи run-*.log / lane-*.log."
+  }
+}
