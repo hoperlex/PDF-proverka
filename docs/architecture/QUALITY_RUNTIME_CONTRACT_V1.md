@@ -58,7 +58,7 @@ lane-маркеров §5, `ci.yml` переписан под пять поло�
 `constraints-qr-v1.txt` (materialized lock §4.1; имя — по глобу `constraints*.txt`
 из ADR-0006).
 
-**Переиздание двух строк от 2026-09-02 (волна 0.0.03).** Переизданы пины
+**Переиздание строк от 2026-09-02 (волна 0.0.03).** Пин `ci.yml` переиздан дважды: второй раз — чтобы снять overclaim, найденный владельцем при ревью (шапка утверждала, что полоса `network` детерминирована, тогда как в ней остаётся неразобранный узел NB-1). Переизданы пины
 `.github/workflows/ci.yml` и `scripts/ci_known_failures.txt`.
 
 В `ci.yml` шаг `Provisioning norm corpus` переведён на source-agnostic
@@ -90,7 +90,7 @@ capabilities и строгость gates не изменились: `--ci` у La
 | `frontend/package-lock.json` | `c679604b25329bdbcf89f80017011a0c51c07e770e326865b093f63633097040` |
 | `frontend/package.json` | `65749f5180ea6fd1e2d99f35c103365f9188f7e2cabaef3db53e8f051eef2075` |
 | `frontend/tsconfig.distributed.json` | `a3d3fb949642421af5563073f04658160534b04e78c3ebad895d4454eb487863` |
-| `.github/workflows/ci.yml` | `01083898f6be99dc2cfbd79cb0937aa1490c1b6e66086b62af438a7549b08ebd` |
+| `.github/workflows/ci.yml` | `158d83a7c2c744bc7975811b3194351657970571b5452a5f19e2800f0fb50e34` |
 | `scripts/ci_regression_gate.py` | `42fc15209950558781481aaa25d84d6f11a1333acb78eb22644b3a8b50f6f529` |
 | `scripts/ci_known_failures.txt` | `5cedcdd61eaa56e393f6acf9ee0856b8e93c646d0390ed24335c98f396a5eec2` |
 | `tests/conftest.py` | `395646bd3f738f1da345bb75f2627844f8e27d447991c04ce305b97d13594706` |
