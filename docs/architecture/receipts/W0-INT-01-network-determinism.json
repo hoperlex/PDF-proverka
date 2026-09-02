@@ -1,0 +1,295 @@
+{
+  "type": "determinism_receipt",
+  "task_id": "W0-INT-01",
+  "package": "B — детерминизм полосы `network` (план version-среза 0.0.03, §4)",
+  "produced_for": "интегратор W0-INT-01",
+  "produced_by": "владелец распределённого контура",
+  "captured_at": "2026-09-01",
+  "revision": "1 (2026-09-01)",
+  "base_commit": "68a830b92d3df86a2159dd524e7febf598e25523",
+  "not_an_acceptance": "Это расписка ПАКЕТА B, а не приёмка среза 0.0.03 и не G0 receipt. Она закрывает один из двух блокеров enforce — недетерминизм трёх тестов настоящих процессов. Второй блокер (источник norms/vault, пакет A) здесь не трогался: probe в профиле --ci помечает его как OPTIONAL_NORM_CORPUS_ABSENT, и под --enforce те же прогоны отказали бы с NORM_ARTIFACT_MISSING. Перевод CI в --enforce остаётся за пакетом C.",
+  "profile": {
+    "user": "ciuser, uid=1001 — §3.1 требует uid != 0; сессия-владелец работает под root, поэтому вся доказательная база снята НЕ ею",
+    "python": "3.12.3 — норматив §3.1",
+    "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.39, 8 ядер",
+    "node_npm": "Node 22.23.1 / npm 10.9.8 — пины §3.1 выполнены; на этой машине nvm живёт в /root/.nvm и непривилегированному пользователю недоступен, поэтому дистрибутив скопирован в /home/ciuser/node-22.23.1 и подан явно через PATH (это ровно дефект provisioning из CR-5, а не дефект платформы)",
+    "checkout": "git archive 68a830b9 → /home/ciuser/clean-room/src-B, права ciuser, 2360 файлов, без .git",
+    "venv": "/home/ciuser/clean-room/venv-qr1 — СОБРАН ЗАНОВО одной командой workflow `pip install -c constraints-qr-v1.txt -r requirements-dev.txt`",
+    "why_new_venv": "Существующий venv репетиции (/home/ciuser/clean-room/venv) собирался до материализации lock: probe в режиме --ci отказывал по PIP_FREEZE_DRIFT (c779d8f4d60f… против эталона). Переиспользовать его значило бы снимать evidence в непроверенном окружении. Ставилось РОВНО то, что ставит workflow, ничего сверх.",
+    "pip_check": "No broken requirements found (exit 0)",
+    "pip_freeze_sha256": "557e95885700a44013febcc6559fa8ee278923507b71df8adba761e1e247f99c — ПОБАЙТНО совпадает с reference §4.1",
+    "isolated_state": "все восемь переменных §3.2 выставлены дословно, включая AUDITMANAGER_DEPLOY_LOCK_DIR; run-root отдельный (/home/ciuser/clean-room/run-root-B)",
+    "locale_time": "TZ=UTC, LC_ALL=C.UTF-8, PYTHONHASHSEED=0 — §3.1",
+    "provenance": "QR_SOURCE_COMMIT=68a830b9… — в дереве без .git probe иначе отказывает по SOURCE_COMMIT_UNKNOWN (§8)",
+    "probe_ci_mode": "network → result ok, exit 0. Единственное отклонение — norm_artifact WARN/OPTIONAL_NORM_CORPUS_ABSENT (advisory в --ci, блокер только в --enforce)",
+    "seed_and_order": "Порядок нод детерминирован: плагинов случайного порядка в наборе нет, `pytest.ini` их не подключает, PYTHONHASHSEED=0 зафиксирован. «Seed» прогона — это фиксированный PYTHONHASHSEED и порядок аргументов; для тройки порядок 12c → executor → prepipeline, то есть тот же, что даёт сбор полосы по путям."
+  },
+  "root_cause": {
+    "one_sentence": "Все три теста синхронизировались не на том факте, который проверяли: два читали состояние раньше, чем производственный код успевал его записать, а третий требовал от политики ёмкости воркера числа, которое та вычисляет из ЖИВОЙ загрузки хоста.",
+    "common_shape": "Ни один из трёх механизмов не является гонкой ожидания и ни один не лечится удлинением срока. Во всех трёх случаях наблюдаемая величина в принципе не обязана наступить: у двух тестов между сигналом синхронизации и проверяемой записью лежит производственный порядок операций, у третьего — производственная политика ресурсов.",
+    "test_two_real_processes_overlap_and_third_waits": {
+      "mechanism": "неполная изоляция host telemetry в фикстуре `two_slot_worker`",
+      "detail": "ResourceMonitor берёт телеметрию из ДВУХ независимых источников: psutil (RAM/своп → s_ram) и stdlib `os` (getloadavg → s_la, cpu_count → s_cpu). Фикстура подменяла ТОЛЬКО psutil (шим, роняющий ImportError). Вход `os` оставался живым, а `s_la` считается как LA5/ядро: при значении >= 1.0 ёмкость срезается до `configured_max - 1`, при >= 1.5 — до нуля. Гистерезис роста SLOT_GROW_STABLE_SEC = 120 с после этого удерживает заниженное значение дольше, чем 90-секундное ожидание теста.",
+      "measured_deterministically": "audit_worker.resource_monitor.ResourceMonitor.calculate_slots(configured_max_slots=2, psutil недоступен): cores=8 la5=2.0 → free=2 (binding s_cfg); cores=8 la5=8.0 → free=1 (binding s_la); cores=8 la5=12.0 → free=0 (binding s_la); cores=4 la5=4.0 → free=1; cores=2 la5=2.0 → free=1 (binding s_cpu).",
+      "measured_on_live_host": "снимок ResourceMonitor.snapshot() с ТЕМ ЖЕ psutil-шимом на этой машине при LA5 = 25.78: calculated_free = 0, binding_constraint = \"s_la\", components = {s_ram: 2, s_disk: 53, s_cpu: 7, s_la: 0, s_cfg: 2}.",
+      "consequence": "центр не выдаёт второе задание, потому что воркер ЧЕСТНО объявил один свободный слот. «Два одновременно живых процесса» не наступает ни за 90 с, ни за какое угодно время.",
+      "production_is_right": "Гейт по загрузке — намеренная защита прода (профиль обоих OOM-инцидентов). Он не ослаблялся и не трогался. Дефект был в тесте: фикстура ЗАЯВЛЯЛА «capacity policy cannot reject the fixture», но выполняла это утверждение наполовину."
+    },
+    "test_agent_restart_adopts_live_executor_higher_epoch_no_duplicate": {
+      "mechanism": "порядок записей в production: состояние очереди раньше реестра процессов",
+      "detail": "Исполнитель (audit_worker/executor.py::_run_test_attempt) сначала условной записью «только из claimed» переводит попытку в `running` — это намеренно, иначе гонка с отменой теряет победителя, — и лишь ПОТОМ готовит параметры, пишет outbox, форкает процесс и регистрирует его из колбэка on_start. Тест ждал `queue_item(...).state == \"running\"` и сразу читал `db.process_row(...)`, попадая в это окно.",
+      "measured": "5 падений из 8 прогонов под нагрузкой: `TypeError: 'NoneType' object is not subscriptable` на `process_before[\"pid\"]` — то есть None получал именно process_BEFORE.",
+      "production_is_right": "Порядок «состояние → процесс» задокументирован в самом исполнителе и защищает от потери отмены. Менять его нельзя. Тест обязан ждать то, что читает."
+    },
+    "test_two_executors_never_start_two_processes": {
+      "mechanism": "недостающее предусловие: утверждение о ДВУХ исполнителях без синхронизации со вторым",
+      "detail": "Тест поднимал двух настоящих исполнителей, ждал появления процесса (то есть прогресса ПЕРВОГО: register → claim → fork) и тут же утверждал `COUNT(executor_instances) == 2`. Со вторым исполнителем не синхронизировалось ничего: он в этот момент мог ещё импортировать модули.",
+      "measured": "4 падения из 8 прогонов под нагрузкой: `assert 1 == 2` на «оба исполнителя должны были зарегистрироваться».",
+      "production_is_right": "Захват (`claim_next`: BEGIN IMMEDIATE + условный UPDATE) и `executor_alive` (pid + тик старта из /proc) отработали верно во ВСЕХ прогонах: `claim_generation` не превысил 1 ни разу, второго процесса не появилось ни разу. Ломалось только утверждение о регистрации."
+    }
+  },
+  "changed_files": [
+    {
+      "path": "tests/distributed_workers_helpers.py",
+      "sha256": "ebff79837a3fa3d18ed7a7559cb463cc8cc5b664d215e014892bbe55258d99a6",
+      "what": "добавлен `isolate_host_capacity_policy(shim_dir, repo_root)` — единственная реализация полной изоляции политики ёмкости от живого хоста: пишет прежний шим psutil и `sitecustomize.py`, который в дочерних процессах воркера подменяет `os.getloadavg`/`os.cpu_count` на опорный хост (4 ядра, LA 0) и при этом ЯВНО исполняет платформенный sitecustomize, чтобы не отменить его молча"
+    },
+    {
+      "path": "tests/test_distributed_workers_prepipeline_gate.py",
+      "sha256": "ead748a52a445d45efc75defe35d9ff9cdb8f3190ff2b183fbfbda21df1f4710",
+      "what": "фикстура `two_slot_worker` использует общий помощник вместо половинчатого шима psutil"
+    },
+    {
+      "path": "tests/test_distributed_workers_executor.py",
+      "sha256": "025a676a613285990e9c05397799f211df3ca99dee5ee3aa80ecd5f9de8b04a1",
+      "what": "`_isolate_host_capacity_policy` делегирует общему помощнику (та же неполнота была и здесь); `test_two_executors_never_start_two_processes` ждёт регистрации ОБОИХ исполнителей до утверждений и проверяет `== 2` уже как «лишних воплощений не появилось»"
+    },
+    {
+      "path": "tests/test_agent_grpc_client_12c.py",
+      "sha256": "b0e4895ed6bdd4c7460e9c915e77c344f54654382a1f28610614a4d1defb81bb",
+      "what": "`process_before` берётся ожиданием самой строки реестра процессов, а не чтением сразу после смены состояния очереди; добавлена явная проверка `process_after` вместо падения по TypeError"
+    }
+  ],
+  "production_code_touched": {
+    "files": [],
+    "statement": "НИ ОДНОГО production-файла не изменено. Причина каждого из трёх падений воспроизведена и названа в production-коде (`audit_worker/executor.py` — порядок записей, `audit_worker/resource_monitor.py` — политика ёмкости), но в обоих случаях production ведёт себя правильно и намеренно, а неверным было утверждение теста. Ослабление порога s_la или переупорядочивание записей исполнителя было бы лечением симптома за счёт прода."
+  },
+  "prohibitions_check": {
+    "no_skip_no_xfail_no_quarantine": "выборка полосы не изменилась: 852 selected / 6 skipped и до правки, и после (пропуски те же — они не относятся к трём тестам)",
+    "no_new_baseline_entries": "scripts/ci_known_failures.txt не открывался и не менялся",
+    "no_widening_of_the_90s_wait": "90-секундное ожидание в test_two_real_processes_overlap_and_third_waits оставлено как есть. Единственные изменённые сроки — в другом тесте: новое ожидание регистрации второго исполнителя (45 с, это НОВОЕ предусловие, а не расширение старого) и ожидание строки реестра процессов в 12c (30 с вместо чтения без ожидания). Срок ожидания процесса в test_two_executors_never_start_two_processes оставлен прежним (25 с по умолчанию).",
+    "forbidden_paths_untouched": ".github/workflows/**, scripts/ci_known_failures.txt, scripts/ci_*.py, pytest.ini, requirements*.txt, constraints-qr-v1.txt, norms/**, docs/architecture/receipts/W0-INT-01.json, docs/architecture/WAVE_0_0_03_PLAN.md — не менялись",
+    "no_commits": "рабочее дерево не коммитилось, git-история не трогалась"
+  },
+  "evidence_matrix": {
+    "0_reproduction_before_fix": {
+      "four_full_lane_runs_before_fix": "network по проходам: 0 падений, 1, 0, 0. Единственное падение — tests/test_agent_gateway_12b.py::test_r_u_scheduler_atomic_offer_and_lost_delivery_recovery, то есть НЕ один из трёх обязательных тестов. Три обязательных теста прошли во всех четырёх проходах.",
+      "trio_20_runs_on_quiet_machine_before_fix": "20 прогонов, 0 падений, 0 осиротевших процессов, LA1 0.62 → 0.42. На спокойной машине недетерминизм не воспроизводится вовсе — это и есть первая измеренная улика против гипотезы «просто флаки».",
+      "trio_8_runs_under_load_before_fix": "8 прогонов при LA1 51–61 / LA5 35–63: КАЖДЫЙ красный. Итого 17 падений тестов, ровно три различимых сигнатуры и ни одной посторонней: 8/8 «не дождались: два одновременно живых процесса», 5/8 «TypeError: 'NoneType' object is not subscriptable», 4/8 «assert 1 == 2».",
+      "conclusion": "Недетерминизм воспроизведён и измерен как функция загрузки хоста, а не как случайность. Формулировка прежнего receipt «not_a_load_artifact» опровергнута: механизмы у всех трёх тестов разные, но включаются одним и тем же условием — конкуренцией за CPU."
+    },
+    "a_isolated_20_repeats_each": {
+      "test_agent_restart_adopts_live_executor_higher_epoch_no_duplicate": {
+        "runs": 20,
+        "failures": 0,
+        "timeouts": 0,
+        "orphan_processes": 0,
+        "listeners_left": 0,
+        "run_root_delta_nonzero": 0,
+        "seconds_min": 4.38,
+        "seconds_max": 4.7,
+        "loadavg_range": "LA1 0.30 → 0.53"
+      },
+      "test_two_executors_never_start_two_processes": {
+        "runs": 20,
+        "failures": 0,
+        "timeouts": 0,
+        "orphan_processes": 0,
+        "listeners_left": 0,
+        "run_root_delta_nonzero": 0,
+        "seconds_min": 3.55,
+        "seconds_max": 3.93,
+        "loadavg_range": "LA1 1.06 → 6.50"
+      },
+      "test_two_real_processes_overlap_and_third_waits": {
+        "runs": 20,
+        "failures": 0,
+        "timeouts": 0,
+        "orphan_processes": 0,
+        "listeners_left": 0,
+        "run_root_delta_nonzero": 0,
+        "seconds_min": 10.58,
+        "seconds_max": 12.18,
+        "loadavg_range": "LA1 7.10 → 11.76, LA5 5.33 → 9.50",
+        "significance": "LA5/ядро в этих двадцати прогонах доходил до 1.19, то есть выше порога LA_SOFT. ДО правки это гарантированно давало calculated_free = 1 и падение. Двадцать зелёных прогонов в этом диапазоне — прямое измерение того, что зависимость от загрузки снята."
+      }
+    },
+    "b_trio_20_runs": {
+      "runs": 20,
+      "failures": 0,
+      "timeouts": 0,
+      "orphan_processes": 0,
+      "listeners_left": 0,
+      "run_root_delta_nonzero": 0,
+      "seconds_min": 17.24,
+      "seconds_max": 20.13,
+      "order": "12c → executor → prepipeline (порядок сбора полосы по путям)",
+      "loadavg_range": "LA1 12.03 → 11.14, LA5 9.66 → 9.10"
+    },
+    "b2_trio_8_runs_under_load_after_fix": {
+      "runs": 8,
+      "failures": 0,
+      "orphan_processes": 0,
+      "loadavg_range": "LA1 54.6–57.3, LA5 56.6–57.5",
+      "significance": "Тот же стенд, при котором до правки было 8 красных прогонов из 8, после правки даёт 8 зелёных из 8. Это контрольный опыт: изменилась только правка, нагрузка сохранена.",
+      "code_version_caveat": "Эти восемь прогонов сняты на функционально той же правке, но НЕ на побайтно итоговых файлах: после них сделана косметическая уборка (импорты подняты на уровень модуля, переформатирован комментарий), тела проверок и логика ожиданий не менялись. Побайтно итоговым файлам (sha256 в changed_files) соответствуют части (a), (b) и (в) матрицы и оба side_checks."
+    },
+    "c_five_consecutive_full_network_lane_runs": {
+      "command": "python scripts/ci_test_lane.py --lane network --use-lane-marker --ci",
+      "runs": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "selected": 852,
+          "passed": 846,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 6,
+          "deselected": 6501,
+          "duration_seconds": 260.443,
+          "report_status": "ok",
+          "probe_exit_code": 0,
+          "timed_out_node": null
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "selected": 852,
+          "passed": 846,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 6,
+          "deselected": 6501,
+          "duration_seconds": 255.564,
+          "report_status": "ok",
+          "probe_exit_code": 0,
+          "timed_out_node": null
+        },
+        {
+          "run": 3,
+          "exit_code": 0,
+          "selected": 852,
+          "passed": 846,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 6,
+          "deselected": 6501,
+          "duration_seconds": 255.926,
+          "report_status": "ok",
+          "probe_exit_code": 0,
+          "timed_out_node": null
+        },
+        {
+          "run": 4,
+          "exit_code": 0,
+          "selected": 852,
+          "passed": 846,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 6,
+          "deselected": 6501,
+          "duration_seconds": 256.972,
+          "report_status": "ok",
+          "probe_exit_code": 0,
+          "timed_out_node": null
+        },
+        {
+          "run": 5,
+          "exit_code": 0,
+          "selected": 852,
+          "passed": 846,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 6,
+          "deselected": 6501,
+          "duration_seconds": 254.891,
+          "report_status": "ok",
+          "probe_exit_code": 0,
+          "timed_out_node": null
+        }
+      ],
+      "window": "2026-09-01T16:52:24Z … 2026-09-01T17:13:56Z, пять прогонов подряд без вмешательства",
+      "totals": "5 прогонов, 4230 выполненных тестов, 0 падений, 0 ошибок, 0 таймаутов, 0 непригодных отчётов",
+      "budget": "per-test 180 с, lane 1200 с; фактическая длительность 255–260 с — ни один бюджет §7 не приближался к исчерпанию"
+    },
+    "d_inventory_before_and_after_every_run": {
+      "what_is_counted": "процессы пользователя ciuser с именами audit_worker / uvicorn / pytest / worker_center_app / audit_run, слушающие TCP-сокеты этого uid (/proc/net/tcp, /proc/net/tcp6, состояние LISTEN) и содержимое run-root",
+      "isolated_and_trio": "80 прогонов (20+20+20+20): процессов до 0, после 0; слушающих сокетов до 0, после 0; число файлов run-root не изменилось ни разу",
+      "lanes": "5 прогонов: до и после каждого — processes 0, listeners 0, run_root_files 33 (без изменений)",
+      "orphans_total": 0,
+      "note": "Инвентаризация делается ПОСЛЕ двухсекундной паузы, чтобы уборка фикстур успела отработать и осиротевший процесс не был засчитан как «ещё не убранный»."
+    }
+  },
+  "acceptance": {
+    "verdict": "матрица §4 сошлась полностью",
+    "failures_total": 0,
+    "timeouts_total": 0,
+    "orphan_processes_total": 0,
+    "runs_total": "85 на итоговом коде (60 изолированных + 20 тройкой + 5 полос) и 32 прогона диагностики до правки (4 полосы + 20 троек на тихой машине + 8 троек под нагрузкой)",
+    "why_not_just_one_green_run": "Один зелёный прогон здесь ничего не значил бы: до правки полоса тоже давала зелёные проходы (3 из 4). Утверждение держится не на зелёном исходе, а на контрольном опыте — на том же стенде при той же нагрузке до правки красными были 8 прогонов из 8, после правки зелёными 8 из 8, и механизм каждого падения назван и измерен отдельно."
+  },
+  "side_checks": {
+    "lane_disposition_guard": "tests/test_lane_disposition_guard.py — 4 passed; разметка полос не сдвинулась",
+    "chaos_lane": "exit 1: 4 passed, 2 failed, 1 skipped. Оба теста, использующих изменённую фикстуру и изменённый помощник (test_killing_agent_does_not_stop_the_audit, test_agent_restart_keeps_two_processes_and_creates_no_duplicates), теперь ПРОХОДЯТ — в receipt W0-INT-01 они записаны как падавшие. Оставшиеся два падения — tests/test_process_chaos_12e::test_12e_gateway_{graceful_stop,sigkill}_recovery_is_persistence_only, это предсуществующая находка CR-4, к пакету B отношения не имеющая. Полоса chaos неблокирующая и в приёмку пакета не входит."
+  },
+  "findings": [
+    {
+      "id": "NB-1",
+      "severity": "средняя",
+      "summary": "Полоса `network` содержит ЧЕТВЁРТЫЙ недетерминированный тест, вне обязательного набора пакета B",
+      "node": "tests/test_agent_gateway_12b.py::test_r_u_scheduler_atomic_offer_and_lost_delivery_recovery",
+      "measured": "1 падение на 4 полных прогона полосы ДО правки; в пяти прогонах ПОСЛЕ правки не воспроизвелось. Частота низкая, но не нулевая.",
+      "mechanism": "тот же класс, что у 12c: тест синхронизируется на одном сигнале, а утверждает про другой. Он вычитывает job_offer ИЗ ПОТОКА и сразу требует, чтобы в базе шлюза уже стояла отметка `delivered_at`. Запись отметки не упорядочена относительно отправки в поток, поэтому под нагрузкой читается None: `assert offer_row[\"attempt_id\"] == offer.attempt_id and offer_row[\"delivered_at\"]` падает на второй половине конъюнкции.",
+      "not_fixed_here": "tests/test_agent_gateway_12b.py не входит в allowed paths пакета B (три названных теста, их фикстуры/помощники и минимальный production-код). Правка без мандата была бы расширением пакета.",
+      "owner": "интегратор W0-INT-01 — решить, лечить ли до enforce или принять как известный риск",
+      "consequence_for_enforce": "Пять прогонов полосы подряд зелёные, но это не доказывает, что 12b вылечен. Если полоса становится блокирующей, этот узел остаётся единственным известным источником случайной красноты в `network`."
+    },
+    {
+      "id": "NB-2",
+      "severity": "низкая",
+      "summary": "Прежний вывод «недетерминизм не объясняется нагрузкой» опровергнут измерением",
+      "corrects_prior_evidence": "docs/architecture/receipts/W0-INT-01.json → step_4_cleanroom_g0.finding_network_lane_is_not_deterministic.not_a_load_artifact",
+      "measured": "На спокойной машине тройка даёт 20 зелёных из 20; на той же машине под нагрузкой — 8 красных из 8 и 17 падений тестов. Разброс «1 падение / 3 / 0 / 0» в прежних четырёх проходах объясняется тем, что LA5 плавает в течение прогона полосы, а гистерезис ёмкости (120 с) удерживает заниженное значение дольше срока ожидания теста: попал прогон в окно высокой LA5 — красный, не попал — зелёный.",
+      "why_it_matters": "Формулировка «нагрузка гипотезу не объясняет» закрывала правильную гипотезу. Наблюдение «на тихой машине упало больше» само по себе её не опровергает: значение имеет LA5 в момент старта агента, а не субъективная тишина."
+    },
+    {
+      "id": "NB-3",
+      "severity": "низкая",
+      "summary": "Изоляция теста от хоста была наполовину, и это не было видно",
+      "detail": "Комментарий фикстуры прямо заявлял «capacity policy cannot reject the fixture», но шим закрывал только psutil. Утверждение о полноте изоляции ничем не проверялось, а нарушалось молча — тест просто не дожидался второго процесса и падал по сроку.",
+      "generalisation": "Правило шире одного случая и рифмуется с CR-3 (жёстко зашитый машинный путь): изоляция обязана покрывать КАЖДЫЙ вход, который код берёт с машины по умолчанию. Закрытый наполовину вход хуже незакрытого — он создаёт видимость изоляции."
+    }
+  ],
+  "what_this_does_not_prove": [
+    "Не доказывает, что полоса `network` детерминирована ЦЕЛИКОМ. Доказано ровно про три обязательных теста: их механизмы названы, воспроизведены и сняты. Про четвёртый узел (NB-1) известно обратное — он падал 1 раз на 4 прогона до правки и в пяти прогонах после правки просто не выпал.",
+    "Не доказывает поведение на CI-раннере GitHub. Всё снято на восьмиядерной машине разработчика; образ `ubuntu-24.04` не воспроизводился. На раннере с 4 ядрами пороги s_la достигаются при LA5 >= 4, то есть ЛЕГЧЕ, чем здесь, — но именно от этого входа тесты теперь и отвязаны.",
+    "Не доказывает работоспособность на хосте с 1–2 ядрами БЕЗ правки: там `s_cpu = ядра − 1` сам по себе даёт единицу, и тест «два процесса» не прошёл бы никогда. Правка закрывает и этот вход (опорный хост объявлен четырёхъядерным), но проверить это на настоящей двухъядерной машине не удалось — такой машины не было.",
+    "Не является приёмкой clean-room и не является G0 receipt: §3.3 контракта прямо говорит, что прогон без выбранного корпуса норм G0-распиской не считается. Корпус здесь отсутствует, probe помечает это как OPTIONAL_NORM_CORPUS_ABSENT, профиль --enforce не проверялся.",
+    "Не проверяет пакет A: `norms/vault` не подключался, baseline не пересобирался, 33 corpus-зависимые записи baseline не разбирались.",
+    "Не доказывает отсутствие деградации вне полосы `network`. Прогнаны полоса `network` (пять раз), полоса `chaos` (один раз) и tests/test_lane_disposition_guard.py. Полосы `unit`, `contract`, `integration` и aggregate-гейт не гонялись: изменены только четыре тестовых файла, но формально это не проверено.",
+    "Машина не была абсолютно тихой: на ней параллельно работали другие агенты волны, LA1 в ходе матрицы плавал от 0.23 до 12. Фактическая загрузка записана для каждого прогона в сырых логах. Это делает результат СИЛЬНЕЕ (тесты прошли при LA5/ядро выше порога s_la), но формулировку «на тихой машине» из плана буквально не воспроизводит.",
+    "Не доказывает, что зелёная полоса означает исправный распределённый контур: три теста проверяют семантику слотов и процессов, а не корректность аудита."
+  ],
+  "reproduce": {
+    "checkout": "git archive 68a830b92d3df86a2159dd524e7febf598e25523 | tar -x -C <clean>/src-B; затем наложить четыре изменённых файла из рабочего дерева (их sha256 — в changed_files)",
+    "install": "python3 -m venv <clean>/venv-qr1 && <clean>/venv-qr1/bin/python -m pip install -c constraints-qr-v1.txt -r requirements-dev.txt && python -m pip check && python -m pip freeze | sha256sum  # 557e9588…",
+    "node": "PATH обязан отдавать Node 22.23.1 / npm 10.9.8 непривилегированному пользователю, иначе probe в --ci падает по PLATFORM_NODE_VERSION_MISMATCH",
+    "env": "восемь переменных §3.2 (AUDIT_DISABLE_DOTENV=1, PAID_API_ENABLED=false, PORTAL_AUTH_ENABLED=false, AUDIT_APP_DATA_DIR, AUDIT_PROJECTS_DIR, AUDIT_OBJECTS_FILE, AUDIT_ACTION_LOG_DIR, AUDITMANAGER_DEPLOY_LOCK_DIR) плюс TZ=UTC, LC_ALL=C.UTF-8, PYTHONHASHSEED=0 и QR_SOURCE_COMMIT=<commit>",
+    "run_as": "setpriv --reuid=1001 --regid=1001 --init-groups --reset-env env HOME=/home/ciuser PATH=... <команда>  — под root прогон непригоден по §3.1",
+    "isolated": "python -m pytest <node id> -q --no-header -p no:cacheprovider  # 20 раз на каждый из трёх узлов",
+    "trio": "python -m pytest tests/test_agent_grpc_client_12c.py::test_agent_restart_adopts_live_executor_higher_epoch_no_duplicate tests/test_distributed_workers_executor.py::test_two_executors_never_start_two_processes tests/test_distributed_workers_prepipeline_gate.py::test_two_real_processes_overlap_and_third_waits -q --no-header  # 20 раз",
+    "lane": "python scripts/ci_test_lane.py --lane network --use-lane-marker --ci  # 5 раз подряд",
+    "reproduce_the_defect": "вернуть четыре файла к базовому коммиту, создать устойчивую нагрузку (LA5/ядро > 1.0; здесь — 40 счётных процессов на 8 ядрах) и прогнать тройку 8 раз: до правки красными будут все 8",
+    "raw_evidence": "/home/ciuser/clean-room/evidence-0.0.03-network/ — вне дерева репозитория; repro/ (4 прогона полосы до правки), pre-fix/ (тройка на тихой машине), pre-fix-loaded/ (тройка под нагрузкой, красная), post-fix-loaded/ (та же нагрузка, зелёная), matrix/ (вся матрица §4 плюс SUMMARY.json), side-checks/ (chaos)"
+  }
+}

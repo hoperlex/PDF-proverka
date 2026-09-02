@@ -1423,17 +1423,23 @@ def two_slot_worker(tmp_path, monkeypatch):
     url = f"http://127.0.0.1:{port}"
     root = tmp_path / "worker"
     root.mkdir(parents=True, exist_ok=True)
-    # This lifecycle test proves slot/process semantics, not the live host's
-    # current swap pressure. Exercise ResourceMonitor's documented
-    # unavailable-telemetry path so capacity policy cannot reject the fixture.
-    shim_dir = root / "test-pythonpath"
-    shim_dir.mkdir()
-    (shim_dir / "psutil.py").write_text(
-        'raise ImportError("isolated two-slot lifecycle test")\n', encoding="utf-8"
+    # Тест доказывает семантику слотов и процессов, а не текущее состояние
+    # ЭТОЙ машины. Политика ёмкости читает телеметрию из двух источников —
+    # psutil (RAM/своп) и stdlib `os` (LA и число ядер), и пока хоть один из
+    # них читается с живого хоста, число одновременных процессов зависит от
+    # посторонней нагрузки. Измерено: с одним лишь шимом psutil на
+    # восьмиядерной машине при LA5 = 25.8 монитор отдаёт calculated_free = 0
+    # с binding_constraint = s_la, и «два одновременно живых процесса» не
+    # наступает ни за 90 с, ни вообще: центр не выдаёт второе задание,
+    # потому что воркер честно объявил один свободный слот.
+    from tests.distributed_workers_helpers import isolate_host_capacity_policy
+
+    worker_pythonpath = isolate_host_capacity_policy(
+        root / "test-pythonpath", repo_root=_ROOT
     )
     worker_env_vars = {
         **os.environ,
-        "PYTHONPATH": os.pathsep.join((str(shim_dir), str(_ROOT))),
+        "PYTHONPATH": worker_pythonpath,
         "AUDIT_WORKER_ROOT": str(root),
         "AUDIT_WORKER_DISPATCHER_URL": url,
         "AUDIT_WORKER_ALLOW_INSECURE_LOCALHOST": "true",

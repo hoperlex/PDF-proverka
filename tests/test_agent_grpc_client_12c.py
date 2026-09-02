@@ -916,7 +916,20 @@ def test_agent_restart_adopts_live_executor_higher_epoch_no_duplicate(grpc_e2e_e
                 lambda: (agent1.db.queue_item(assignment["attempt_id"]) or {}).get("state")
                 == "running", 10
             )
-            process_before = agent1.db.process_row(assignment["attempt_id"])
+            # Состояние очереди `running` НЕ означает, что процесс уже
+            # зарегистрирован. Исполнитель по проекту сначала условной записью
+            # «только из claimed» занимает попытку (иначе гонка с отменой
+            # теряет победителя) и лишь потом форкает процесс и пишет реестр
+            # из `on_start`. Между этими двумя записями лежит подготовка
+            # параметров, outbox и сам fork — на загруженной машине это
+            # секунды. Прежняя редакция читала реестр сразу после смены
+            # состояния и получала None: измерено 5 падений из 8 под нагрузкой
+            # с `TypeError: 'NoneType' object is not subscriptable`.
+            # Ждём то, что тесту действительно нужно, — саму строку реестра.
+            process_before = _wait_until(
+                lambda: agent1.db.process_row(assignment["attempt_id"]), 30, 0.1
+            )
+            assert process_before, "процесс попытки не зарегистрирован исполнителем"
             epoch_before = json.loads(config.state_path.read_text())["connection_epoch"]
             agent1.shutdown()
             observer.join(10)
@@ -940,6 +953,7 @@ def test_agent_restart_adopts_live_executor_higher_epoch_no_duplicate(grpc_e2e_e
                 == "finished", 15
             )
             process_after = agent2.db.process_row(assignment["attempt_id"])
+            assert process_after, "реестр процессов потерял попытку после рестарта"
             assert process_after["pid"] == process_before["pid"]
             assert json.loads(config.state_path.read_text())["connection_epoch"] > epoch_before
             assert _wait_until(

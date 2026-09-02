@@ -77,21 +77,23 @@ def _worker_env(root: Path, *, url: str | None = None) -> dict[str, str]:
 
 
 def _isolate_host_capacity_policy(root: Path, env: dict[str, str]) -> None:
-    """Keep this process-lifecycle test independent from live host swap use.
+    """Отвязать тест жизненного цикла процессов от состояния ЭТОЙ машины.
 
-    Resource-monitor policy has focused tests elsewhere.  Here an available
-    slot is a precondition for proving that killing the Agent neither kills nor
-    duplicates the Executor child.  Hiding optional psutil exercises the
-    monitor's documented unavailable-telemetry path without changing the host
-    or weakening the production threshold.
+    Свободный слот здесь — предусловие, а не предмет проверки: доказывается,
+    что смерть агента не убивает и не дублирует процесс исполнителя. Политика
+    ёмкости имеет собственные тесты, и трогать её пороги нельзя.
+
+    Прежняя редакция прятала только `psutil`, то есть один из ДВУХ входов
+    телеметрии. Второй — stdlib `os` (`getloadavg`, `cpu_count`) — оставался
+    живым, и `s_la` резал ёмкость на любой занятой машине. Изоляция теперь
+    полная: подробности и границы подмены — в
+    `tests/distributed_workers_helpers.isolate_host_capacity_policy`.
     """
-    shim_dir = root / "test-pythonpath"
-    shim_dir.mkdir(parents=True, exist_ok=True)
-    (shim_dir / "psutil.py").write_text(
-        'raise ImportError("isolated process-lifecycle test")\n',
-        encoding="utf-8",
+    from tests.distributed_workers_helpers import isolate_host_capacity_policy
+
+    env["PYTHONPATH"] = isolate_host_capacity_policy(
+        root / "test-pythonpath", repo_root=_ROOT
     )
-    env["PYTHONPATH"] = os.pathsep.join((str(shim_dir), str(_ROOT)))
 
 
 def _spawn_executor(root: Path, **extra_env) -> subprocess.Popen:
@@ -154,6 +156,21 @@ def test_two_executors_never_start_two_processes(tmp_path):
     first = _spawn_executor(root)
     second = _spawn_executor(root)
     try:
+        # ОБА исполнителя обязаны предъявить себя ДО того, как проверяется
+        # «два исполнителя — один процесс». Прежняя редакция ждала только
+        # появления процесса, то есть прогресса ПЕРВОГО исполнителя, и тут же
+        # утверждала, что зарегистрировались оба. Синхронизации со ВТОРЫМ не
+        # было ни одной: он в этот момент мог ещё импортировать модули.
+        # Измерено под нагрузкой: 4 падения из 8 с `assert 1 == 2`. Это не
+        # растянутое ожидание, а недостающее предусловие — без обоих
+        # исполнителей утверждение теста просто не про что.
+        def _registered() -> int:
+            return int(db.read().execute(
+                "SELECT COUNT(*) AS n FROM executor_instances"
+            ).fetchone()["n"])
+
+        _wait(lambda: _registered() >= 2, timeout=45,
+              message="оба исполнителя должны были зарегистрироваться")
         row = _wait(lambda: db.process_row(attempt_id),
                     message="процесс так и не зарегистрировался")
         # Захват достался ровно одному исполнителю.
@@ -164,10 +181,7 @@ def test_two_executors_never_start_two_processes(tmp_path):
 
         # Второй исполнитель ЖИВ, но работу не подхватил.
         assert second.poll() is None or first.poll() is None
-        instances = db.read().execute(
-            "SELECT COUNT(*) AS n FROM executor_instances"
-        ).fetchone()["n"]
-        assert instances == 2, "оба исполнителя должны были зарегистрироваться"
+        assert _registered() == 2, "лишних воплощений исполнителя не появилось"
         assert len(db.list_processes()) == 1, "запущено больше одного процесса"
 
         _wait(lambda: db.queue_item(attempt_id)["state"] == "finished",
