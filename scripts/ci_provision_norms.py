@@ -30,16 +30,64 @@
 
 Интерфейс:
 
-    python scripts/ci_provision_norms.py [--check | --build-index]
-                                         [--enforce] [--json] [--root PATH]
+    python scripts/ci_provision_norms.py [--check | --build-index] [--acquire]
+                                         [--enforce | --enforce-if-configured]
+                                         [--json] [--root PATH]
+    python scripts/ci_provision_norms.py --digest PATH
 
     --check        (по умолчанию) сообщить состояние, ничего не меняя
     --build-index  детерминированно собрать `norms/tools/status_index.json`
+    --acquire      получить артефакт из СКОНФИГУРИРОВАННОГО внешнего источника
+                   и разложить в `norms/vault` (см. «Источник артефакта»)
     --enforce      режим enforce CI: не provisioned → setup failure (не skip)
+    --enforce-if-configured
+                   enforce ровно тогда, когда источник сконфигурирован; пока
+                   владелец его не назвал — прежний локальный профиль
     --json         машиночитаемый отчёт на stdout
     --root         корень дерева (по умолчанию корень репозитория); существует,
                    чтобы тесты работали на временной копии и не пачкали живое
                    дерево
+    --digest PATH  напечатать SHA-256 дерева тем же правилом, которым его
+                   сверяет CI (нужно владельцу источника, чтобы посчитать
+                   эталон, а не изобрести второе правило)
+
+Источник артефакта (§3.3 «provision получает versioned artifact»):
+    источник задаётся ТОЛЬКО конфигурацией, скрипт не знает ни одного адреса
+    по умолчанию — это сознательно: зашитый источник превращается в
+    неотзываемое доверие. Переменные окружения (в CI — variables и secrets):
+
+        QR_NORM_ARTIFACT_SOURCE_ID  имя/владелец источника (обязательно)
+        QR_NORM_ARTIFACT_URL        адрес; допускается подстановка {version}
+        QR_NORM_ARTIFACT_VERSION    версия/тег артефакта (обязательно)
+        QR_NORM_ARTIFACT_SHA256     ожидаемый SHA-256 дерева (обязательно)
+        QR_NORM_ARTIFACT_TOKEN      credential, если источник закрытый
+        QR_NORM_ARTIFACT_AUTH_SCHEME  схема Authorization, по умолчанию Bearer
+
+    Состояние «источник не сконфигурирован» — ОТДЕЛЬНОЕ и не смешивается с
+    отказом: пока ни одна переменная не задана, поведение ровно прежнее
+    (локально `OPTIONAL_NORM_CORPUS_ABSENT` и exit 0, в enforce
+    `NORM_ARTIFACT_MISSING` и setup failure). Как только источник ЗАДАН,
+    любой сбой получения — setup failure, а не warning и не skip:
+    недоступность (`NORM_ARTIFACT_SOURCE_UNAVAILABLE`), негодная конфигурация
+    (`NORM_ARTIFACT_SOURCE_MISCONFIGURED`), нераспаковываемый или небезопасный
+    архив (`NORM_ARTIFACT_UNPACK_FAILED`), отсутствие эталона
+    (`NORM_CHECKSUM_MANIFEST_MISSING`), несовпадение SHA-256
+    (`NORM_ARTIFACT_CHECKSUM_MISMATCH`).
+
+    Порядок §3.3 соблюдён буквально: полученное дерево становится
+    `norms/vault` ТОЛЬКО после совпадения SHA-256. Распаковка идёт в
+    staging рядом, и несовпавшее дерево не превращается в корпус вовсе —
+    иначе следующий шаг работал бы с подделанным входом, о котором
+    «уже сообщили».
+
+Credentials:
+    значение токена не печатается ни при каком исходе. В отчёт попадает
+    только факт `auth: token|none`. Адрес публикуется структурно —
+    `scheme://host/<basename>`, без query, fragment и userinfo: у presigned
+    URL секрет лежит именно в query. Это правило P-13 (`scripts/ci_redaction.py`):
+    публикуется то, что признано безопасным, а не то, что не узнал denylist.
+    Тексты чужих исключений (urllib кладёт в них полный URL) проходят
+    `redact_text` как эшелонированная защита.
 
 Правило кода возврата (одно, проверяемое):
 
@@ -62,7 +110,9 @@
     провижининга не теряется — оно в отчёте (`generated_at`), где ему и место.
 
 Сеть:
-    наружу скрипт не ходит: только чтение дерева и запись одного файла.
+    без `--acquire` наружу скрипт не ходит: только чтение дерева и запись
+    одного файла. С `--acquire` он обращается РОВНО по одному адресу — тому,
+    что задан конфигурацией, — и только по `https://` или `file://`.
 """
 from __future__ import annotations
 
@@ -71,10 +121,17 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
+import shutil
 import sys
+import tarfile
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import zipfile
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -83,6 +140,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     # Сосед по каталогу: правило digest и коды причин обязаны быть ОДНИ.
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+import ci_redaction  # noqa: E402
 import ci_runtime_probe as probe  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -94,7 +152,9 @@ CONTRACT_VERSION = probe.CONTRACT_VERSION
 CONTRACT_DOC = probe.CONTRACT_DOC
 CONTRACT_REF = "§3.3, §6 (правило 4)"
 #: Версия самого provisioning-скрипта: меняется вместе с набором проверок/кодов.
-PROVISION_VERSION = "1"
+#: 2 — добавлено получение артефакта из именованного внешнего источника
+#: (`--acquire`) и профиль `--enforce-if-configured`.
+PROVISION_VERSION = "2"
 
 NORM_VAULT_DIR = probe.NORM_VAULT_DIR
 NORM_STATUS_INDEX = probe.NORM_STATUS_INDEX
@@ -114,11 +174,29 @@ EXIT_USAGE = probe.EXIT_USAGE
 
 #: Коды причин, которых нет у probe. Всё остальное берётся из его словаря:
 #: один код причины обязан значить одно и то же в probe, provision и gate.
+#:
+#: Почему для сбоев источника заведены СВОИ коды, а не переиспользован
+#: `NORM_ARTIFACT_MISSING`: этим кодом уже называется состояние «источник не
+#: назван вовсе». Если им же называть «источник назван, но недоступен», два
+#: принципиально разных состояния станут неразличимы по коду — а именно
+#: различимость и требуется: первое ждёт владельца, второе ждёт починки
+#: доступа. Сбои получения при этом НЕ переопределяют существующие коды §3.3:
+#: несовпадение SHA-256 остаётся `NORM_ARTIFACT_CHECKSUM_MISMATCH`,
+#: отсутствие эталона — `NORM_CHECKSUM_MANIFEST_MISSING`.
 EXTRA_REASON_CODES: dict[str, str] = {
     "NORM_INDEX_BUILDER_MISSING": (
         f"{NORM_INDEX_BUILDER} отсутствует — строить индекс нечем"
     ),
     "NORM_INDEX_BUILD_FAILED": "сборка status_index.json не удалась",
+    "NORM_ARTIFACT_SOURCE_MISCONFIGURED": (
+        "конфигурация источника norm artifact задана не полностью или негодна"
+    ),
+    "NORM_ARTIFACT_SOURCE_UNAVAILABLE": (
+        "сконфигурированный источник norm artifact не отдал артефакт"
+    ),
+    "NORM_ARTIFACT_UNPACK_FAILED": (
+        "артефакт получен, но не разворачивается в norms/vault"
+    ),
 }
 REASON_CODES: dict[str, str] = {**probe.REASON_CODES, **EXTRA_REASON_CODES}
 
@@ -133,6 +211,50 @@ SOURCE_DATE_EPOCH_ENV = "SOURCE_DATE_EPOCH"
 
 ACTION_CHECK = "check"
 ACTION_BUILD_INDEX = "build-index"
+
+# ---------------------------------------------------------------------------
+# Конфигурация внешнего источника артефакта (§3.3 «versioned artifact»)
+# ---------------------------------------------------------------------------
+
+#: Имя и владелец источника. Обязательно: §3.3 требует ИМЕНОВАННЫЙ источник, а
+#: расписка без имени не позволяет спросить с кого-либо за содержимое корпуса.
+NORM_SOURCE_ID_ENV = "QR_NORM_ARTIFACT_SOURCE_ID"
+#: Адрес артефакта. Допускается подстановка `{version}`.
+NORM_SOURCE_URL_ENV = "QR_NORM_ARTIFACT_URL"
+#: Версия/тег артефакта. Обязательно: «versioned» — это про воспроизводимость,
+#: а безымянный «последний» артефакт делает checksum необъяснимым.
+NORM_SOURCE_VERSION_ENV = "QR_NORM_ARTIFACT_VERSION"
+#: Credential для закрытого источника. ЗНАЧЕНИЕ не печатается никогда.
+NORM_SOURCE_TOKEN_ENV = "QR_NORM_ARTIFACT_TOKEN"
+#: Схема заголовка Authorization (Bearer | token | Basic …).
+NORM_SOURCE_AUTH_SCHEME_ENV = "QR_NORM_ARTIFACT_AUTH_SCHEME"
+DEFAULT_AUTH_SCHEME = "Bearer"
+
+#: Все переменные конфигурации источника. Заданной считается конфигурация, в
+#: которой задана хотя бы одна из них, — тогда неполнота становится ОТКАЗОМ, а
+#: не тихим возвратом к состоянию «источник не выбран». Половина конфигурации
+#: опаснее её отсутствия: она выглядит как подключённый источник.
+NORM_SOURCE_ENV_VARS: tuple[str, ...] = (
+    NORM_SOURCE_ID_ENV,
+    NORM_SOURCE_URL_ENV,
+    NORM_SOURCE_VERSION_ENV,
+    NORM_SOURCE_TOKEN_ENV,
+    NORM_SOURCE_AUTH_SCHEME_ENV,
+)
+
+#: Только эти схемы. `http://` отсутствует намеренно: по нему credential уходит
+#: открытым текстом, а артефакт подменяется на пути.
+ALLOWED_SOURCE_SCHEMES = ("https", "file")
+#: Поддерживаемые форматы. Каталог — для случая, когда артефакт уже разложен
+#: на раннере отдельным шагом (`actions/download-artifact`, смонтированный том).
+ARCHIVE_SUFFIXES = (".tar.gz", ".tgz", ".tar", ".zip")
+#: Бюджет сетевой операции. Источник, не уложившийся в него, считается
+#: недоступным: висящий provisioning ничем не лучше упавшего, но диагностируется
+#: он на порядок хуже.
+SOURCE_TIMEOUT_SEC = 300
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+#: Предел «раздевания» одиночного корневого каталога архива (см. `_strip_root`).
+MAX_ROOT_STRIP_DEPTH = 4
 
 
 class ProvisionError(Exception):
@@ -262,6 +384,380 @@ def norm_corpus_state() -> dict:
     `detail`; менять её можно только вместе с потребителями.
     """
     return corpus_state(ROOT)
+
+
+# ---------------------------------------------------------------------------
+# Получение артефакта из именованного внешнего источника
+# ---------------------------------------------------------------------------
+
+
+def source_config(env: dict[str, str] | None = None) -> dict[str, Any]:
+    """Конфигурация источника из окружения. Значение токена НЕ возвращается.
+
+    Возвращается только факт наличия credential (`has_token`): дальше это
+    значение живёт в одном заголовке одного запроса и больше нигде — ни в
+    отчёте, ни в тексте отказа, ни в исключении.
+    """
+    src = os.environ if env is None else env
+
+    def get(name: str) -> str:
+        return (src.get(name) or "").strip()
+
+    cfg: dict[str, Any] = {
+        "source_id": get(NORM_SOURCE_ID_ENV),
+        "url": get(NORM_SOURCE_URL_ENV),
+        "version": get(NORM_SOURCE_VERSION_ENV),
+        "auth_scheme": get(NORM_SOURCE_AUTH_SCHEME_ENV) or DEFAULT_AUTH_SCHEME,
+        "has_token": bool(get(NORM_SOURCE_TOKEN_ENV)),
+    }
+    cfg["configured"] = any(get(name) for name in NORM_SOURCE_ENV_VARS)
+    return cfg
+
+
+def _publishable_url(url: str) -> str:
+    """Адрес в виде, безопасном по построению: `scheme://host/<basename>`.
+
+    Publish-by-allowlist, а не redact-by-denylist (P-13, см. `ci_redaction`).
+    У presigned URL секрет лежит в query, у некоторых источников — в userinfo;
+    полный путь тоже способен нести идентификатор арендатора. Поэтому
+    публикуется ровно то, что нужно для диагностики «куда ходили»: схема, host
+    и имя файла.
+    """
+    try:
+        parts = urllib.parse.urlsplit(url)
+    except ValueError:
+        return "[unparsable-url]"
+    host = parts.hostname or ""
+    name = PurePosixPath(parts.path or "").name
+    if parts.scheme == "file":
+        return f"file://…/{name}" if name else "file://…"
+    return f"{parts.scheme}://{host}/{name}" if name else f"{parts.scheme}://{host}"
+
+
+def _resolved_url(cfg: dict[str, Any]) -> str:
+    """URL с подставленной версией. Шаблон без `{version}` допустим."""
+    url = cfg["url"]
+    if "{version}" in url:
+        return url.replace("{version}", urllib.parse.quote(cfg["version"], safe=""))
+    return url
+
+
+def _validate_source(cfg: dict[str, Any]) -> None:
+    """Отказать до первого сетевого действия, если конфигурация неполна/негодна."""
+    missing = [
+        name
+        for name, key in (
+            (NORM_SOURCE_ID_ENV, "source_id"),
+            (NORM_SOURCE_URL_ENV, "url"),
+            (NORM_SOURCE_VERSION_ENV, "version"),
+        )
+        if not cfg[key]
+    ]
+    if missing:
+        raise ProvisionError(
+            "NORM_ARTIFACT_SOURCE_MISCONFIGURED",
+            "конфигурация источника задана частично: не заданы "
+            + ", ".join(missing)
+            + ". Половина конфигурации опаснее её отсутствия — она выглядит как "
+            "подключённый источник, поэтому это отказ, а не возврат к состоянию "
+            "«набор не выбран». Форма приёмки — docs/ops/NORM_ARTIFACT_SOURCE.md",
+        )
+    scheme = urllib.parse.urlsplit(_resolved_url(cfg)).scheme.lower()
+    if scheme not in ALLOWED_SOURCE_SCHEMES:
+        raise ProvisionError(
+            "NORM_ARTIFACT_SOURCE_MISCONFIGURED",
+            f"схема {scheme or '(пусто)'} не поддерживается; допустимы "
+            + ", ".join(f"{s}://" for s in ALLOWED_SOURCE_SCHEMES)
+            + ". http:// исключён намеренно: по нему credential уходит открытым "
+            "текстом, а артефакт подменяется на пути",
+        )
+
+
+def _artifact_format(url: str) -> str:
+    """Формат артефакта по имени файла. Неизвестное расширение — отказ."""
+    name = PurePosixPath(urllib.parse.urlsplit(url).path or "").name.lower()
+    for suffix in ARCHIVE_SUFFIXES:
+        if name.endswith(suffix):
+            return suffix
+    raise ProvisionError(
+        "NORM_ARTIFACT_SOURCE_MISCONFIGURED",
+        f"по имени артефакта «{name or '(пусто)'}» не определён формат; "
+        "поддерживаются " + ", ".join(ARCHIVE_SUFFIXES) + " либо file:// на "
+        "уже разложенный каталог",
+    )
+
+
+class _HTTPSOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Редирект допускается только на `https`.
+
+    Credential на редирект не уезжает и без этого: он добавлен
+    `add_unredirected_header`, а `HTTPRedirectHandler` переносит только
+    `req.headers`. Этот обработчик закрывает вторую половину — понижение
+    транспорта до открытого при получении самого артефакта.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        if urllib.parse.urlsplit(newurl).scheme.lower() != "https":
+            raise urllib.error.HTTPError(
+                newurl, code, "редирект на не-https запрещён", headers, fp
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _download(url: str, dest: Path, cfg: dict[str, Any], token: str) -> int:
+    """Скачать артефакт в `dest`. Возвращает число байт.
+
+    Чтение потоковое: артефакт нормативного корпуса — это сотни мегабайт, и
+    `read()` целиком превратил бы провижининг в отказ по памяти на маленьком
+    раннере.
+    """
+    request = urllib.request.Request(url, method="GET")
+    request.add_header("Accept", "application/octet-stream")
+    request.add_header("User-Agent", "ci_provision_norms/" + PROVISION_VERSION)
+    if token:
+        # ИМЕННО unredirected: такие заголовки не переносятся на редирект, а
+        # release asset почти всегда редиректит на CDN другого владельца.
+        request.add_unredirected_header("Authorization", f"{cfg['auth_scheme']} {token}")
+    opener = urllib.request.build_opener(_HTTPSOnlyRedirectHandler)
+    written = 0
+    with opener.open(request, timeout=SOURCE_TIMEOUT_SEC) as response:
+        with dest.open("wb") as handle:
+            while True:
+                chunk = response.read(1 << 20)
+                if not chunk:
+                    break
+                handle.write(chunk)
+                written += len(chunk)
+    return written
+
+
+def _member_target(name: str) -> PurePosixPath | None:
+    """Безопасный относительный путь элемента архива либо None.
+
+    Проверяется до записи, а не после: `..` и абсолютный путь внутри архива —
+    это выход за staging, то есть запись куда угодно на раннере правами CI.
+    """
+    if not name or name.startswith(("/", "\\")):
+        return None
+    if ":" in name.split("/", 1)[0]:  # диск Windows
+        return None
+    path = PurePosixPath(name)
+    if path.is_absolute() or any(part in ("..", "") for part in path.parts):
+        return None
+    return path
+
+
+def _write_member(target: Path, source, mode: int = 0o644) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("wb") as handle:
+        shutil.copyfileobj(source, handle)
+    os.chmod(target, mode)
+
+
+def _unpack(archive: Path, fmt: str, dest: Path) -> int:
+    """Развернуть архив в `dest`. Возвращает число файлов.
+
+    Извлекаются ТОЛЬКО обычные файлы. Симлинки, hardlink'и, устройства и fifo
+    отвергаются: корпус норм — это набор текстов, а любой другой тип элемента
+    в нём означает либо испорченный архив, либо попытку выйти за staging.
+    """
+    dest.mkdir(parents=True, exist_ok=True)
+    files = 0
+    try:
+        if fmt == ".zip":
+            with zipfile.ZipFile(archive) as zf:
+                for info in zf.infolist():
+                    if info.is_dir():
+                        continue
+                    if (info.external_attr >> 16) & 0o170000 == 0o120000:
+                        raise ProvisionError(
+                            "NORM_ARTIFACT_UNPACK_FAILED",
+                            f"в архиве симлинк «{info.filename}» — не распаковывается",
+                        )
+                    target = _member_target(info.filename)
+                    if target is None:
+                        raise ProvisionError(
+                            "NORM_ARTIFACT_UNPACK_FAILED",
+                            f"небезопасный путь в архиве: «{info.filename}»",
+                        )
+                    with zf.open(info) as source:
+                        _write_member(dest / target, source)
+                    files += 1
+        else:
+            mode = "r:gz" if fmt in (".tar.gz", ".tgz") else "r:"
+            with tarfile.open(archive, mode) as tf:
+                for member in tf:
+                    if member.isdir():
+                        continue
+                    if not member.isfile():
+                        raise ProvisionError(
+                            "NORM_ARTIFACT_UNPACK_FAILED",
+                            f"элемент «{member.name}» не обычный файл "
+                            "(симлинк/устройство) — не распаковывается",
+                        )
+                    target = _member_target(member.name)
+                    if target is None:
+                        raise ProvisionError(
+                            "NORM_ARTIFACT_UNPACK_FAILED",
+                            f"небезопасный путь в архиве: «{member.name}»",
+                        )
+                    source = tf.extractfile(member)
+                    if source is None:  # pragma: no cover — только на битом архиве
+                        raise ProvisionError(
+                            "NORM_ARTIFACT_UNPACK_FAILED",
+                            f"элемент «{member.name}» не читается",
+                        )
+                    with source:
+                        _write_member(dest / target, source)
+                    files += 1
+    except ProvisionError:
+        raise
+    except (tarfile.TarError, zipfile.BadZipFile, OSError, EOFError) as exc:
+        raise ProvisionError(
+            "NORM_ARTIFACT_UNPACK_FAILED",
+            f"архив не разворачивается: {type(exc).__name__}: "
+            f"{ci_redaction.redact_text(str(exc))}",
+        ) from exc
+    if files == 0:
+        raise ProvisionError(
+            "NORM_ARTIFACT_UNPACK_FAILED",
+            "в артефакте нет ни одного файла — пустой корпус не отличим от "
+            "неудачной сборки на стороне источника",
+        )
+    return files
+
+
+def _strip_root(unpacked: Path) -> Path:
+    """Спуститься в одиночный корневой каталог архива.
+
+    Артефакты почти всегда упакованы с корнем (`vault/…`, `norms-vault-1.2/…`),
+    а SHA-256 считается от путей ОТНОСИТЕЛЬНО корня корпуса. Правило
+    детерминированное и описано в форме приёмки: спускаемся, пока каталог
+    содержит ровно один подкаталог и ни одного файла.
+    """
+    current = unpacked
+    for _ in range(MAX_ROOT_STRIP_DEPTH):
+        entries = list(current.iterdir())
+        if len(entries) == 1 and entries[0].is_dir():
+            current = entries[0]
+            continue
+        return current
+    return current
+
+
+def acquire_artifact(root: Path, cfg: dict[str, Any]) -> dict[str, Any]:
+    """Получить артефакт из сконфигурированного источника и разложить в vault.
+
+    Порядок §3.3 соблюдается буквально: дерево становится `norms/vault` только
+    ПОСЛЕ совпадения SHA-256. Правило суммы — импортированное
+    `norm_artifact_digest`, второго правила здесь нет и быть не может.
+    """
+    _validate_source(cfg)
+    expected, checksum_source = expected_checksum(root)
+    if not expected:
+        raise ProvisionError(
+            "NORM_CHECKSUM_MANIFEST_MISSING",
+            f"источник {cfg['source_id']} задан, но эталона нет: не заданы ни "
+            f"{NORM_CHECKSUM_ENV}, ни " + " / ".join(NORM_CHECKSUM_FILES)
+            + ". Скачать артефакт, который не с чем сверить, значит доверять "
+            "источнику на слово — §3.3 этого не разрешает",
+        )
+    expected = expected.strip().lower()
+    if not _SHA256_RE.match(expected):
+        raise ProvisionError(
+            "NORM_ARTIFACT_SOURCE_MISCONFIGURED",
+            f"ожидаемый SHA-256 (источник {checksum_source}) не похож на "
+            "SHA-256: нужны ровно 64 шестнадцатеричных символа",
+        )
+
+    url = _resolved_url(cfg)
+    published = _publishable_url(url)
+    report: dict[str, Any] = {
+        "source_id": cfg["source_id"],
+        "version": cfg["version"],
+        "url": published,
+        "scheme": urllib.parse.urlsplit(url).scheme.lower(),
+        "auth": "token" if cfg["has_token"] else "none",
+        "expected_checksum_source": checksum_source,
+        "bytes": None,
+        "files": None,
+        "outcome": "downloaded",
+    }
+
+    vault = root / NORM_VAULT_DIR
+    if vault.is_dir():
+        # Повторный прогон на том же раннере не обязан ходить в сеть, но и
+        # молча заменять уже лежащий корпус нельзя: если он не совпал с
+        # эталоном, это состояние обязано быть НАЗВАНО, а не затёрто.
+        actual = norm_artifact_digest(vault)
+        if actual == expected:
+            report["outcome"] = "already_present"
+            report["norm_artifact_sha256"] = actual
+            report["files"] = _vault_file_count(root)
+            return report
+        raise ProvisionError(
+            "NORM_ARTIFACT_CHECKSUM_MISMATCH",
+            f"{NORM_VAULT_DIR} уже существует и не совпадает с эталоном "
+            f"{expected[:16]}… (получен {actual[:16]}…). Acquire не перезаписывает "
+            "чужое дерево молча: удалите его сознательно и повторите",
+        )
+
+    staging = root / "norms" / f".vault.staging.{os.getpid()}"
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        staging.mkdir(parents=True)
+        unpacked = staging / "unpacked"
+        parts = urllib.parse.urlsplit(url)
+        if parts.scheme == "file":
+            local = Path(urllib.parse.unquote(parts.path))
+            if local.is_dir():
+                report["format"] = "directory"
+                shutil.copytree(local, unpacked)
+            elif local.is_file():
+                report["format"] = _artifact_format(url)
+                report["bytes"] = local.stat().st_size
+                report["files"] = _unpack(local, report["format"], unpacked)
+            else:
+                raise ProvisionError(
+                    "NORM_ARTIFACT_SOURCE_UNAVAILABLE",
+                    f"источник {cfg['source_id']} версии {cfg['version']} "
+                    f"({published}) не найден на файловой системе раннера",
+                )
+        else:
+            report["format"] = _artifact_format(url)
+            archive = staging / "artifact"
+            token = (os.environ.get(NORM_SOURCE_TOKEN_ENV) or "").strip()
+            try:
+                report["bytes"] = _download(url, archive, cfg, token)
+            except (urllib.error.URLError, OSError, ValueError) as exc:
+                # Текст чужого исключения несёт полный URL (а с ним и presigned
+                # query). Через redact_text — эшелонированная защита поверх
+                # публикации адреса по allowlist.
+                raise ProvisionError(
+                    "NORM_ARTIFACT_SOURCE_UNAVAILABLE",
+                    f"источник {cfg['source_id']} версии {cfg['version']} "
+                    f"({published}) не отдал артефакт: {type(exc).__name__}: "
+                    f"{ci_redaction.redact_text(str(exc))}",
+                ) from exc
+            report["files"] = _unpack(archive, report["format"], unpacked)
+
+        tree = _strip_root(unpacked)
+        actual = norm_artifact_digest(tree)
+        report["norm_artifact_sha256"] = actual
+        if actual != expected:
+            raise ProvisionError(
+                "NORM_ARTIFACT_CHECKSUM_MISMATCH",
+                f"артефакт {cfg['source_id']} версии {cfg['version']} не совпал "
+                f"с эталоном (источник {checksum_source}): ожидался "
+                f"{expected[:16]}…, получен {actual[:16]}…. Дерево НЕ разложено в "
+                f"{NORM_VAULT_DIR} — несверенный корпус не становится корпусом",
+            )
+        report["files"] = sum(1 for p in tree.rglob("*") if p.is_file())
+        vault.parent.mkdir(parents=True, exist_ok=True)
+        tree.rename(vault)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return report
 
 
 # ---------------------------------------------------------------------------
@@ -419,13 +915,37 @@ def provision(
     root: Path = ROOT,
     action: str = ACTION_CHECK,
     enforce: bool = False,
+    acquire: bool = False,
+    enforce_if_configured: bool = False,
 ) -> dict[str, Any]:
-    """Выполнить запрошенное действие и вернуть машиночитаемый отчёт."""
+    """Выполнить запрошенное действие и вернуть машиночитаемый отчёт.
+
+    `enforce_if_configured` привязывает строгость к факту наличия источника, а
+    не к календарю: пока владелец источник не назвал, профиль ровно прежний
+    (это состояние §3.3 разрешает), а как только назвал — любой сбой получения
+    обязан быть setup failure. Так шаг CI перестаёт быть маскировкой, ничего
+    при этом не переводя в enforce досрочно.
+    """
     started = time.time()
     build_report: dict[str, Any] | None = None
     build_error: dict[str, str] | None = None
+    acquire_report: dict[str, Any] | None = None
+    acquire_error: dict[str, str] | None = None
 
-    if action == ACTION_BUILD_INDEX:
+    cfg = source_config()
+    source_configured = bool(cfg["configured"])
+    if enforce_if_configured and source_configured:
+        enforce = True
+
+    if acquire and source_configured:
+        try:
+            acquire_report = acquire_artifact(root, cfg)
+        except ProvisionError as exc:
+            acquire_error = {"reason_code": exc.reason_code, "detail": exc.detail}
+
+    # Собирать индекс над деревом, которое не удалось получить, бессмысленно:
+    # ошибка сборки перекрыла бы настоящую причину — отказ источника.
+    if action == ACTION_BUILD_INDEX and acquire_error is None:
         try:
             build_report = build_status_index(root)
         except ProvisionError as exc:
@@ -436,7 +956,12 @@ def provision(
     corpus_absent = reason_code == "OPTIONAL_NORM_CORPUS_ABSENT"
 
     # Одно правило кода возврата (см. шапку модуля).
-    if state["provisioned"]:
+    if acquire_error is not None:
+        # Сконфигурированный источник, который не отдал годный артефакт, — это
+        # setup failure В ЛЮБОМ профиле. Локальное послабление §3.3 покрывает
+        # ровно «набор не выбран», а здесь он выбран и не приехал.
+        ok = False
+    elif state["provisioned"]:
         ok = True
     elif enforce:
         ok = False
@@ -445,11 +970,14 @@ def provision(
 
     failure_reason_code: str | None = None
     if not ok:
-        # Отказ сборки объясняет провал точнее, чем итоговое состояние: он
-        # называет ПЕРВОЕ, что помешало. Поэтому он имеет приоритет.
-        failure_reason_code = (
-            build_error["reason_code"] if build_error is not None else reason_code
-        )
+        # Отказ называет ПЕРВОЕ, что помешало, — поэтому приоритет у отказа
+        # получения, затем у отказа сборки, и лишь затем итоговое состояние.
+        if acquire_error is not None:
+            failure_reason_code = acquire_error["reason_code"]
+        elif build_error is not None:
+            failure_reason_code = build_error["reason_code"]
+        else:
+            failure_reason_code = reason_code
         # В enforce «набор не выбран» не имеет смысла: skip запрещён, а отсутствие
         # артефакта §3.3 называет setup failure — отсюда подмена кода.
         if enforce and failure_reason_code == "OPTIONAL_NORM_CORPUS_ABSENT":
@@ -465,6 +993,20 @@ def provision(
         "mode": "enforce" if enforce else "local",
         "action": action,
         "root": str(root),
+        # Состояние источника — отдельная, машиночитаемая величина: «не назван»
+        # и «назван, но не приехал» обязаны различаться в расписке §8.
+        "source_configured": source_configured,
+        "source": {
+            "source_id": cfg["source_id"] or None,
+            "version": cfg["version"] or None,
+            "url": _publishable_url(_resolved_url(cfg)) if cfg["url"] else None,
+            "auth": "token" if cfg["has_token"] else "none",
+            "env_vars": list(NORM_SOURCE_ENV_VARS),
+        },
+        "acquire_requested": bool(acquire),
+        "acquired": acquire_report is not None,
+        "acquire": acquire_report,
+        "acquire_error": acquire_error,
         # Реальное время работы провижининга живёт ЗДЕСЬ, а не в индексе:
         # индекс обязан быть побайтово воспроизводимым.
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started)),
@@ -502,6 +1044,27 @@ def render_text(report: dict[str, Any]) -> str:
         f"| mode={report['mode']}"
     )
     add(f"[norms] дерево: {report['root']}")
+    source = report["source"]
+    if report["source_configured"]:
+        add(
+            f"[norms] источник: {source['source_id']} версия {source['version']} "
+            f"({source['url']}), auth={source['auth']}"
+        )
+    else:
+        add(
+            "[norms] источник НЕ сконфигурирован: не задана ни одна из "
+            + ", ".join(report["source"]["env_vars"])
+            + ". Форма приёмки — docs/ops/NORM_ARTIFACT_SOURCE.md"
+        )
+    if report["acquire"]:
+        acq = report["acquire"]
+        add(
+            f"[norms] артефакт получен ({acq['outcome']}): файлов={acq['files']}, "
+            f"байт={acq['bytes']}, sha256={(acq.get('norm_artifact_sha256') or '')[:16]}…"
+        )
+    if report["acquire_error"]:
+        err = report["acquire_error"]
+        add(f"[norms] получение артефакта ОТКЛОНЕНО [{err['reason_code']}]: {err['detail']}")
     add(
         f"[norms] vault={NORM_VAULT_DIR} present={state['vault_present']} "
         f"files={report['vault_file_count']}"
@@ -527,6 +1090,15 @@ def render_text(report: dict[str, Any]) -> str:
     add("")
     add(f"[norms] provisioned={state['provisioned']} reason={state['reason_code'] or '-'}")
     add(f"[norms] {state['detail']}")
+    if report["acquire_error"]:
+        # Без этой оговорки вывод противоречит сам себе: состояние дерева
+        # честно сообщает «набор не выбран», хотя набор выбран и не приехал.
+        # Действующая причина — отказ получения, и лечится он не тем действием.
+        add(
+            "[norms] ВНИМАНИЕ: строки выше описывают дерево ПОСЛЕ отказанного "
+            f"получения. Источник {report['source']['source_id']} сконфигурирован; "
+            "действующая причина — отказ получения, а не «набор не выбран»."
+        )
     add(
         f"[norms] baseline/G0 receipt разрешён: {report['baseline_allowed']} "
         "(§3.3: прогон без корпуса не создаёт baseline)"
@@ -567,9 +1139,30 @@ def build_parser() -> argparse.ArgumentParser:
         "(только после успешной сверки SHA-256)",
     )
     parser.add_argument(
+        "--acquire",
+        action="store_true",
+        help="получить артефакт из сконфигурированного внешнего источника "
+        f"({', '.join(NORM_SOURCE_ENV_VARS)}) и разложить в norms/vault; "
+        "если источник не сконфигурирован — не делает ничего",
+    )
+    strictness = parser.add_mutually_exclusive_group()
+    strictness.add_argument(
         "--enforce",
         action="store_true",
         help="режим enforce CI: не provisioned корпус — setup failure",
+    )
+    strictness.add_argument(
+        "--enforce-if-configured",
+        action="store_true",
+        dest="enforce_if_configured",
+        help="enforce ровно тогда, когда источник сконфигурирован; пока "
+        "владелец его не назвал — прежний локальный профиль",
+    )
+    parser.add_argument(
+        "--digest",
+        metavar="PATH",
+        help="напечатать SHA-256 дерева тем же правилом, которым его сверяет "
+        "CI, и выйти (нужно владельцу источника для расчёта эталона)",
     )
     parser.add_argument(
         "--json",
@@ -588,6 +1181,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.digest:
+        # Отдельный режим: владельцу источника нужен ТОТ ЖЕ digest, которым
+        # сверяет CI. Без этой команды он посчитал бы сумму своим способом —
+        # то самое второе правило checksum, которого проект избегает.
+        target = Path(args.digest).resolve()
+        if not target.is_dir():
+            print(f"[norms] --digest не каталог: {target}", file=sys.stderr)
+            return EXIT_USAGE
+        print(norm_artifact_digest(target))
+        return EXIT_OK
     root = Path(args.root).resolve()
     if not root.is_dir():
         print(f"[norms] --root не каталог: {root}", file=sys.stderr)
@@ -595,7 +1198,13 @@ def main(argv: list[str] | None = None) -> int:
     # `--check` — умолчание, поэтому отдельной ветки у него нет: флаг существует,
     # чтобы намерение «ничего не менять» можно было написать явно.
     action = ACTION_BUILD_INDEX if args.build_index else ACTION_CHECK
-    report = provision(root=root, action=action, enforce=args.enforce)
+    report = provision(
+        root=root,
+        action=action,
+        enforce=args.enforce,
+        acquire=args.acquire,
+        enforce_if_configured=args.enforce_if_configured,
+    )
     if args.as_json:
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=False))
     else:

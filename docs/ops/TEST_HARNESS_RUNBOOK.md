@@ -247,7 +247,18 @@ print("\n".join(bad) if bad else "параметрических ID с секр�
 python scripts/ci_provision_norms.py --check --json     # состояние
 python scripts/ci_provision_norms.py --build-index      # собрать индекс
 python scripts/ci_provision_norms.py --check --enforce  # режим enforce CI
+python scripts/ci_provision_norms.py --digest PATH      # SHA-256 дерева корпуса
+
+# Получение из внешнего источника (так это делает CI):
+python scripts/ci_provision_norms.py --acquire --build-index --enforce-if-configured --json
 ```
+
+Источник задаётся только конфигурацией (`QR_NORM_ARTIFACT_SOURCE_ID`, `_URL`,
+`_VERSION`, `_SHA256`, secret `_TOKEN`), в workflow адрес не зашит. Пока
+переменные не заданы, поведение прежнее; как только заданы — любой сбой
+получения setup failure. Что обязан предоставить владелец источника, как это
+проверяется на свежем non-root раннере и какой код отказа что означает —
+[форма приёмки источника](NORM_ARTIFACT_SOURCE.md).
 
 Правила §3.3, реализованные буквально:
 

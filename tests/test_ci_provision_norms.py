@@ -26,6 +26,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -102,16 +103,56 @@ def make_root(tmp_path: Path, *, vault: bool = True, checksum: str | None = None
 def cli_env(**overrides: str) -> dict[str, str]:
     """Окружение дочернего процесса без внешних влияний на провижининг.
 
-    `QR_NORM_ARTIFACT_SHA256` и `SOURCE_DATE_EPOCH` снимаются намеренно: обе
-    переменные меняют исход, и унаследованное значение превратило бы тест в
-    проверку чужой машины.
+    `QR_NORM_ARTIFACT_SHA256`, `SOURCE_DATE_EPOCH` и все переменные источника
+    снимаются намеренно: каждая меняет исход, и унаследованное значение
+    превратило бы тест в проверку чужой машины. На раннере с НАСТРОЕННЫМ
+    источником без этой очистки половина тестов ходила бы в сеть.
     """
     env = dict(os.environ)
     env.pop(provision.NORM_CHECKSUM_ENV, None)
     env.pop(provision.SOURCE_DATE_EPOCH_ENV, None)
+    for name in provision.NORM_SOURCE_ENV_VARS:
+        env.pop(name, None)
     env["AUDIT_DISABLE_DOTENV"] = "1"
     env.update(overrides)
     return env
+
+
+def make_artifact(tmp_path: Path, *, name: str = "norm-vault-1.0.0.tar.gz") -> tuple[Path, str]:
+    """Синтетический артефакт корпуса и ожидаемый SHA-256 его дерева.
+
+    Архив собирается С корневым каталогом `vault/`, как настоящий release
+    asset: правило «спуститься в одиночный корень» — часть контракта приёмки,
+    и проверять его надо на форме, в которой артефакт реально приезжает.
+    """
+    src = tmp_path / "artifact-src" / "vault"
+    src.mkdir(parents=True)
+    for member, text in VAULT_FILES.items():
+        (src / member).write_text(text, encoding="utf-8")
+    digest = provision.norm_artifact_digest(src)
+    archive = tmp_path / name
+    with tarfile.open(archive, "w:gz") as tf:
+        tf.add(src, arcname="vault")
+    return archive, digest
+
+
+def source_env(archive: Path, digest: str | None, **overrides: str) -> dict[str, str]:
+    """Окружение с полностью сконфигурированным источником `file://`.
+
+    `file://` выбран сознательно: сетевого доступа у тестов нет и не должно
+    быть, а проверяется здесь не транспорт, а контракт отказа. Транспортная
+    часть (`https`, редиректы, credential) в тесте не участвует именно потому,
+    что тест обязан быть детерминированным.
+    """
+    env = {
+        provision.NORM_SOURCE_ID_ENV: "test/local-fixture",
+        provision.NORM_SOURCE_URL_ENV: f"file://{archive}",
+        provision.NORM_SOURCE_VERSION_ENV: "1.0.0",
+    }
+    if digest is not None:
+        env[provision.NORM_CHECKSUM_ENV] = digest
+    env.update(overrides)
+    return cli_env(**env)
 
 
 def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
@@ -449,3 +490,302 @@ def test_cli_reports_every_emitted_reason_code(tmp_path):
             for code in (report["state"]["reason_code"], report["failure_reason_code"]):
                 if code is not None:
                     assert code in provision.REASON_CODES, f"{name}: {code}"
+
+
+# --------------------------------------------------------------------------
+# §3.3: получение артефакта из именованного внешнего источника
+#
+# Проверяется главное свойство wiring'а: он fail-closed ПО КОНФИГУРАЦИИ, а не
+# по наличию каталога. Пока источник не назван — прежнее поведение; как только
+# назван — любой сбой получения обязан быть setup failure с однозначным кодом,
+# а несверенное дерево не должно становиться корпусом ни при каких условиях.
+# --------------------------------------------------------------------------
+
+
+def test_source_unconfigured_keeps_previous_semantics(tmp_path):
+    """Источник не назван — поведение ровно прежнее, `--acquire` ничего не делает.
+
+    Это условие совместимости: пока владелец источник не предоставил, включение
+    wiring'а не имеет права изменить ни один исход CI.
+    """
+    root = make_root(tmp_path, vault=False)
+
+    done, report = run_json("--acquire", "--build-index", "--root", str(root))
+    assert done.returncode == 0
+    assert report["source_configured"] is False
+    assert report["acquire_requested"] is True
+    assert report["acquired"] is False
+    assert report["acquire_error"] is None
+    assert report["state"]["reason_code"] == "OPTIONAL_NORM_CORPUS_ABSENT"
+    assert report["result"] == "ok"
+    assert report["baseline_allowed"] is False
+
+    done_enforce, report_enforce = run_json(
+        "--acquire", "--check", "--enforce", "--root", str(root)
+    )
+    assert done_enforce.returncode != 0
+    assert report_enforce["failure_reason_code"] == "NORM_ARTIFACT_MISSING"
+
+
+def test_enforce_if_configured_is_local_until_source_named(tmp_path):
+    """`--enforce-if-configured` без источника — локальный профиль, не enforce.
+
+    Именно это позволяет включить fail-closed wiring, ничего не переводя в
+    enforce досрочно: строгость привязана к наличию источника, а не к дате.
+    """
+    root = make_root(tmp_path, vault=False)
+    done, report = run_json(
+        "--acquire", "--build-index", "--enforce-if-configured", "--root", str(root)
+    )
+    assert done.returncode == 0
+    assert report["mode"] == "local"
+    assert report["result"] == "ok"
+
+
+def test_configured_source_provisions_and_builds_index(tmp_path):
+    """Успешный путь: артефакт получен, SHA-256 сверен, индекс построен."""
+    archive, digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, digest)
+
+    done, report = run_json(
+        "--acquire", "--build-index", "--enforce-if-configured",
+        "--root", str(root), env=env,
+    )
+
+    assert done.returncode == 0, report["failure_reason_code"]
+    # Источник назван — значит профиль строгий, и это видно в отчёте.
+    assert report["source_configured"] is True
+    assert report["mode"] == "enforce"
+    assert report["acquired"] is True
+    acquire = report["acquire"]
+    assert acquire["source_id"] == "test/local-fixture"
+    assert acquire["version"] == "1.0.0"
+    assert acquire["outcome"] == "downloaded"
+    assert acquire["files"] == len(VAULT_FILES)
+    assert acquire["norm_artifact_sha256"] == digest
+    # Корневой каталог архива снят: сумма считается от путей ОТНОСИТЕЛЬНО
+    # корня корпуса, иначе эталон владельца никогда не сойдётся.
+    vault = root / provision.NORM_VAULT_DIR
+    assert sorted(p.name for p in vault.iterdir()) == sorted(VAULT_FILES)
+    assert report["state"]["provisioned"] is True
+    assert report["state"]["checksum_verified"] is True
+    assert report["index_built"] is True
+    assert (root / provision.NORM_STATUS_INDEX).is_file()
+    assert report["baseline_allowed"] is True
+
+
+def test_checksum_mismatch_never_becomes_the_corpus(tmp_path):
+    """Несовпадение SHA-256 — setup failure, и дерево НЕ становится vault.
+
+    Порядок §3.3 проверяется по последствиям, а не по тексту: если бы
+    несверенное дерево всё же раскладывалось, следующий шаг работал бы с
+    подделанным входом, о котором «уже сообщили».
+    """
+    archive, _digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, "0" * 64)
+
+    done, report = run_json(
+        "--acquire", "--build-index", "--enforce-if-configured",
+        "--root", str(root), env=env,
+    )
+
+    assert done.returncode != 0
+    assert report["result"] == "setup_failure"
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_CHECKSUM_MISMATCH"
+    assert report["acquire_error"]["reason_code"] == "NORM_ARTIFACT_CHECKSUM_MISMATCH"
+    assert not (root / provision.NORM_VAULT_DIR).exists()
+    assert not (root / provision.NORM_STATUS_INDEX).exists()
+    assert report["baseline_allowed"] is False
+    # Staging не остаётся на диске: недоскачанное дерево не должно пережить прогон.
+    assert not list((root / "norms").glob(".vault.staging*"))
+
+
+def test_missing_manifest_refuses_before_touching_the_source(tmp_path):
+    """Источник назван, эталона нет — отказ существующим кодом §3.3.
+
+    Скачать артефакт, который не с чем сверить, значит доверять источнику на
+    слово. Отказ обязан наступить ДО того, как в дереве что-то появится.
+    """
+    archive, _digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, None)
+
+    done, report = run_json(
+        "--acquire", "--build-index", "--enforce-if-configured",
+        "--root", str(root), env=env,
+    )
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_CHECKSUM_MANIFEST_MISSING"
+    assert not (root / provision.NORM_VAULT_DIR).exists()
+
+
+def test_unavailable_source_is_setup_failure_not_skip(tmp_path):
+    """Недоступный источник — setup failure, а НЕ «набор не выбран».
+
+    Это ключевое различие всего пакета: «источник не назван» ждёт владельца,
+    «источник назван и не отвечает» ждёт починки доступа. Один код на два
+    состояния сделал бы их неразличимыми в расписке.
+    """
+    archive, digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(tmp_path / "нет-такого-файла.tar.gz", digest)
+
+    done, report = run_json(
+        "--acquire", "--build-index", "--enforce-if-configured",
+        "--root", str(root), env=env,
+    )
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_SOURCE_UNAVAILABLE"
+    assert report["failure_reason_code"] != "OPTIONAL_NORM_CORPUS_ABSENT"
+    assert not (root / provision.NORM_VAULT_DIR).exists()
+    assert archive.exists()  # существующий артефакт тут ни при чём
+
+
+def test_partial_source_config_is_refused(tmp_path):
+    """Половина конфигурации — отказ, а не возврат к «набор не выбран».
+
+    Половина конфигурации опаснее её отсутствия: она выглядит как подключённый
+    источник и тихо давала бы зелёный прогон без корпуса.
+    """
+    archive, digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, vault=False)
+    env = cli_env(**{
+        provision.NORM_SOURCE_URL_ENV: f"file://{archive}",
+        provision.NORM_CHECKSUM_ENV: digest,
+    })
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["source_configured"] is True
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_SOURCE_MISCONFIGURED"
+    # Названы ИМЕННО недостающие переменные — иначе владелец ищет наугад.
+    detail = report["acquire_error"]["detail"]
+    assert provision.NORM_SOURCE_ID_ENV in detail
+    assert provision.NORM_SOURCE_VERSION_ENV in detail
+
+
+def test_plaintext_transport_is_refused(tmp_path):
+    """`http://` отвергается конфигурационно, до любого обращения наружу."""
+    root = make_root(tmp_path, vault=False)
+    env = source_env(tmp_path / "unused.tar.gz", "0" * 64, **{
+        provision.NORM_SOURCE_URL_ENV: "http://example.invalid/vault-{version}.tar.gz",
+    })
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_SOURCE_MISCONFIGURED"
+
+
+def test_unsafe_archive_member_is_refused(tmp_path):
+    """Путь с `..` внутри архива — отказ, а не запись за пределы staging."""
+    root = make_root(tmp_path, vault=False)
+    archive = tmp_path / "evil-1.0.0.tar.gz"
+    payload = tmp_path / "payload.md"
+    payload.write_text("# вредонос\n", encoding="utf-8")
+    with tarfile.open(archive, "w:gz") as tf:
+        tf.add(payload, arcname="vault/../../escaped.md")
+    env = source_env(archive, "0" * 64)
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_UNPACK_FAILED"
+    assert not (root.parent / "escaped.md").exists()
+    assert not (root / "escaped.md").exists()
+
+
+def test_existing_mismatching_vault_is_not_overwritten(tmp_path):
+    """Уже лежащий и не совпавший корпус называется, а не затирается молча."""
+    archive, digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, checksum=None)  # vault есть, но другой
+    marker = next((root / provision.NORM_VAULT_DIR).glob("*.md"))
+    marker.write_text("# чужое дерево\n", encoding="utf-8")
+    env = source_env(archive, digest)
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_CHECKSUM_MISMATCH"
+    assert marker.read_text(encoding="utf-8") == "# чужое дерево\n"
+
+
+def test_second_run_does_not_refetch(tmp_path):
+    """Повторный прогон на сверенном корпусе идемпотентен и не ходит в источник."""
+    archive, digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, digest)
+
+    first, _ = run_json("--acquire", "--build-index", "--root", str(root), env=env)
+    assert first.returncode == 0
+    archive.unlink()  # источник недоступен — и это не должно ничего сломать
+
+    done, report = run_json(
+        "--acquire", "--build-index", "--enforce-if-configured",
+        "--root", str(root), env=env,
+    )
+
+    assert done.returncode == 0
+    assert report["acquire"]["outcome"] == "already_present"
+    assert report["state"]["provisioned"] is True
+
+
+def test_credentials_never_reach_stdout_or_stderr(tmp_path):
+    """Токен не печатается ни при успехе, ни при отказе; query URL не публикуется.
+
+    Проверяется на ОБОИХ исходах: путь отказа опаснее — именно в него попадают
+    тексты чужих исключений, а urllib кладёт в них полный URL с query, где у
+    presigned-ссылки и лежит секрет.
+    """
+    secret = "SHORT_PRIVATE_SENTINEL_VALUE_42"
+    archive, digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, vault=False)
+
+    ok_env = source_env(archive, digest, **{provision.NORM_SOURCE_TOKEN_ENV: secret})
+    ok_done, ok_report = run_json(
+        "--acquire", "--build-index", "--root", str(root), env=ok_env
+    )
+    assert ok_done.returncode == 0
+    assert secret not in ok_done.stdout and secret not in ok_done.stderr
+    # В отчёт попадает только ФАКТ наличия credential.
+    assert ok_report["source"]["auth"] == "token"
+    assert secret not in json.dumps(ok_report, ensure_ascii=False)
+
+    fail_root = make_root(tmp_path / "second", vault=False)
+    fail_env = source_env(
+        tmp_path / "missing.tar.gz", digest,
+        **{
+            provision.NORM_SOURCE_TOKEN_ENV: secret,
+            provision.NORM_SOURCE_URL_ENV: (
+                f"file://{tmp_path}/missing.tar.gz?token={secret}"
+            ),
+        },
+    )
+    fail_done, fail_report = run_json(
+        "--acquire", "--check", "--root", str(fail_root), env=fail_env
+    )
+    assert fail_done.returncode != 0
+    assert secret not in fail_done.stdout and secret not in fail_done.stderr
+    assert secret not in json.dumps(fail_report, ensure_ascii=False)
+
+
+def test_digest_command_is_the_same_rule(tmp_path):
+    """`--digest` печатает ТУ ЖЕ сумму, которой CI сверяет корпус.
+
+    Без этой команды владелец источника считал бы эталон своим способом — то
+    самое второе правило checksum, ради отсутствия которого digest и
+    импортируется у probe.
+    """
+    _archive, digest = make_artifact(tmp_path)
+    tree = tmp_path / "artifact-src" / "vault"
+
+    done = run_cli("--digest", str(tree))
+
+    assert done.returncode == 0
+    assert done.stdout.strip() == digest
+    assert digest == probe._norm_artifact_digest(tree)

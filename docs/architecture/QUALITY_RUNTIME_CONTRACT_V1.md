@@ -58,6 +58,28 @@ lane-маркеров §5, `ci.yml` переписан под пять поло�
 `constraints-qr-v1.txt` (materialized lock §4.1; имя — по глобу `constraints*.txt`
 из ADR-0006).
 
+**Переиздание двух строк от 2026-09-02 (волна 0.0.03).** Переизданы пины
+`.github/workflows/ci.yml` и `scripts/ci_known_failures.txt`.
+
+В `ci.yml` шаг `Provisioning norm corpus` переведён на source-agnostic
+fail-closed wiring: источник норм задаётся конфигурацией (`QR_NORM_ARTIFACT_*`),
+а прежняя ветка `if [ -d norms/vault ]`, понижавшая отсутствие обязательного
+входа до `::warning::`, убрана. Значения lane, fail/skip policy, required
+capabilities и строгость gates не изменились: `--ci` у Lane/Chaos и
+`continue-on-error` у регресс-гейта остались как были. Форма приёмки источника
+— `docs/ops/NORM_ARTIFACT_SOURCE.md`.
+
+В обоих файлах исправлена диагностика группы 1 baseline. Прежняя редакция
+утверждала, что 33 записи существуют только из-за отсутствия `norms/vault` и
+исчезнут после provisioning; волна 0.0.03 проверила это и опровергла — узлы
+падают на setup фикстуры с `AttributeError`, а корпус на их исход не влияет.
+Ни одна запись baseline не добавлена, не удалена и не изменена: переизданы
+только комментарии, владелец и условие пересмотра группы.
+
+Версия контракта прежняя: правила §5, §6 и §7 не тронуты, ни один порог не
+сдвинут. Переиздание оформлено здесь, потому что §2 требует нового receipt на
+любое изменение зафиксированного входа до интеграции.
+
 | Вход | SHA-256 |
 | --- | --- |
 | `requirements.txt` | `e517f305175010e974f5dcdb288135dd3ad59f5a8fd7b16f069f898ee9262df4` |
@@ -68,9 +90,9 @@ lane-маркеров §5, `ci.yml` переписан под пять поло�
 | `frontend/package-lock.json` | `c679604b25329bdbcf89f80017011a0c51c07e770e326865b093f63633097040` |
 | `frontend/package.json` | `65749f5180ea6fd1e2d99f35c103365f9188f7e2cabaef3db53e8f051eef2075` |
 | `frontend/tsconfig.distributed.json` | `a3d3fb949642421af5563073f04658160534b04e78c3ebad895d4454eb487863` |
-| `.github/workflows/ci.yml` | `30875c2f31eaf9fcd46b5075c6a1dca22574ef1eab7402f7558a8ae5b1537502` |
+| `.github/workflows/ci.yml` | `01083898f6be99dc2cfbd79cb0937aa1490c1b6e66086b62af438a7549b08ebd` |
 | `scripts/ci_regression_gate.py` | `42fc15209950558781481aaa25d84d6f11a1333acb78eb22644b3a8b50f6f529` |
-| `scripts/ci_known_failures.txt` | `4a69decf38d4f1a65c9b2d7cbca6468512b7d4ce46fcd4a07db24c47147e2fb2` |
+| `scripts/ci_known_failures.txt` | `5cedcdd61eaa56e393f6acf9ee0856b8e93c646d0390ed24335c98f396a5eec2` |
 | `tests/conftest.py` | `395646bd3f738f1da345bb75f2627844f8e27d447991c04ce305b97d13594706` |
 | `backend/tests/conftest.py` | `8df70ba9cc4b1070574148b1b8cbd44cabe98c8316039c9f67f360858aac67e8` |
 
