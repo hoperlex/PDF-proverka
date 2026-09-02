@@ -1,0 +1,57 @@
+{
+  "tool": "ci_evidence_bundle",
+  "manifest_version": "1",
+  "label": "дельта-приёмка на eeac0c07: затронутая полоса contract и aggregate gate",
+  "generated_at": "2026-09-02T12:05:51Z",
+  "run_dir": "/home/ciuser/delta-acceptance-eeac0c07/reports",
+  "file_count": 5,
+  "total_bytes": 252110,
+  "tree_digest_rule": "ci_runtime_probe._norm_artifact_digest (путь + содержимое, детерминированный порядок)",
+  "tree_sha256": "951b27106e6e0815a43ad4f016e8226d44ded756899e1ab9f7a21c71ee2f264e",
+  "lanes": {
+    "contract": {
+      "exit_code": 0,
+      "probe_mode": "ci",
+      "report_status": "ok",
+      "selected": 260,
+      "passed": 259,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 1,
+      "source_commit": "eeac0c0794cea2a304556d18c9958e984b8e6611",
+      "source_commit_origin": "QR_SOURCE_COMMIT"
+    }
+  },
+  "files": [
+    {
+      "path": "gate.log",
+      "bytes": 10405,
+      "sha256": "daf0f01e72711260dc8ee95a0932030296636ac4463fc7f97813956676c951f2"
+    },
+    {
+      "path": "lane.contract.events.jsonl",
+      "bytes": 204965,
+      "sha256": "58c219e1be11f6af412e909c2682698478620f52aea52bf8ea8facef7ba90dc5"
+    },
+    {
+      "path": "lane.contract.json",
+      "bytes": 1925,
+      "sha256": "25ca6b2c12e7a58d3dfc8fbb3298b3b6a769e71f67389513c9f32feef601f45a"
+    },
+    {
+      "path": "lane.contract.log",
+      "bytes": 976,
+      "sha256": "6b632d54aaabc73012092267b7a5fae4e0495b7427ef5e14739421f98938ac90"
+    },
+    {
+      "path": "lane.contract.xml",
+      "bytes": 33839,
+      "sha256": "7fe3ef6f2c6247a27ad8e9c4726a6e65bdad7c2a78d4ec32191d645f4d65127e"
+    }
+  ],
+  "archive": {
+    "path": "/home/ciuser/evidence-0.0.03/delta-eeac0c07.tar.gz",
+    "sha256": "6f18fd05b174d18a1856731494340467602333a81eb28c12491379e47f0b94ec",
+    "note": "детерминированный tar.gz: владелец, права и время обнулены"
+  }
+}
