@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -789,3 +790,654 @@ def test_digest_command_is_the_same_rule(tmp_path):
     assert done.returncode == 0
     assert done.stdout.strip() == digest
     assert digest == probe._norm_artifact_digest(tree)
+
+
+# --------------------------------------------------------------------------
+# Форма приёмки против кода: доводки волны 0.0.03
+#
+# Общая мысль этого блока: расхождение формы (`docs/ops/NORM_ARTIFACT_SOURCE.md`)
+# и валидации — это отдельный класс дефекта. Правило, записанное в форме и не
+# проверяемое кодом, хуже отсутствующего правила: владелец источника считает,
+# что его проверили, а не проверил никто.
+# --------------------------------------------------------------------------
+
+FORM = ROOT / "docs" / "ops" / "NORM_ARTIFACT_SOURCE.md"
+
+
+def make_custom_artifact(
+    tmp_path: Path,
+    members: dict[str, str],
+    *,
+    name: str = "norm-vault-1.0.0.tar.gz",
+    subdir: str = "custom-src",
+    root_name: str = "vault",
+) -> tuple[Path, str]:
+    """Артефакт произвольной раскладки и SHA-256 его дерева.
+
+    Отличие от `make_artifact` — произвольные относительные пути членов: именно
+    ими и проверяются правила раскладки, которые на «двух плоских .md» не видны.
+    """
+    src = tmp_path / subdir / root_name
+    src.mkdir(parents=True, exist_ok=True)
+    for relative, text in members.items():
+        target = src / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    digest = provision.norm_artifact_digest(src)
+    archive = tmp_path / name
+    with tarfile.open(archive, "w:gz") as tf:
+        tf.add(src, arcname=root_name)
+    return archive, digest
+
+
+# --------------------------------------------------------------------------
+# Пункт 1: поле 5 формы — неизменяемый идентификатор сборки
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("version", ["latest", "LATEST", "Main", "head", "stable"])
+def test_mutable_version_is_refused_before_touching_the_source(tmp_path, version):
+    """`latest` и родня отвергаются ДО обращения к источнику.
+
+    Форма (поле 5) требует неизменяемый идентификатор сборки, а §3.3 доказывает
+    годность корпуса единственным способом — совпадением SHA-256 с эталоном,
+    посчитанным один раз для одной версии. Изменяемая версия разрывает эту пару:
+    артефакт, который завтра другой при той же версии, превращает совпадение
+    суммы в случайность.
+
+    Порядок проверяется по последствиям: адрес указывает на несуществующий файл,
+    поэтому обращение к источнику дало бы `NORM_ARTIFACT_SOURCE_UNAVAILABLE`.
+    Получен `NORM_ARTIFACT_SOURCE_MISCONFIGURED` — значит наружу не ходили.
+    """
+    root = make_root(tmp_path, vault=False)
+    env = source_env(tmp_path / "нет-такого.tar.gz", "0" * 64, **{
+        provision.NORM_SOURCE_VERSION_ENV: version,
+    })
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_SOURCE_MISCONFIGURED"
+    detail = report["acquire_error"]["detail"]
+    assert provision.NORM_SOURCE_VERSION_ENV in detail
+    assert not (root / provision.NORM_VAULT_DIR).exists()
+
+
+def test_mutable_url_segment_is_refused(tmp_path):
+    """Изменяемый указатель в АДРЕСЕ — тот же дефект, спрятанный в путь.
+
+    `…/releases/latest/download/vault.tar.gz` отдаёт завтра другой файл при
+    неизменной конфигурации, даже когда поле 5 заполнено номером версии.
+    """
+    root = make_root(tmp_path, vault=False)
+    env = source_env(tmp_path / "unused.tar.gz", "0" * 64, **{
+        provision.NORM_SOURCE_URL_ENV: (
+            "https://example.invalid/org/repo/releases/latest/download/vault.tar.gz"
+        ),
+        provision.NORM_SOURCE_VERSION_ENV: "1.4.2",
+    })
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_SOURCE_MISCONFIGURED"
+    assert "latest" in report["acquire_error"]["detail"]
+
+
+def test_immutable_version_is_not_refused(tmp_path):
+    """Обратная сторона: нормальная версия проходит, правило не «ловит всё»."""
+    archive, digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, digest, **{
+        provision.NORM_SOURCE_VERSION_ENV: "2026.09.01-3f9ab12",
+    })
+
+    done, report = run_json(
+        "--acquire", "--build-index", "--root", str(root), env=env
+    )
+
+    assert done.returncode == 0, report["failure_reason_code"]
+    assert report["acquire"]["version"] == "2026.09.01-3f9ab12"
+
+
+# --------------------------------------------------------------------------
+# Пункт 2: раскладка корпуса против того, что реально читает сборщик индекса
+# --------------------------------------------------------------------------
+
+
+def test_index_visibility_mirrors_the_real_builder(tmp_path):
+    """Зеркало правила сборщика проверяется у САМОГО сборщика, а не на словах.
+
+    `_index_visibility` повторяет одну строку `build_status_index.py:177`
+    (`sorted(VAULT.glob("*.md"))`) плюс пропуск `MOC - *.md`. Если сборщик
+    когда-нибудь перейдёт на `rglob` или начнёт читать другое расширение, это
+    зеркало разъедется — и упадёт здесь, а не в проде в виде неполного индекса.
+    """
+    root = make_root(tmp_path)
+    vault = root / provision.NORM_VAULT_DIR
+    (vault / "sub").mkdir()
+    (vault / "sub" / "ГОСТ 1-82_ Вложенная_document.md").write_text(
+        "# вложенная\n", encoding="utf-8"
+    )
+    (vault / "notes.txt").write_text("заметка\n", encoding="utf-8")
+    (vault / "MOC - Электрика.md").write_text("# карта содержания\n", encoding="utf-8")
+
+    visibility = provision._index_visibility(vault)
+
+    done = subprocess.run(
+        [sys.executable, str(root / provision.NORM_INDEX_BUILDER), "--quiet"],
+        capture_output=True,
+        text=True,
+        cwd=str(root),
+        env=cli_env(),
+        timeout=120,
+    )
+    assert done.returncode == 0, done.stderr[-400:]
+    index = json.loads(
+        (root / provision.NORM_STATUS_INDEX).read_text(encoding="utf-8")
+    )
+    from_vault = [n for n in index["norms"] if n["source"] == "vault"]
+
+    assert visibility["corpus_files"] == len(VAULT_FILES) + 3
+    assert visibility["indexed_files"] == len(from_vault) == len(VAULT_FILES)
+    assert visibility["skipped_moc_files"] == 1
+    assert sorted(visibility["invisible_files"]) == sorted(
+        ["notes.txt", "sub/ГОСТ 1-82_ Вложенная_document.md"]
+    )
+
+
+def test_nested_corpus_never_becomes_the_vault(tmp_path):
+    """Вложенный файл отвергается, ХОТЯ SHA-256 сошёлся.
+
+    Это и есть отказ «зелёный provisioning, неполный индекс»: сумма считается по
+    дереву рекурсивно, сборщик читает только корень — и корпус молча теряет
+    часть себя. Теперь состояние названо: `NORM_ARTIFACT_UNPACK_FAILED`.
+    """
+    members = dict(VAULT_FILES)
+    members["ГОСТ/ГОСТ 1-82_ Вложенная_document.md"] = "# вложенная\n"
+    archive, digest = make_custom_artifact(tmp_path, members)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, digest)
+
+    done, report = run_json(
+        "--acquire", "--build-index", "--enforce-if-configured",
+        "--root", str(root), env=env,
+    )
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_UNPACK_FAILED"
+    detail = report["acquire_error"]["detail"]
+    assert "ГОСТ/ГОСТ 1-82_ Вложенная_document.md" in detail
+    assert provision.NORM_INDEX_BUILDER in detail
+    # Несмотря на сошедшуюся сумму, деревом корпуса это не стало.
+    assert not (root / provision.NORM_VAULT_DIR).exists()
+    assert not (root / provision.NORM_STATUS_INDEX).exists()
+    assert report["baseline_allowed"] is False
+
+
+def test_non_markdown_file_in_root_is_refused_too(tmp_path):
+    """Запрет одной лишь вложенности пропустил бы `vault/notes.txt`.
+
+    Поэтому правило сформулировано как равенство «файлов корпуса = файлов,
+    видимых сборщику», а не как «нет подкаталогов»: невидимость индексу даёт не
+    только вложенность.
+    """
+    members = dict(VAULT_FILES)
+    members["notes.txt"] = "заметка составителя\n"
+    archive, digest = make_custom_artifact(tmp_path, members)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, digest)
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_UNPACK_FAILED"
+    assert "notes.txt" in report["acquire_error"]["detail"]
+    assert not (root / provision.NORM_VAULT_DIR).exists()
+
+
+def test_moc_files_are_the_single_documented_exception(tmp_path):
+    """`MOC - *.md` сборщик пропускает СОЗНАТЕЛЬНО — и приёмку это не ломает.
+
+    Иначе правило равенства отвергало бы законный корпус: карты содержания
+    Obsidian лежат в vault рядом с нормами, но нормами не являются
+    (`norms/tools/README.md`).
+    """
+    members = dict(VAULT_FILES)
+    members["MOC - Электрика.md"] = "# карта содержания\n"
+    archive, digest = make_custom_artifact(tmp_path, members)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, digest)
+
+    done, report = run_json(
+        "--acquire", "--build-index", "--enforce-if-configured",
+        "--root", str(root), env=env,
+    )
+
+    assert done.returncode == 0, report["failure_reason_code"]
+    layout = report["acquire"]["layout"]
+    assert layout["corpus_files"] == len(VAULT_FILES) + 1
+    assert layout["indexed_files"] == len(VAULT_FILES)
+    assert layout["skipped_moc_files"] == 1
+    assert layout["invisible_files"] == []
+    assert report["state"]["provisioned"] is True
+
+
+def test_build_index_refuses_partially_invisible_vault(tmp_path):
+    """Правило раскладки действует и на vault, приехавший НЕ через `--acquire`.
+
+    Корпус мог быть распакован соседним шагом или смонтирован; неполный индекс
+    от этого не становится менее неполным. Здесь checksum сошёлся честно —
+    отказывает именно раскладка.
+    """
+    root = make_root(tmp_path)
+    (root / provision.NORM_VAULT_DIR / "приложение.pdf").write_bytes(b"%PDF-1.4\n")
+    digest = provision.norm_artifact_digest(root / provision.NORM_VAULT_DIR)
+    (root / "norms" / "vault.sha256").write_text(digest + "\n", encoding="utf-8")
+
+    done, report = run_json("--build-index", "--root", str(root))
+
+    assert done.returncode != 0
+    assert report["state"]["checksum_verified"] is True
+    assert report["index_build_error"]["reason_code"] == "NORM_ARTIFACT_UNPACK_FAILED"
+    assert "приложение.pdf" in report["index_build_error"]["detail"]
+    assert not (root / provision.NORM_STATUS_INDEX).exists()
+
+
+def test_repeat_run_is_not_softer_than_the_first(tmp_path):
+    """Идемпотентный повтор проверяет раскладку так же, как первый прогон.
+
+    Иначе один и тот же артефакт принимался бы или отвергался в зависимости от
+    того, первый это запуск на раннере или второй.
+    """
+    root = make_root(tmp_path)
+    (root / provision.NORM_VAULT_DIR / "sub").mkdir()
+    (root / provision.NORM_VAULT_DIR / "sub" / "x.md").write_text("# x\n", encoding="utf-8")
+    digest = provision.norm_artifact_digest(root / provision.NORM_VAULT_DIR)
+    env = source_env(tmp_path / "unused-1.0.0.tar.gz", digest)
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_UNPACK_FAILED"
+    assert report["acquire_error"]["detail"].count("sub/x.md") == 1
+
+
+# --------------------------------------------------------------------------
+# Пункт 3: поле 12 формы — схема авторизации
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "scheme",
+    [
+        "Bearer token",          # пробел рвёт заголовок на схему и «мусор»
+        "Bearer\nX-Injected: 1", # инъекция второго заголовка в запрос с credential
+        "Bearer\r\nX: 1",
+        "Bearer\ttoken",
+        "5Bearer",               # RFC 7235: схема начинается с буквы
+        '"Bearer"',
+    ],
+)
+def test_garbage_auth_scheme_is_refused(tmp_path, scheme):
+    """Заголовок Authorization не собирается из мусора — отказ до запроса."""
+    archive, digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, digest, **{
+        provision.NORM_SOURCE_AUTH_SCHEME_ENV: scheme,
+        provision.NORM_SOURCE_TOKEN_ENV: "SECRET_SENTINEL",
+    })
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_SOURCE_MISCONFIGURED"
+    assert provision.NORM_SOURCE_AUTH_SCHEME_ENV in report["acquire_error"]["detail"]
+    assert "SECRET_SENTINEL" not in done.stdout
+    assert not (root / provision.NORM_VAULT_DIR).exists()
+
+
+def test_garbage_auth_scheme_does_not_echo_its_value(tmp_path):
+    """Самая частая форма ошибки поля 12 — вставленный целиком «Bearer <token>».
+
+    Значит, в негодной схеме лежит credential, и печатать её в тексте отказа
+    нельзя: путь отказа как раз и попадает в логи CI. Отказ обязан назвать
+    ДЕФЕКТ, а не значение.
+    """
+    secret = "SHORT_PRIVATE_SENTINEL_VALUE_42"
+    archive, digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, digest, **{
+        provision.NORM_SOURCE_AUTH_SCHEME_ENV: f"Bearer {secret}",
+    })
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_SOURCE_MISCONFIGURED"
+    assert secret not in done.stdout and secret not in done.stderr
+    assert secret not in json.dumps(report, ensure_ascii=False)
+    # Диагноз при этом остаётся действующим: сказано, ЧТО не так.
+    assert "пробел" in report["acquire_error"]["detail"]
+
+
+@pytest.mark.parametrize("scheme", ["", "   ", "\n", " \t "])
+def test_empty_auth_scheme_means_default_bearer(tmp_path, scheme):
+    """Пустое значение — не ошибка: незаданной переменной GitHub даёт пустую строку.
+
+    Отвергать её значило бы обваливать любой прогон, где `vars.` переменная
+    просто не заведена, — то есть ровно тот случай, который форма называет
+    «поле 12 не обязательно, по умолчанию Bearer».
+    """
+    archive, digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, digest, **{
+        provision.NORM_SOURCE_AUTH_SCHEME_ENV: scheme,
+    })
+
+    done, report = run_json(
+        "--acquire", "--build-index", "--root", str(root), env=env
+    )
+
+    assert done.returncode == 0, report["failure_reason_code"]
+    assert report["source"]["auth_scheme"] == provision.DEFAULT_AUTH_SCHEME
+
+
+@pytest.mark.parametrize("scheme", ["Bearer", "token", "Basic", "DEP-256"])
+def test_valid_auth_schemes_are_accepted_and_published(tmp_path, scheme):
+    """Годная схема принимается и попадает в расписку (это не credential)."""
+    archive, digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, digest, **{
+        provision.NORM_SOURCE_AUTH_SCHEME_ENV: scheme,
+        provision.NORM_SOURCE_TOKEN_ENV: "SECRET_SENTINEL",
+    })
+
+    done, report = run_json(
+        "--acquire", "--build-index", "--root", str(root), env=env
+    )
+
+    assert done.returncode == 0, report["failure_reason_code"]
+    assert report["source"]["auth_scheme"] == scheme
+    assert report["source"]["auth"] == "token"
+    assert "SECRET_SENTINEL" not in json.dumps(report, ensure_ascii=False)
+
+
+def test_auth_scheme_alone_does_not_configure_a_source(tmp_path):
+    """Одна лишь схема — это по-прежнему частичная конфигурация, а не источник."""
+    root = make_root(tmp_path, vault=False)
+    env = cli_env(**{provision.NORM_SOURCE_AUTH_SCHEME_ENV: "token"})
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["source_configured"] is True
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_SOURCE_MISCONFIGURED"
+
+
+# --------------------------------------------------------------------------
+# Пункт 4: защитные лимиты перед подключением внешнего архива
+# --------------------------------------------------------------------------
+
+
+def test_limits_are_published_and_overridable(tmp_path):
+    """Потолки видны в расписке и переопределяются конфигурацией.
+
+    «Артефакт принят» без указания потолка не говорит, под каким потолком он
+    принят: следующий раннер с другим числом дал бы другой исход на том же входе.
+    """
+    root = make_root(tmp_path, vault=False)
+
+    _done, report = run_json("--check", "--root", str(root))
+    assert report["limits"] == {
+        "artifact_bytes": provision.MAX_ARTIFACT_BYTES,
+        "unpacked_bytes": provision.MAX_UNPACKED_BYTES,
+        "files": provision.MAX_UNPACKED_FILES,
+    }
+    assert set(report["limits_env_vars"]) == set(provision.NORM_LIMIT_ENV_VARS)
+    # Лимиты не называют источник — и потому не переводят дерево из состояния
+    # «набор не выбран» в «источник сконфигурирован».
+    assert report["source_configured"] is False
+
+    env = cli_env(**{provision.NORM_MAX_FILES_ENV: "7"})
+    done_override, report_override = run_json("--check", "--root", str(root), env=env)
+    assert done_override.returncode == 0
+    assert report_override["limits"]["files"] == 7
+    assert report_override["source_configured"] is False
+
+
+def test_invalid_limit_value_is_refused_not_silently_defaulted(tmp_path):
+    """Опечатка в потолке — отказ, а не тихий возврат к умолчанию.
+
+    Иначе `QR_NORM_ARTIFACT_MAX_BYTES=256MB` выглядел бы применённой настройкой,
+    а защита работала бы на совсем другом числе.
+    """
+    archive, digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, digest, **{
+        provision.NORM_MAX_ARTIFACT_BYTES_ENV: "256MB",
+    })
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_SOURCE_MISCONFIGURED"
+    assert provision.NORM_MAX_ARTIFACT_BYTES_ENV in report["acquire_error"]["detail"]
+    assert report["limits"] is None
+    assert report["limits_error"]["reason_code"] == "NORM_ARTIFACT_SOURCE_MISCONFIGURED"
+    assert not (root / provision.NORM_VAULT_DIR).exists()
+
+
+def test_invalid_limit_without_source_keeps_previous_semantics(tmp_path):
+    """Без названного источника ограничивать нечего — исход прежний.
+
+    Правило «источник не назван — поведение ровно прежнее» сильнее удобства:
+    настройка безопасности не имеет права красить прогон, в котором никакой
+    внешний артефакт не участвует. Негодное значение при этом НАЗВАНО в отчёте.
+    """
+    root = make_root(tmp_path, vault=False)
+    env = cli_env(**{provision.NORM_MAX_FILES_ENV: "много"})
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode == 0
+    assert report["result"] == "ok"
+    assert report["limits"] is None
+    assert report["limits_error"]["reason_code"] == "NORM_ARTIFACT_SOURCE_MISCONFIGURED"
+
+
+def test_oversized_artifact_is_refused_before_unpacking(tmp_path):
+    """Слишком большой артефакт — `NORM_ARTIFACT_TOO_LARGE`, а не забитый диск."""
+    archive, digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, digest, **{
+        provision.NORM_MAX_ARTIFACT_BYTES_ENV: "64",
+    })
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_TOO_LARGE"
+    assert report["acquire_error"]["reason_code"] == "NORM_ARTIFACT_TOO_LARGE"
+    assert not (root / provision.NORM_VAULT_DIR).exists()
+    assert not list((root / "norms").glob(".vault.staging*"))
+
+
+def test_unpack_limit_counts_written_bytes_not_declared_size(tmp_path):
+    """Zip-bomb: архив крошечный, распаковка — мегабайты. Считается записанное.
+
+    Ровно поэтому потолок распаковки не может опираться на заявленный размер:
+    у бомбы он честен ровно до момента разворачивания. Здесь артефакт заведомо
+    проходит потолок скачивания и всё равно отвергается.
+    """
+    payload = "0" * (4 * 1024 * 1024)
+    archive, digest = make_custom_artifact(tmp_path, {"bomb.md": payload})
+    assert archive.stat().st_size < 128 * 1024, "фикстура обязана быть сжатой"
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, digest, **{
+        provision.NORM_MAX_UNPACKED_BYTES_ENV: str(1024 * 1024),
+    })
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_TOO_LARGE"
+    assert provision.NORM_MAX_UNPACKED_BYTES_ENV in report["acquire_error"]["detail"]
+    assert not (root / provision.NORM_VAULT_DIR).exists()
+    assert not list((root / "norms").glob(".vault.staging*"))
+
+
+def test_file_count_limit_is_enforced(tmp_path):
+    """Отдельный потолок числа файлов: миллион пустых файлов не весит ничего.
+
+    Байтовый потолок его не ловит, а файловую систему раннера и последующий
+    обход дерева он убивает.
+    """
+    members = {
+        f"ГОСТ {n}-82_ Тестовая норма_document.md": f"# норма {n}\n" for n in range(6)
+    }
+    archive, digest = make_custom_artifact(tmp_path, members)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, digest, **{provision.NORM_MAX_FILES_ENV: "3"})
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_TOO_LARGE"
+    assert provision.NORM_MAX_FILES_ENV in report["acquire_error"]["detail"]
+    assert not (root / provision.NORM_VAULT_DIR).exists()
+
+
+def test_directory_source_is_bounded_too(tmp_path):
+    """Ветка `file://` на КАТАЛОГ подчиняется тем же потолкам.
+
+    Без этого она была бы дырой в защите: `shutil.copytree` копирует что дали и
+    сколько дали, а потолок обязан быть свойством провижининга, не формата.
+    """
+    members = {
+        f"ГОСТ {n}-82_ Тестовая норма_document.md": f"# норма {n}\n" for n in range(6)
+    }
+    _archive, digest = make_custom_artifact(
+        tmp_path, members, name="unused-dir.tar.gz", subdir="dir-src"
+    )
+    tree = tmp_path / "dir-src" / "vault"
+    root = make_root(tmp_path, vault=False)
+    env = source_env(tree, digest, **{provision.NORM_MAX_FILES_ENV: "3"})
+
+    done, report = run_json("--acquire", "--check", "--root", str(root), env=env)
+
+    assert done.returncode != 0
+    assert report["failure_reason_code"] == "NORM_ARTIFACT_TOO_LARGE"
+    assert not (root / provision.NORM_VAULT_DIR).exists()
+
+
+def test_limits_do_not_break_a_normal_corpus(tmp_path):
+    """Умолчания поставлены с запасом: обычный корпус проходит без настройки.
+
+    Потолок, который приходится отключать на каждом законном прогоне, защитой
+    быть перестаёт — его просто снимают.
+    """
+    archive, digest = make_artifact(tmp_path)
+    root = make_root(tmp_path, vault=False)
+    env = source_env(archive, digest)
+
+    done, report = run_json(
+        "--acquire", "--build-index", "--enforce-if-configured",
+        "--root", str(root), env=env,
+    )
+
+    assert done.returncode == 0, report["failure_reason_code"]
+    assert report["acquire"]["limits"]["artifact_bytes"] == provision.MAX_ARTIFACT_BYTES
+    assert report["state"]["provisioned"] is True
+
+
+# --------------------------------------------------------------------------
+# Форма и код обязаны говорить одно и то же
+# --------------------------------------------------------------------------
+
+
+def test_form_documents_every_code_variable_and_limit():
+    """Каждое правило кода названо в форме приёмки — и наоборот.
+
+    Расхождение формы и валидации — это ровно тот дефект, который чинит эта
+    волна. Тест существует, чтобы он не завёлся снова: новый код отказа, новая
+    переменная или новое изменяемое имя обязаны попасть в
+    `docs/ops/NORM_ARTIFACT_SOURCE.md` тем же коммитом.
+    """
+    text = FORM.read_text(encoding="utf-8")
+
+    for code in (*CONTRACT_REASON_CODES, *provision.EXTRA_REASON_CODES):
+        assert code in text, f"код {code} не описан в форме приёмки"
+    for name in (*provision.NORM_SOURCE_ENV_VARS, *provision.NORM_LIMIT_ENV_VARS):
+        assert name in text, f"переменная {name} не описана в форме приёмки"
+    for identifier in provision.MUTABLE_VERSION_IDENTIFIERS:
+        assert f"`{identifier}`" in text, f"изменяемое имя {identifier} не в форме"
+
+    # Числа умолчаний тоже часть формы: владелец источника обязан знать потолок
+    # до того, как соберёт артефакт, а не после отказа CI.
+    assert f"{provision.MAX_ARTIFACT_BYTES // (1024 * 1024)} МиБ" in text
+    assert f"{provision.MAX_UNPACKED_BYTES // (1024 * 1024 * 1024)} ГиБ" in text
+    assert f"{provision.MAX_UNPACKED_FILES:,}".replace(",", " ") in text
+
+
+def make_zip_artifact(
+    tmp_path: Path,
+    members: dict[str, str],
+    *,
+    name: str = "norm-vault-1.0.0.zip",
+    subdir: str = "zip-src",
+) -> tuple[Path, str]:
+    """То же, что `make_custom_artifact`, но в формате `.zip`."""
+    src = tmp_path / subdir / "vault"
+    src.mkdir(parents=True, exist_ok=True)
+    for relative, text in members.items():
+        target = src / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    digest = provision.norm_artifact_digest(src)
+    archive = tmp_path / name
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in sorted(src.rglob("*")):
+            if path.is_file():
+                zf.write(path, arcname=f"vault/{path.relative_to(src).as_posix()}")
+    return archive, digest
+
+
+def test_zip_branch_obeys_the_same_rules(tmp_path):
+    """Ветка `.zip` живёт по тем же правилам, что и tar.
+
+    Проверяется отдельно, потому что распаковка zip и tar — разный код, а
+    правило обязано быть одно: разойдясь, они дали бы владельцу источника два
+    разных ответа на один и тот же артефакт в зависимости от формата упаковки.
+    """
+    ok_archive, ok_digest = make_zip_artifact(tmp_path, VAULT_FILES)
+    root = make_root(tmp_path, vault=False)
+
+    done, report = run_json(
+        "--acquire", "--build-index", "--root", str(root),
+        env=source_env(ok_archive, ok_digest),
+    )
+    assert done.returncode == 0, report["failure_reason_code"]
+    assert report["acquire"]["format"] == ".zip"
+    assert report["state"]["provisioned"] is True
+
+    bad_members = dict(VAULT_FILES)
+    bad_members["ГОСТ/ГОСТ 1-82_ Вложенная_document.md"] = "# вложенная\n"
+    bad_archive, bad_digest = make_zip_artifact(
+        tmp_path, bad_members, name="bad-1.0.0.zip", subdir="zip-bad"
+    )
+    bad_root = make_root(tmp_path / "second", vault=False)
+    done_bad, report_bad = run_json(
+        "--acquire", "--check", "--root", str(bad_root),
+        env=source_env(bad_archive, bad_digest),
+    )
+    assert done_bad.returncode != 0
+    assert report_bad["failure_reason_code"] == "NORM_ARTIFACT_UNPACK_FAILED"
+
+    limited_root = make_root(tmp_path / "third", vault=False)
+    done_limit, report_limit = run_json(
+        "--acquire", "--check", "--root", str(limited_root),
+        env=source_env(ok_archive, ok_digest, **{provision.NORM_MAX_FILES_ENV: "1"}),
+    )
+    assert done_limit.returncode != 0
+    assert report_limit["failure_reason_code"] == "NORM_ARTIFACT_TOO_LARGE"

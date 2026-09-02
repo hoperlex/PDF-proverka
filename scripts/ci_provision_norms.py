@@ -63,16 +63,55 @@
         QR_NORM_ARTIFACT_TOKEN      credential, если источник закрытый
         QR_NORM_ARTIFACT_AUTH_SCHEME  схема Authorization, по умолчанию Bearer
 
+    Защитные лимиты — ОТДЕЛЬНАЯ группа переменных, см. «Защитные лимиты»:
+
+        QR_NORM_ARTIFACT_MAX_BYTES           потолок скачиваемого артефакта
+        QR_NORM_ARTIFACT_MAX_UNPACKED_BYTES  потолок фактически записанного
+        QR_NORM_ARTIFACT_MAX_FILES           потолок числа файлов
+
     Состояние «источник не сконфигурирован» — ОТДЕЛЬНОЕ и не смешивается с
     отказом: пока ни одна переменная не задана, поведение ровно прежнее
     (локально `OPTIONAL_NORM_CORPUS_ABSENT` и exit 0, в enforce
     `NORM_ARTIFACT_MISSING` и setup failure). Как только источник ЗАДАН,
     любой сбой получения — setup failure, а не warning и не skip:
     недоступность (`NORM_ARTIFACT_SOURCE_UNAVAILABLE`), негодная конфигурация
-    (`NORM_ARTIFACT_SOURCE_MISCONFIGURED`), нераспаковываемый или небезопасный
-    архив (`NORM_ARTIFACT_UNPACK_FAILED`), отсутствие эталона
+    (`NORM_ARTIFACT_SOURCE_MISCONFIGURED`), нераспаковываемый, небезопасный или
+    неверно разложенный архив (`NORM_ARTIFACT_UNPACK_FAILED`), превышение
+    защитных лимитов (`NORM_ARTIFACT_TOO_LARGE`), отсутствие эталона
     (`NORM_CHECKSUM_MANIFEST_MISSING`), несовпадение SHA-256
     (`NORM_ARTIFACT_CHECKSUM_MISMATCH`).
+
+Неизменяемость версии (форма приёмки, поле 5):
+    `QR_NORM_ARTIFACT_VERSION` обязана быть неизменяемым идентификатором
+    сборки. Изменяемые указатели (`latest`, `main`, `head`, …) отвергаются ДО
+    первого обращения к источнику — см. `MUTABLE_VERSION_IDENTIFIERS` и
+    `_validate_source`. Причина в том, что вся конструкция §3.3 держится на
+    паре «версия ↔ SHA-256»: артефакт, который завтра другой при той же
+    версии, превращает совпадение суммы в случайность — сегодня она сошлась,
+    завтра тот же вход даёт `NORM_ARTIFACT_CHECKSUM_MISMATCH`, и ни один из
+    двух исходов ничего не доказывает о содержимом корпуса.
+
+Раскладка корпуса (форма приёмки, §2):
+    сборщик индекса читает РОВНО `vault/*.md` в одном корне
+    (`norms/tools/build_status_index.py:177`, `sorted(VAULT.glob("*.md"))`), а
+    правило checksum считает дерево целиком, рекурсивно. Разность этих двух
+    множеств — самое опасное состояние всего пакета: «зелёный provisioning,
+    неполный индекс». Поэтому после распаковки и снятия одиночного корня
+    проверяется равенство числа файлов корпуса и числа файлов, которые увидит
+    сборщик (`_index_visibility`); расхождение — `NORM_ARTIFACT_UNPACK_FAILED`.
+    Вложенность отвергается не сама по себе, а как частный случай этого
+    равенства: запрет одной лишь вложенности пропустил бы `vault/notes.txt` и
+    `vault/схема.png` — они тоже входят в checksum и тоже невидимы индексу.
+
+Защитные лимиты:
+    перед подключением внешнего архива ограничены три величины: размер
+    скачиваемого файла, СУММАРНЫЙ ФАКТИЧЕСКИ ЗАПИСАННЫЙ объём распаковки и
+    число файлов (`MAX_ARTIFACT_BYTES`, `MAX_UNPACKED_BYTES`,
+    `MAX_UNPACKED_FILES`). Проверяется именно записанное, а не заявленное:
+    zip-bomb заявляет несколько килобайт и разворачивается в гигабайты, так что
+    доверять заголовку архива значит не иметь защиты вовсе. Превышение —
+    `NORM_ARTIFACT_TOO_LARGE`, то есть внятный отказ вместо OOM или забитого
+    диска раннера, у которых нет ни кода причины, ни владельца.
 
     Порядок §3.3 соблюдён буквально: полученное дерево становится
     `norms/vault` ТОЛЬКО после совпадения SHA-256. Распаковка идёт в
@@ -154,7 +193,11 @@ CONTRACT_REF = "§3.3, §6 (правило 4)"
 #: Версия самого provisioning-скрипта: меняется вместе с набором проверок/кодов.
 #: 2 — добавлено получение артефакта из именованного внешнего источника
 #: (`--acquire`) и профиль `--enforce-if-configured`.
-PROVISION_VERSION = "2"
+#: 3 — форма приёмки и валидация сведены: отвергается изменяемая версия
+#: (поле 5), проверяется схема Authorization (поле 12), раскладка корпуса
+#: сверяется с тем, что реально прочитает сборщик индекса, и добавлены
+#: защитные лимиты объёма/числа файлов (`NORM_ARTIFACT_TOO_LARGE`).
+PROVISION_VERSION = "3"
 
 NORM_VAULT_DIR = probe.NORM_VAULT_DIR
 NORM_STATUS_INDEX = probe.NORM_STATUS_INDEX
@@ -195,7 +238,11 @@ EXTRA_REASON_CODES: dict[str, str] = {
         "сконфигурированный источник norm artifact не отдал артефакт"
     ),
     "NORM_ARTIFACT_UNPACK_FAILED": (
-        "артефакт получен, но не разворачивается в norms/vault"
+        "артефакт получен, но не разворачивается в годный norms/vault: битый или "
+        "небезопасный архив либо раскладка, часть которой не увидит сборщик индекса"
+    ),
+    "NORM_ARTIFACT_TOO_LARGE": (
+        "артефакт превысил защитный лимит объёма или числа файлов"
     ),
 }
 REASON_CODES: dict[str, str] = {**probe.REASON_CODES, **EXTRA_REASON_CODES}
@@ -229,6 +276,76 @@ NORM_SOURCE_TOKEN_ENV = "QR_NORM_ARTIFACT_TOKEN"
 #: Схема заголовка Authorization (Bearer | token | Basic …).
 NORM_SOURCE_AUTH_SCHEME_ENV = "QR_NORM_ARTIFACT_AUTH_SCHEME"
 DEFAULT_AUTH_SCHEME = "Bearer"
+#: `auth-scheme` по RFC 7235 §2.1 — это `token` из RFC 7230 §3.2.6. Проверяется
+#: строго, потому что значение подставляется в заголовок `Authorization` как
+#: есть: пробел внутри схемы разорвал бы заголовок на «схему» и «мусор», а
+#: `\r`/`\n` — это классическая инъекция ещё одного заголовка в запрос с
+#: credential. Пустое значение схемой НЕ считается: у незаданной переменной
+#: репозитория GitHub подставляет пустую строку, поэтому «пусто» обязано
+#: означать «по умолчанию Bearer», а не отказ.
+AUTH_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9!#$%&'*+.^_`|~-]*$")
+
+#: Изменяемые указатели, которые НЕ являются версией артефакта (поле 5 формы
+#: приёмки). Регистр не важен: `Latest` ничем не лучше `latest`.
+#:
+#: Список закрытый и намеренно короткий — это не эвристика «похоже на ветку», а
+#: перечень общеупотребительных подвижных указателей. Расширять его нужно
+#: сознательно и вместе с формой приёмки.
+MUTABLE_VERSION_IDENTIFIERS = frozenset(
+    {"latest", "main", "master", "head", "dev", "stable", "current", "newest"}
+)
+
+# ---------------------------------------------------------------------------
+# Защитные лимиты (см. «Защитные лимиты» в шапке модуля)
+# ---------------------------------------------------------------------------
+#
+# Откуда числа. Ожидаемый порядок корпуса задан самим норм-пакетом:
+# `norms/tools/README.md` показывает реальный `status_index.json` с
+# `"total": 337` записей, то есть vault — это СОТНИ файлов `.md`, а не десятки
+# тысяч; внутренняя норм-база проекта (`norms/norms_db.json`) знает 1252 кода —
+# это верхняя правдоподобная граница даже при полном покрытии. Тексты норм —
+# markdown, единицы сотен килобайт на документ.
+#
+# Лимиты поставлены не «впритык к ожиданию» (иначе первый же законный рост
+# корпуса красит CI), а на порядок выше него и при этом заведомо ниже того, что
+# ломает раннер: у GitHub-hosted ubuntu-раннера свободно ~14 ГБ диска, и любой
+# из трёх потолков ниже него в разы.
+
+#: Потолок СКАЧИВАЕМОГО артефакта. Оценка: 337 файлов × ~800 КБ ≈ 270 МБ
+#: несжатого текста, markdown жмётся 4–5× → ~55–70 МБ в `.tar.gz`. 256 МиБ —
+#: примерно четырёхкратный запас над этой оценкой.
+MAX_ARTIFACT_BYTES = 256 * 1024 * 1024
+#: Потолок ФАКТИЧЕСКИ ЗАПИСАННОГО при распаковке. 1 ГиБ — примерно
+#: четырёхкратный запас над теми же 270 МБ несжатого корпуса. Считается по ходу
+#: записи, а не по заголовкам архива: заявленный размер у zip-bomb честный ровно
+#: до момента разворачивания.
+MAX_UNPACKED_BYTES = 1024 * 1024 * 1024
+#: Потолок числа файлов. 10 000 — это ×8 к 1252 известным кодам норм и ×30 к
+#: реальным 337 записям индекса. Отдельный от объёма лимит нужен потому, что
+#: «миллион пустых файлов» не превышает байтовый потолок, но убивает и
+#: файловую систему раннера, и последующий обход дерева.
+MAX_UNPACKED_FILES = 10_000
+
+#: Переопределение лимитов конфигурацией. Оно нужно: потолок — это свойство
+#: РАННЕРА и размера конкретного корпуса, а не контракта, и владелец корпуса не
+#: обязан ради роста набора править код и ждать релиза скрипта.
+NORM_MAX_ARTIFACT_BYTES_ENV = "QR_NORM_ARTIFACT_MAX_BYTES"
+NORM_MAX_UNPACKED_BYTES_ENV = "QR_NORM_ARTIFACT_MAX_UNPACKED_BYTES"
+NORM_MAX_FILES_ENV = "QR_NORM_ARTIFACT_MAX_FILES"
+
+#: Переменные лимитов НАМЕРЕННО не входят в `NORM_SOURCE_ENV_VARS`: они не
+#: называют источник. Иначе заданный на раннере потолок сам по себе переводил бы
+#: дерево из состояния «набор не выбран» в «источник сконфигурирован частично»,
+#: то есть настройка безопасности ломала бы прогон без всякого источника.
+NORM_LIMIT_ENV_VARS: tuple[str, ...] = (
+    NORM_MAX_ARTIFACT_BYTES_ENV,
+    NORM_MAX_UNPACKED_BYTES_ENV,
+    NORM_MAX_FILES_ENV,
+)
+
+#: Размер куска потокового чтения. Один и тот же для скачивания и распаковки:
+#: лимит обязан срабатывать с одинаковой точностью на обоих путях.
+COPY_CHUNK_BYTES = 1 << 20
 
 #: Все переменные конфигурации источника. Заданной считается конфигурация, в
 #: которой задана хотя бы одна из них, — тогда неполнота становится ОТКАЗОМ, а
@@ -414,6 +531,43 @@ def source_config(env: dict[str, str] | None = None) -> dict[str, Any]:
     return cfg
 
 
+def source_limits(env: dict[str, str] | None = None) -> dict[str, int]:
+    """Действующие защитные лимиты: умолчания, переопределённые конфигурацией.
+
+    Негодное значение — отказ, а не молчаливый возврат к умолчанию. Опечатка в
+    потолке («256MB» вместо числа) иначе выглядела бы как применённая настройка,
+    хотя защита работала бы совсем на другом числе: лимит, о котором нельзя
+    сказать, какой он сейчас, защитой не является.
+    """
+    src = os.environ if env is None else env
+    defaults = {
+        NORM_MAX_ARTIFACT_BYTES_ENV: MAX_ARTIFACT_BYTES,
+        NORM_MAX_UNPACKED_BYTES_ENV: MAX_UNPACKED_BYTES,
+        NORM_MAX_FILES_ENV: MAX_UNPACKED_FILES,
+    }
+    keys = {
+        NORM_MAX_ARTIFACT_BYTES_ENV: "artifact_bytes",
+        NORM_MAX_UNPACKED_BYTES_ENV: "unpacked_bytes",
+        NORM_MAX_FILES_ENV: "files",
+    }
+    limits: dict[str, int] = {}
+    for name, default in defaults.items():
+        raw = (src.get(name) or "").strip()
+        if not raw:
+            limits[keys[name]] = default
+            continue
+        if not raw.isdigit() or int(raw) <= 0:
+            raise ProvisionError(
+                "NORM_ARTIFACT_SOURCE_MISCONFIGURED",
+                f"{name}={raw!r} не является положительным целым числом. Лимит "
+                "задаётся в байтах (для числа файлов — штуках) десятичным целым; "
+                "суффиксы вроде «MB» не поддерживаются намеренно, чтобы у потолка "
+                "не было двух прочтений",
+            )
+        limits[keys[name]] = int(raw)
+    return limits
+
+
 def _publishable_url(url: str) -> str:
     """Адрес в виде, безопасном по построению: `scheme://host/<basename>`.
 
@@ -442,8 +596,56 @@ def _resolved_url(cfg: dict[str, Any]) -> str:
     return url
 
 
+def _auth_scheme_defect(value: str) -> str:
+    """Назвать дефект схемы авторизации, НЕ печатая её значение.
+
+    Правило P-13 в чистом виде: публикуется признанное безопасным. Самая частая
+    форма ошибки в поле 12 — вставленный целиком заголовок «Bearer <token>», то
+    есть в негодном значении лежит credential. Печатать его в тексте отказа
+    значило бы нарушить обещание «значение токена не печатается ни при каком
+    исходе» именно там, где оно нужнее всего — на пути отказа, который попадает
+    в логи CI.
+    """
+    if not value:  # pragma: no cover — пустое значение уходит в умолчание
+        return "пустое значение"
+    if any(char in value for char in "\r\n"):
+        return "содержит перевод строки — это инъекция ещё одного заголовка"
+    if any(char in value for char in " \t"):
+        return "содержит пробел или табуляцию — заголовок разорвался бы на схему и мусор"
+    first = value[0]
+    if not (first.isascii() and first.isalpha()):
+        return "начинается не с латинской буквы"
+    return "содержит символ, недопустимый в auth-scheme"
+
+
 def _validate_source(cfg: dict[str, Any]) -> None:
-    """Отказать до первого сетевого действия, если конфигурация неполна/негодна."""
+    """Отказать до первого сетевого действия, если конфигурация неполна/негодна.
+
+    Проверяется ровно то, что обещает форма приёмки
+    (`docs/ops/NORM_ARTIFACT_SOURCE.md`), — иначе форма и код расходятся, и
+    «поле заполнено правильно» перестаёт что-либо значить:
+
+    * поля 1, 4, 5 заданы (половина конфигурации опаснее её отсутствия);
+    * схема транспорта — только `https://` или `file://` (поле 4);
+    * версия — НЕИЗМЕНЯЕМЫЙ идентификатор сборки (поле 5). Почему это не
+      придирка: §3.3 доказывает годность корпуса единственным способом —
+      совпадением SHA-256 с эталоном, который владелец посчитал ОДИН раз для
+      ОДНОЙ версии. Изменяемая версия разрывает эту пару: артефакт, который
+      завтра другой при той же версии, делает совпадение суммы случайностью.
+      Сегодня «checksum сошёлся» — потому что источник ещё не переехал; завтра
+      тот же вход даёт `NORM_ARTIFACT_CHECKSUM_MISMATCH` — и ни один из двух
+      исходов ничего не говорит о содержимом корпуса. Проверяется и сама
+      версия, и сегменты адреса: `…/releases/latest/download/vault.tar.gz` —
+      изменяемый указатель ровно в той же мере, даже когда поле 5 заполнено
+      номером;
+    * схема авторизации — `token` по RFC 7235 (поле 12). Значение уходит в
+      заголовок `Authorization` как есть, поэтому мусор в нём — это либо
+      порванный заголовок, либо инъекция второго заголовка в запрос,
+      несущий credential.
+
+    Всё это — ДО первого обращения к источнику: отказ после скачивания уже
+    означал бы, что негодная конфигурация успела сходить наружу с credential.
+    """
     missing = [
         name
         for name, key in (
@@ -462,7 +664,8 @@ def _validate_source(cfg: dict[str, Any]) -> None:
             "подключённый источник, поэтому это отказ, а не возврат к состоянию "
             "«набор не выбран». Форма приёмки — docs/ops/NORM_ARTIFACT_SOURCE.md",
         )
-    scheme = urllib.parse.urlsplit(_resolved_url(cfg)).scheme.lower()
+    resolved = _resolved_url(cfg)
+    scheme = urllib.parse.urlsplit(resolved).scheme.lower()
     if scheme not in ALLOWED_SOURCE_SCHEMES:
         raise ProvisionError(
             "NORM_ARTIFACT_SOURCE_MISCONFIGURED",
@@ -470,6 +673,53 @@ def _validate_source(cfg: dict[str, Any]) -> None:
             + ", ".join(f"{s}://" for s in ALLOWED_SOURCE_SCHEMES)
             + ". http:// исключён намеренно: по нему credential уходит открытым "
             "текстом, а артефакт подменяется на пути",
+        )
+
+    version = cfg["version"]
+    if version.strip().lower() in MUTABLE_VERSION_IDENTIFIERS:
+        raise ProvisionError(
+            "NORM_ARTIFACT_SOURCE_MISCONFIGURED",
+            f"{NORM_SOURCE_VERSION_ENV}={version!r} — изменяемый указатель, а не "
+            "версия артефакта. Форма приёмки, поле 5, требует НЕИЗМЕНЯЕМЫЙ "
+            "идентификатор сборки: §3.3 доказывает годность корпуса совпадением "
+            "SHA-256 с эталоном, посчитанным один раз для одной версии. Артефакт, "
+            "который завтра другой при той же версии, превращает это совпадение в "
+            "случайность — сумма сходится, пока источник не переехал, и перестаёт "
+            "сходиться без единого изменения конфигурации. Отвергнуты (регистр не "
+            "важен): " + ", ".join(sorted(MUTABLE_VERSION_IDENTIFIERS)),
+        )
+
+    mutable_segments = [
+        segment
+        for segment in PurePosixPath(urllib.parse.urlsplit(resolved).path or "").parts
+        if segment.strip().lower() in MUTABLE_VERSION_IDENTIFIERS
+    ]
+    if mutable_segments:
+        raise ProvisionError(
+            "NORM_ARTIFACT_SOURCE_MISCONFIGURED",
+            f"адрес артефакта содержит изменяемый сегмент «{mutable_segments[0]}» "
+            f"({NORM_SOURCE_URL_ENV}). Это тот же дефект, что и изменяемая версия, "
+            "только спрятанный в путь: `…/releases/latest/download/vault.tar.gz` "
+            "отдаёт завтра другой файл при неизменной конфигурации, и совпадение "
+            "SHA-256 перестаёт что-либо доказывать. Форма приёмки, поле 4: адрес "
+            "обязан указывать на конкретную сборку",
+        )
+
+    auth_scheme = cfg["auth_scheme"]
+    if not AUTH_SCHEME_RE.match(auth_scheme):
+        raise ProvisionError(
+            "NORM_ARTIFACT_SOURCE_MISCONFIGURED",
+            f"{NORM_SOURCE_AUTH_SCHEME_ENV} не является схемой авторизации: "
+            f"{_auth_scheme_defect(auth_scheme)} (длина {len(auth_scheme)}). "
+            "Допустим один токен по RFC 7235 (`Bearer`, `token`, `Basic`): "
+            "латинская буква в начале, без пробелов, переводов строки и служебных "
+            "символов. Заголовок Authorization собирается из этого значения "
+            "буквально, а из мусора он собирается либо порванным, либо с лишним "
+            "заголовком внутри. Само значение здесь НЕ печатается: самая частая "
+            "форма этой ошибки — вставленный целиком «Bearer <token>», то есть в "
+            "негодной схеме лежит credential. Пустое значение ошибкой не является: "
+            "незаданной переменной репозитория соответствует пустая строка, и она "
+            f"означает умолчание {DEFAULT_AUTH_SCHEME}",
         )
 
 
@@ -504,12 +754,21 @@ class _HTTPSOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def _download(url: str, dest: Path, cfg: dict[str, Any], token: str) -> int:
+def _download(
+    url: str, dest: Path, cfg: dict[str, Any], token: str, limits: dict[str, int]
+) -> int:
     """Скачать артефакт в `dest`. Возвращает число байт.
 
     Чтение потоковое: артефакт нормативного корпуса — это сотни мегабайт, и
     `read()` целиком превратил бы провижининг в отказ по памяти на маленьком
     раннере.
+
+    Потолок проверяется дважды и по-разному. Заявленный `Content-Length` — до
+    первого байта: если источник честно объявил слишком много, качать это
+    бессмысленно. Фактически записанное — по ходу: `Content-Length` не
+    обязателен, при `chunked` его нет вовсе, а у недоброжелательного источника
+    он ещё и не обязан быть правдой. Один только заявленный размер защитой не
+    является.
     """
     request = urllib.request.Request(url, method="GET")
     request.add_header("Accept", "application/octet-stream")
@@ -519,15 +778,31 @@ def _download(url: str, dest: Path, cfg: dict[str, Any], token: str) -> int:
         # release asset почти всегда редиректит на CDN другого владельца.
         request.add_unredirected_header("Authorization", f"{cfg['auth_scheme']} {token}")
     opener = urllib.request.build_opener(_HTTPSOnlyRedirectHandler)
+    budget = limits["artifact_bytes"]
     written = 0
     with opener.open(request, timeout=SOURCE_TIMEOUT_SEC) as response:
+        declared = (response.headers.get("Content-Length") or "").strip()
+        if declared.isdigit() and int(declared) > budget:
+            raise ProvisionError(
+                "NORM_ARTIFACT_TOO_LARGE",
+                f"источник объявил артефакт в {int(declared)} байт при потолке "
+                f"{budget} ({NORM_MAX_ARTIFACT_BYTES_ENV}); не скачивается",
+            )
         with dest.open("wb") as handle:
             while True:
-                chunk = response.read(1 << 20)
+                chunk = response.read(COPY_CHUNK_BYTES)
                 if not chunk:
                     break
-                handle.write(chunk)
                 written += len(chunk)
+                if written > budget:
+                    raise ProvisionError(
+                        "NORM_ARTIFACT_TOO_LARGE",
+                        f"артефакт превысил потолок скачивания {budget} байт "
+                        f"({NORM_MAX_ARTIFACT_BYTES_ENV}); загрузка прервана, а не "
+                        "доведена до конца ради точного числа — точное число "
+                        "стоило бы ровно того диска, который потолок и защищает",
+                    )
+                handle.write(chunk)
     return written
 
 
@@ -547,22 +822,73 @@ def _member_target(name: str) -> PurePosixPath | None:
     return path
 
 
-def _write_member(target: Path, source, mode: int = 0o644) -> None:
+class _Budget:
+    """Счётчик распаковки с двумя потолками: записанные байты и число файлов.
+
+    Считается ФАКТИЧЕСКИ ЗАПИСАННОЕ. Заявленные в заголовках архива размеры
+    (`ZipInfo.file_size`, `TarInfo.size`) здесь не используются намеренно: у
+    zip-bomb они честны ровно до разворачивания, и защита, построенная на них,
+    существует только на добросовестных архивах — то есть там, где она не нужна.
+    """
+
+    def __init__(self, limits: dict[str, int]) -> None:
+        self.max_bytes = limits["unpacked_bytes"]
+        self.max_files = limits["files"]
+        self.bytes = 0
+        self.files = 0
+
+    def add_file(self, name: str) -> None:
+        self.files += 1
+        if self.files > self.max_files:
+            raise ProvisionError(
+                "NORM_ARTIFACT_TOO_LARGE",
+                f"в артефакте больше {self.max_files} файлов "
+                f"({NORM_MAX_FILES_ENV}); распаковка прервана на «{name}». Корпус "
+                "норм — это сотни файлов (norms/tools/README.md), поэтому такое "
+                "число означает не корпус, а что-то другое",
+            )
+
+    def add_bytes(self, count: int, name: str) -> None:
+        self.bytes += count
+        if self.bytes > self.max_bytes:
+            raise ProvisionError(
+                "NORM_ARTIFACT_TOO_LARGE",
+                f"распаковка превысила потолок {self.max_bytes} байт "
+                f"({NORM_MAX_UNPACKED_BYTES_ENV}) на элементе «{name}». Считается "
+                "фактически записанное, а не заявленный размер: именно так и "
+                "выглядит zip-bomb — несколько килобайт архива, гигабайты на диске",
+            )
+
+
+def _write_member(
+    target: Path, source, budget: _Budget, name: str, mode: int = 0o644
+) -> None:
+    """Записать один элемент архива, соблюдая потолок распаковки.
+
+    Копирование кусками, а не `shutil.copyfileobj` целиком: потолок обязан
+    останавливать запись В ПРОЦЕССЕ. Проверка «после файла» на bomb-е из одного
+    члена не сработала бы вовсе — диск кончился бы раньше проверки.
+    """
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("wb") as handle:
-        shutil.copyfileobj(source, handle)
+        while True:
+            chunk = source.read(COPY_CHUNK_BYTES)
+            if not chunk:
+                break
+            budget.add_bytes(len(chunk), name)
+            handle.write(chunk)
     os.chmod(target, mode)
 
 
-def _unpack(archive: Path, fmt: str, dest: Path) -> int:
-    """Развернуть архив в `dest`. Возвращает число файлов.
+def _unpack(archive: Path, fmt: str, dest: Path, limits: dict[str, int]) -> _Budget:
+    """Развернуть архив в `dest`. Возвращает счётчик записанного.
 
     Извлекаются ТОЛЬКО обычные файлы. Симлинки, hardlink'и, устройства и fifo
     отвергаются: корпус норм — это набор текстов, а любой другой тип элемента
     в нём означает либо испорченный архив, либо попытку выйти за staging.
     """
     dest.mkdir(parents=True, exist_ok=True)
-    files = 0
+    budget = _Budget(limits)
     try:
         if fmt == ".zip":
             with zipfile.ZipFile(archive) as zf:
@@ -580,9 +906,9 @@ def _unpack(archive: Path, fmt: str, dest: Path) -> int:
                             "NORM_ARTIFACT_UNPACK_FAILED",
                             f"небезопасный путь в архиве: «{info.filename}»",
                         )
+                    budget.add_file(info.filename)
                     with zf.open(info) as source:
-                        _write_member(dest / target, source)
-                    files += 1
+                        _write_member(dest / target, source, budget, info.filename)
         else:
             mode = "r:gz" if fmt in (".tar.gz", ".tgz") else "r:"
             with tarfile.open(archive, mode) as tf:
@@ -607,9 +933,9 @@ def _unpack(archive: Path, fmt: str, dest: Path) -> int:
                             "NORM_ARTIFACT_UNPACK_FAILED",
                             f"элемент «{member.name}» не читается",
                         )
+                    budget.add_file(member.name)
                     with source:
-                        _write_member(dest / target, source)
-                    files += 1
+                        _write_member(dest / target, source, budget, member.name)
     except ProvisionError:
         raise
     except (tarfile.TarError, zipfile.BadZipFile, OSError, EOFError) as exc:
@@ -618,13 +944,46 @@ def _unpack(archive: Path, fmt: str, dest: Path) -> int:
             f"архив не разворачивается: {type(exc).__name__}: "
             f"{ci_redaction.redact_text(str(exc))}",
         ) from exc
-    if files == 0:
+    if budget.files == 0:
         raise ProvisionError(
             "NORM_ARTIFACT_UNPACK_FAILED",
             "в артефакте нет ни одного файла — пустой корпус не отличим от "
             "неудачной сборки на стороне источника",
         )
-    return files
+    return budget
+
+
+def _copy_tree_bounded(src: Path, dest: Path, limits: dict[str, int]) -> _Budget:
+    """Скопировать уже разложенный каталог под теми же потолками, что и архив.
+
+    Ветка `file://` на каталог существует для случая «артефакт разложен на
+    раннере отдельным шагом», и без этой функции она была бы дырой в защите:
+    `shutil.copytree` копирует что дали и сколько дали. Потолок обязан быть
+    свойством провижининга, а не формата, в котором артефакт приехал.
+    """
+    budget = _Budget(limits)
+    dest.mkdir(parents=True, exist_ok=True)
+    for path in sorted(src.rglob("*")):
+        relative = path.relative_to(src)
+        if path.is_symlink() or (not path.is_dir() and not path.is_file()):
+            raise ProvisionError(
+                "NORM_ARTIFACT_UNPACK_FAILED",
+                f"элемент «{relative}» не обычный файл (симлинк/устройство) — "
+                "корпус норм это набор текстов",
+            )
+        if path.is_dir():
+            (dest / relative).mkdir(parents=True, exist_ok=True)
+            continue
+        budget.add_file(str(relative))
+        with path.open("rb") as source:
+            _write_member(dest / relative, source, budget, str(relative))
+    if budget.files == 0:
+        raise ProvisionError(
+            "NORM_ARTIFACT_UNPACK_FAILED",
+            "в каталоге источника нет ни одного файла — пустой корпус не отличим "
+            "от неудачной сборки на стороне источника",
+        )
+    return budget
 
 
 def _strip_root(unpacked: Path) -> Path:
@@ -645,14 +1004,113 @@ def _strip_root(unpacked: Path) -> Path:
     return current
 
 
+#: Что РЕАЛЬНО читает сборщик индекса. Зеркало одной строки
+#: `norms/tools/build_status_index.py:177` — `sorted(VAULT.glob("*.md"))` плюс
+#: `if md.name.startswith("MOC - "): continue` строкой ниже.
+#:
+#: Зеркало, а не догадка: `glob` (не `rglob`) означает ОДИН корень без
+#: вложенности, а расширение сравнивается регистрозависимо, потому что именно
+#: так ведёт себя `glob` на файловой системе раннера. Расхождение этого зеркала
+#: с сборщиком ловится тестом
+#: `test_index_visibility_mirrors_the_real_builder`: он спрашивает не наше
+#: правило, а настоящий сборщик.
+INDEX_BUILDER_SUFFIX = ".md"
+INDEX_BUILDER_SKIP_PREFIX = "MOC - "
+
+
+def _index_visibility(tree: Path) -> dict[str, Any]:
+    """Разложить дерево корпуса на «увидит индекс» и «не увидит».
+
+    Три множества, и различать их обязательно:
+
+    * `indexed` — файлы, которые сборщик прочитает и превратит в записи;
+    * `skipped_moc` — `MOC - *.md` в корне: сборщик пропускает их СОЗНАТЕЛЬНО
+      (`norms/tools/README.md`: «vault/*.md — тексты нормативных документов
+      (кроме `MOC - *.md`)»), это карты содержания Obsidian, а не нормы;
+    * `invisible` — всё остальное: вложенные файлы и не-`.md` в корне. Они
+      входят в SHA-256, но в индекс не попадают ни при каких условиях.
+
+    Непустое `invisible` — это ровно то состояние, ради которого функция и
+    написана: checksum сходится, provisioning зелёный, а часть корпуса в индексе
+    отсутствует, и узнать об этом неоткуда.
+    """
+    corpus = sorted(
+        p.relative_to(tree).as_posix() for p in tree.rglob("*") if p.is_file()
+    )
+    indexed: list[str] = []
+    skipped_moc: list[str] = []
+    invisible: list[str] = []
+    for relative in corpus:
+        if "/" in relative:  # вложенность: `glob("*.md")` туда не заглядывает
+            invisible.append(relative)
+        elif not relative.endswith(INDEX_BUILDER_SUFFIX):
+            invisible.append(relative)
+        elif relative.startswith(INDEX_BUILDER_SKIP_PREFIX):
+            skipped_moc.append(relative)
+        else:
+            indexed.append(relative)
+    return {
+        "corpus_files": len(corpus),
+        "indexed_files": len(indexed),
+        "skipped_moc_files": len(skipped_moc),
+        "invisible_files": invisible,
+    }
+
+
+def _require_flat_indexable_layout(tree: Path, where: str) -> dict[str, Any]:
+    """Отказать, если число файлов корпуса не сходится с числом видимых индексу.
+
+    ПОЧЕМУ равенство, а не запрет вложенности. Форма приёмки требует плоскую
+    раскладку, а сборщик читает `vault/*.md` — но «зелёный provisioning,
+    неполный индекс» получается не только от вложенности: `vault/notes.txt`,
+    `vault/схема.png`, `vault/ГОСТ.MD` дают ровно тот же исход. Запрет одной
+    вложенности закрыл бы известный случай и оставил открытым класс. Равенство
+    закрывает класс целиком и формулируется одной проверяемой фразой: КАЖДЫЙ
+    файл, вошедший в checksum, обязан быть файлом, который прочитает сборщик
+    (единственное исключение — `MOC - *.md`, которые сборщик пропускает по
+    собственному правилу).
+
+    Код `NORM_ARTIFACT_UNPACK_FAILED`, а не `..._SOURCE_MISCONFIGURED`, выбран
+    по владельцу починки: конфигурация здесь верна, негоден сам артефакт, и
+    чинит его владелец источника пересборкой — это в точности тот адресат,
+    который §5 формы приёмки закрепил за `UNPACK_FAILED`.
+    """
+    visibility = _index_visibility(tree)
+    invisible = visibility["invisible_files"]
+    if invisible:
+        sample = ", ".join(f"«{name}»" for name in invisible[:5])
+        more = f" и ещё {len(invisible) - 5}" if len(invisible) > 5 else ""
+        raise ProvisionError(
+            "NORM_ARTIFACT_UNPACK_FAILED",
+            f"раскладка корпуса ({where}) не сходится с тем, что читает "
+            f"{NORM_INDEX_BUILDER}: файлов в корпусе {visibility['corpus_files']}, "
+            f"из них увидит индекс {visibility['indexed_files']} "
+            f"(+{visibility['skipped_moc_files']} «MOC - *.md», пропускаемых "
+            f"сборщиком осознанно). Не попадут в индекс: {sample}{more}. Сборщик "
+            f"читает РОВНО `vault/*.md` в одном корне, а SHA-256 считается по "
+            "дереву рекурсивно — поэтому такой корпус проходит checksum и молча "
+            "оказывается в индексе неполным. Это и есть отказ «зелёный "
+            "provisioning, неполный индекс»; форма приёмки (§2) требует плоскую "
+            "раскладку `.md` в одном корне — пересоберите артефакт",
+        )
+    return visibility
+
+
 def acquire_artifact(root: Path, cfg: dict[str, Any]) -> dict[str, Any]:
     """Получить артефакт из сконфигурированного источника и разложить в vault.
 
     Порядок §3.3 соблюдается буквально: дерево становится `norms/vault` только
     ПОСЛЕ совпадения SHA-256. Правило суммы — импортированное
     `norm_artifact_digest`, второго правила здесь нет и быть не может.
+
+    После совпадения суммы — и до переименования в `norms/vault` — проверяется
+    раскладка (`_require_flat_indexable_layout`). Порядок именно такой: «сумма
+    не сошлась» и «сумма сошлась, но половину корпуса не увидит индекс» — разные
+    диагнозы, и первый обязан называться первым, иначе владелец источника чинит
+    раскладку у артефакта, который вообще не тот.
     """
     _validate_source(cfg)
+    limits = source_limits()
     expected, checksum_source = expected_checksum(root)
     if not expected:
         raise ProvisionError(
@@ -681,6 +1139,8 @@ def acquire_artifact(root: Path, cfg: dict[str, Any]) -> dict[str, Any]:
         "expected_checksum_source": checksum_source,
         "bytes": None,
         "files": None,
+        "limits": dict(limits),
+        "layout": None,
         "outcome": "downloaded",
     }
 
@@ -694,6 +1154,13 @@ def acquire_artifact(root: Path, cfg: dict[str, Any]) -> dict[str, Any]:
             report["outcome"] = "already_present"
             report["norm_artifact_sha256"] = actual
             report["files"] = _vault_file_count(root)
+            # Раскладка проверяется и на этой ветке: идемпотентный повтор не
+            # имеет права быть мягче первого прогона, иначе один и тот же
+            # артефакт принимался бы или отвергался в зависимости от того,
+            # первый это запуск на раннере или второй.
+            report["layout"] = _require_flat_indexable_layout(
+                vault, f"уже разложенный {NORM_VAULT_DIR}"
+            )
             return report
         raise ProvisionError(
             "NORM_ARTIFACT_CHECKSUM_MISMATCH",
@@ -712,11 +1179,23 @@ def acquire_artifact(root: Path, cfg: dict[str, Any]) -> dict[str, Any]:
             local = Path(urllib.parse.unquote(parts.path))
             if local.is_dir():
                 report["format"] = "directory"
-                shutil.copytree(local, unpacked)
+                budget = _copy_tree_bounded(local, unpacked, limits)
+                report["files"] = budget.files
+                report["bytes"] = budget.bytes
             elif local.is_file():
                 report["format"] = _artifact_format(url)
-                report["bytes"] = local.stat().st_size
-                report["files"] = _unpack(local, report["format"], unpacked)
+                size = local.stat().st_size
+                if size > limits["artifact_bytes"]:
+                    raise ProvisionError(
+                        "NORM_ARTIFACT_TOO_LARGE",
+                        f"артефакт на файловой системе занимает {size} байт при "
+                        f"потолке {limits['artifact_bytes']} "
+                        f"({NORM_MAX_ARTIFACT_BYTES_ENV}); не распаковывается",
+                    )
+                report["bytes"] = size
+                report["files"] = _unpack(
+                    local, report["format"], unpacked, limits
+                ).files
             else:
                 raise ProvisionError(
                     "NORM_ARTIFACT_SOURCE_UNAVAILABLE",
@@ -728,7 +1207,11 @@ def acquire_artifact(root: Path, cfg: dict[str, Any]) -> dict[str, Any]:
             archive = staging / "artifact"
             token = (os.environ.get(NORM_SOURCE_TOKEN_ENV) or "").strip()
             try:
-                report["bytes"] = _download(url, archive, cfg, token)
+                report["bytes"] = _download(url, archive, cfg, token, limits)
+            except ProvisionError:
+                # Превышение лимита — собственный диагноз, а не «источник не
+                # отдал артефакт»: источник как раз отдал, и слишком много.
+                raise
             except (urllib.error.URLError, OSError, ValueError) as exc:
                 # Текст чужого исключения несёт полный URL (а с ним и presigned
                 # query). Через redact_text — эшелонированная защита поверх
@@ -739,7 +1222,9 @@ def acquire_artifact(root: Path, cfg: dict[str, Any]) -> dict[str, Any]:
                     f"({published}) не отдал артефакт: {type(exc).__name__}: "
                     f"{ci_redaction.redact_text(str(exc))}",
                 ) from exc
-            report["files"] = _unpack(archive, report["format"], unpacked)
+            report["files"] = _unpack(
+                archive, report["format"], unpacked, limits
+            ).files
 
         tree = _strip_root(unpacked)
         actual = norm_artifact_digest(tree)
@@ -753,6 +1238,11 @@ def acquire_artifact(root: Path, cfg: dict[str, Any]) -> dict[str, Any]:
                 f"{NORM_VAULT_DIR} — несверенный корпус не становится корпусом",
             )
         report["files"] = sum(1 for p in tree.rglob("*") if p.is_file())
+        # Сумма сошлась — значит артефакт ТОТ. Теперь единственный оставшийся
+        # способ получить «зелёный provisioning, неполный индекс» — раскладка.
+        report["layout"] = _require_flat_indexable_layout(
+            tree, f"артефакт {cfg['source_id']} версии {cfg['version']}"
+        )
         vault.parent.mkdir(parents=True, exist_ok=True)
         tree.rename(vault)
     finally:
@@ -842,10 +1332,16 @@ def build_status_index(root: Path = ROOT) -> dict[str, Any]:
     и затем детерминированно строит индекс». Порядок — часть смысла: индекс,
     собранный над неподтверждённым деревом, выглядит легитимным производным
     артефактом, но не является им. Поэтому обхода «собрать без сверки» здесь нет.
+
+    Вторая проверка — раскладка. Она стоит здесь, а не только в `acquire`,
+    потому что vault может приехать и другим путём (распакован соседним шагом,
+    смонтирован, разложен вручную), а неполный индекс от этого не становится
+    менее неполным. Правило одно и то же, вход у него — уже СВЕРЕННОЕ дерево.
     """
     state = corpus_state(root)
     if not state["checksum_verified"]:
         raise ProvisionError(str(state["reason_code"]), state["detail"])
+    _require_flat_indexable_layout(root / NORM_VAULT_DIR, NORM_VAULT_DIR)
 
     builder = _load_index_builder(root)
     # Сборщик и контракт обязаны показывать на одни и те же файлы. Если пути
@@ -937,6 +1433,21 @@ def provision(
     if enforce_if_configured and source_configured:
         enforce = True
 
+    # Действующие потолки публикуются в расписке: «лимит сработал» и «лимит был
+    # переопределён» обязаны читаться из отчёта, а не из кода. Негодное значение
+    # переменной здесь НЕ обваливает прогон само по себе — оно обваливает
+    # получение (там же и код `NORM_ARTIFACT_SOURCE_MISCONFIGURED`); без
+    # названного источника ограничивать нечего, и правило «источник не назван —
+    # поведение ровно прежнее» остаётся ненарушенным.
+    limits_report: dict[str, int] | None
+    limits_error: dict[str, str] | None
+    try:
+        limits_report = source_limits()
+        limits_error = None
+    except ProvisionError as exc:
+        limits_report = None
+        limits_error = {"reason_code": exc.reason_code, "detail": exc.detail}
+
     if acquire and source_configured:
         try:
             acquire_report = acquire_artifact(root, cfg)
@@ -1001,8 +1512,24 @@ def provision(
             "version": cfg["version"] or None,
             "url": _publishable_url(_resolved_url(cfg)) if cfg["url"] else None,
             "auth": "token" if cfg["has_token"] else "none",
+            # Публикуется ТОЛЬКО прошедшее валидацию значение (P-13,
+            # publish-by-allowlist). Годная схема — это документированное
+            # не-секретное поле 12 из `vars`, и знать её нужно для разбора 401.
+            # Негодная — с высокой вероятностью вставленный «Bearer <token>»,
+            # поэтому вместо неё публикуется факт негодности.
+            "auth_scheme": (
+                cfg["auth_scheme"]
+                if AUTH_SCHEME_RE.match(cfg["auth_scheme"])
+                else "(негодная схема, значение не публикуется)"
+            ),
             "env_vars": list(NORM_SOURCE_ENV_VARS),
         },
+        # Защитные лимиты — часть расписки: без них «артефакт принят» не говорит,
+        # под каким потолком он принят, и следующий раннер с другим потолком
+        # получил бы другой исход на том же входе.
+        "limits": limits_report,
+        "limits_env_vars": list(NORM_LIMIT_ENV_VARS),
+        "limits_error": limits_error,
         "acquire_requested": bool(acquire),
         "acquired": acquire_report is not None,
         "acquire": acquire_report,
@@ -1056,12 +1583,29 @@ def render_text(report: dict[str, Any]) -> str:
             + ", ".join(report["source"]["env_vars"])
             + ". Форма приёмки — docs/ops/NORM_ARTIFACT_SOURCE.md"
         )
+    if report["limits"]:
+        lim = report["limits"]
+        add(
+            f"[norms] защитные лимиты: артефакт≤{lim['artifact_bytes']} Б, "
+            f"распаковка≤{lim['unpacked_bytes']} Б, файлов≤{lim['files']} "
+            f"(переопределяются {', '.join(report['limits_env_vars'])})"
+        )
+    if report["limits_error"]:
+        err = report["limits_error"]
+        add(f"[norms] лимиты ЗАДАНЫ НЕГОДНО [{err['reason_code']}]: {err['detail']}")
     if report["acquire"]:
         acq = report["acquire"]
         add(
             f"[norms] артефакт получен ({acq['outcome']}): файлов={acq['files']}, "
             f"байт={acq['bytes']}, sha256={(acq.get('norm_artifact_sha256') or '')[:16]}…"
         )
+        layout = acq.get("layout")
+        if layout:
+            add(
+                f"[norms] раскладка: файлов корпуса={layout['corpus_files']}, "
+                f"увидит индекс={layout['indexed_files']}, "
+                f"пропущено «MOC - *.md»={layout['skipped_moc_files']}"
+            )
     if report["acquire_error"]:
         err = report["acquire_error"]
         add(f"[norms] получение артефакта ОТКЛОНЕНО [{err['reason_code']}]: {err['detail']}")

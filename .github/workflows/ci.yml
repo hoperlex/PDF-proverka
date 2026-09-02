@@ -108,6 +108,11 @@ jobs:
           QR_NORM_ARTIFACT_URL: ${{ vars.QR_NORM_ARTIFACT_URL }}
           QR_NORM_ARTIFACT_VERSION: ${{ vars.QR_NORM_ARTIFACT_VERSION }}
           QR_NORM_ARTIFACT_SHA256: ${{ vars.QR_NORM_ARTIFACT_SHA256 }}
+          # Схема Authorization — не credential, поэтому vars, а не secrets.
+          # Пока переменная не заведена, приезжает пустая строка и скрипт
+          # берёт умолчание Bearer. Без этой строки поле 12 формы приёмки
+          # было недостижимо: небезерная авторизация не заработала бы.
+          QR_NORM_ARTIFACT_AUTH_SCHEME: ${{ vars.QR_NORM_ARTIFACT_AUTH_SCHEME }}
           # Секрет виден ТОЛЬКО этому шагу: в env job'а он попал бы в окружение
           # pytest, а §3.1 требует прогон без provider credentials.
           QR_NORM_ARTIFACT_TOKEN: ${{ secrets.QR_NORM_ARTIFACT_TOKEN }}
@@ -215,6 +220,11 @@ jobs:
           QR_NORM_ARTIFACT_URL: ${{ vars.QR_NORM_ARTIFACT_URL }}
           QR_NORM_ARTIFACT_VERSION: ${{ vars.QR_NORM_ARTIFACT_VERSION }}
           QR_NORM_ARTIFACT_SHA256: ${{ vars.QR_NORM_ARTIFACT_SHA256 }}
+          # Схема Authorization — не credential, поэтому vars, а не secrets.
+          # Пока переменная не заведена, приезжает пустая строка и скрипт
+          # берёт умолчание Bearer. Без этой строки поле 12 формы приёмки
+          # было недостижимо: небезерная авторизация не заработала бы.
+          QR_NORM_ARTIFACT_AUTH_SCHEME: ${{ vars.QR_NORM_ARTIFACT_AUTH_SCHEME }}
           QR_NORM_ARTIFACT_TOKEN: ${{ secrets.QR_NORM_ARTIFACT_TOKEN }}
         run: >-
           python scripts/ci_provision_norms.py
