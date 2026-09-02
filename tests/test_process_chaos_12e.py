@@ -6,6 +6,7 @@ import threading
 
 import pytest
 
+from audit_worker import local_db
 from tests.chaos_harness_12e import GatewayProcess
 from tests.test_agent_grpc_client_12c import (
     _registered_grpc_agent,
@@ -68,7 +69,35 @@ def _gateway_restart_during_running_job(grpc_e2e_env, *, hard_kill: bool) -> Non
                 == "running",
                 10,
             )
-            executor_before = agent.db.process_row(assignment["attempt_id"])
+            # Состояние очереди `running` НЕ означает, что процесс уже в
+            # реестре. Исполнитель по проекту сначала условной записью «только
+            # из claimed» занимает попытку — `set_queue_state(...,
+            # expect_states=(QUEUE_CLAIMED,))` в audit_worker/executor.py, иначе
+            # гонка с отменой теряет победителя, — и лишь ПОТОМ пишет outbox,
+            # форкает НАСТОЯЩИЙ процесс и регистрирует его из `on_start`. Окно
+            # между этими двумя записями измерено на самом тесте: 5.0–39.8 мс,
+            # медиана 21.3 мс при LA1 ~32, а `_wait_until` опрашивает состояние
+            # раз в 50 мс. Поэтому чтение реестра сразу после смены состояния
+            # промахивалось в 5 случаях из 12 и давало None: измерено 6 падений
+            # на 20 узлов под LA1 35–55 и 5 на 12 узлов под LA1 ~32, все с
+            # `TypeError: 'NoneType' object is not subscriptable` ровно на
+            # `executor_before["pid"]`. Порядок записей в проде правильный — он
+            # защищает отмену, — и менять его нельзя; ждать обязан тест.
+            # Ждём сам проверяемый факт — строку реестра. Срок ожидания не
+            # выдуман, а взят из production-величины `local_db.LEASE_SEC`: это
+            # аренда захвата, которую `claim_next` ставит ЭТОЙ попытке. До
+            # регистрации процесса исполнитель её не продлевает ни разу (оба
+            # вызова `renew_lease` идут уже от зарегистрированного процесса),
+            # так что ждать дольше аренды — значит ждать захват, который прод к
+            # тому моменту сам считает протухшим.
+            executor_before = _wait_until(
+                lambda: agent.db.process_row(assignment["attempt_id"]),
+                local_db.LEASE_SEC,
+                0.05,
+            )
+            assert executor_before, (
+                "исполнитель не зарегистрировал процесс попытки за срок аренды захвата"
+            )
             epoch_before = json.loads(config.state_path.read_text())["connection_epoch"]
 
             if hard_kill:
@@ -98,7 +127,26 @@ def _gateway_restart_during_running_job(grpc_e2e_env, *, hard_kill: bool) -> Non
             # than assuming a result has been delivered after an arbitrary
             # sleep.
             assert _wait_until(lambda: not runner.is_alive(), 30, 0.2)
-            assert runner_outcome.get("ok"), runner_outcome
+            # `ok` означает, что результат удалось выгрузить ПЕРВОЙ попыткой.
+            # Ровно под тем отказом, который вносит этот тест, прод такого не
+            # обещает: `_require_control_context` намеренно отвечает 503, пока
+            # перезапущенный шлюз не подтвердил владение потоком (без заслона
+            # центр ответил бы 409 `attempt_superseded`, и живую работу
+            # остановили бы), а агент переводит отказ в
+            # `{"ok": False, "reason": "upload_deferred"}` — «работа сделана,
+            # потерян только канал»: задание остаётся completed_locally и
+            # уходит в очередь досылки. Под нагрузкой канал после перезапуска
+            # шлюза успевает отвалиться ещё раз, и первая выгрузка попадает в
+            # этот заслон: измерено 2 падения на 20 узлов под LA1 35–55 на
+            # `assert runner_outcome.get("ok")` (под LA1 ~32 — ни одного).
+            # Контракт узла (persistence only) от такого допущения не слабеет:
+            # досылку, `retention_until`, состояние `completed` у центра и
+            # монотонность последовательностей проверяют следующие утверждения,
+            # и именно они и есть долговечность — а не удача первой выгрузки.
+            assert (
+                runner_outcome.get("ok")
+                or runner_outcome.get("reason") == "upload_deferred"
+            ), runner_outcome
             assert _wait_until(
                 lambda: (
                     agent._deliver_pending_results()
@@ -109,6 +157,7 @@ def _gateway_restart_during_running_job(grpc_e2e_env, *, hard_kill: bool) -> Non
                 0.2,
             )
             executor_after = agent.db.process_row(assignment["attempt_id"])
+            assert executor_after, "реестр процессов потерял попытку после рестарта шлюза"
             assert executor_after["pid"] == executor_before["pid"]
         final = admin.get(f"/api/workers/jobs/{created['job_id']}").json()["job"]
         assert final["state"] == "completed"
