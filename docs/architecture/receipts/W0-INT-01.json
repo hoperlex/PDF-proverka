@@ -4,7 +4,7 @@
   "wave": "0.0.02",
   "captured_at": "2026-09-01",
   "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6 по docs/architecture. Эта расписка фиксирует выполнение задачи, а не прохождение чекпоинта.",
-  "revision": "4 (2026-09-01, уточнения третьего круга ревью)",
+  "revision": "5 (2026-09-02, итоги волны версии-среза 0.0.03)",
   "scope": "Собрать подготовленные результаты ENG/WEB/OPS в воспроизводимый clean-room CI и вынести вердикт по переводу регресс-гейта из observe в enforce.",
   "step_1_architectural_admission": {
     "adr_accepted": [
@@ -517,16 +517,321 @@
     }
   },
   "status_accepted_from_review": {
-    "stage": "clean-room rehearsal W0 в режиме observe-first",
+    "stage": "clean-room приёмка среза 0.0.03 в режиме observe-first",
     "is_it_g0": false,
     "w0_int_01_closed": false,
     "next_stage_authorized": false,
-    "why": "§3.3 прямо говорит, что прогон без выбранного norm corpus не считается G0 receipt; корпус не подключён"
+    "why": "Закрыт один из двух blocker'ов: недетерминизм полосы network устранён. Источник norm-корпуса владельцем не назван, пакет A остановлен по stop condition §3, enforce не включён. §3.3 не считает прогон без выбранного корпуса G0 receipt."
   },
   "working_tree_state": {
     "tracked": "чисто",
     "untracked": "docs/architecture/presentations/ — файлы владельца, я их не трогаю и не индексирую",
     "branch": "dev",
     "note": "формально `git status` не пуст; говорить «дерево чистое» без этой оговорки неточно"
+  },
+  "wave_0_0_03": {
+    "plan": "docs/architecture/WAVE_0_0_03_PLAN.md",
+    "integration_commit": "37d09bbba08a0b9ef1116e59ee6990a46861995a",
+    "package_b_commit": "88cd31ef",
+    "outcome_one_line": "Из двух blocker'ов закрыт один. Недетерминизм полосы `network` устранён с названным механизмом и контрольным опытом; источник norm-корпуса владельцем не назван, поэтому пакет A остановлен по объявленной stop condition §3, а `--enforce` не включён. W0-INT-01 остаётся ОТКРЫТОЙ.",
+    "decision_of_owner": {
+      "asked": "источник norm-корпуса отсутствует во всех проверенных местах — как поступаем",
+      "answer": "источника нет: стоп по §3, enforce не включаем",
+      "publication": "коммиты на dev, push не делать, ветка version/0.0.03 не создаётся",
+      "why_it_matters": "Без этого решения интегратор оказался бы перед выбором «подогнать вход под зелёный прогон или остановиться», а такой выбор принадлежит владельцу программы, а не исполнителю волны."
+    },
+    "package_a_norm_artifact": {
+      "verdict": "остановлен по stop condition §3 — источник не существует",
+      "evidence": [
+        "`git ls-files norms/` — 34 файла, каталога vault нет",
+        "`git log --all --diff-filter=A -- 'norms/vault*'` — пусто: в истории его не было",
+        "`.gitignore:109` — norms/vault/ исключён из git намеренно",
+        "`git ls-remote --tags origin` — ни одного тега; GitHub API releases отдаёт []",
+        "поиск по файловой системе — ни одного каталога корпуса, кроме синтетических фикстур pytest"
+      ],
+      "delivered_anyway": "Шаг `Provisioning norm corpus` переведён на source-agnostic fail-closed wiring: источник задаётся конфигурацией (`QR_NORM_ARTIFACT_*` + secret), адрес в workflow не зашит, порядок §3.3 соблюдён буквально (получить → staging → сверить SHA-256 импортированным правилом → и только затем сделать деревом norms/vault). Прежняя ветка `if [ -d norms/vault ]` убрана: она маскировала дважды — понижала отсутствие обязательного входа до ::warning:: и молча принимала за корпус любой каталог на раннере.",
+      "safety_properties_verified_by_review_and_tests": [
+        "credential уходит add_unredirected_header — на редирект не переносится",
+        "редирект допускается только на https; http:// отвергается схемой",
+        "адрес публикуется как scheme://host/<basename>, без query и userinfo",
+        "из архива извлекаются только обычные файлы: `..`, абсолютные пути, симлинки и устройства отвергаются ДО записи",
+        "несовпавший checksum не становится корпусом: дерево остаётся в staging и удаляется",
+        "второго правила контрольной суммы не заведено — импортируется probe._norm_artifact_digest"
+      ],
+      "tests": "tests/test_ci_provision_norms.py — 31 passed (18 прежних + 13 новых), проверено интегратором отдельным прогоном",
+      "physically_not_achievable_without_the_artifact": [
+        "receipt `--build-index --enforce` с ФАКТИЧЕСКИМ SHA-256 — сверять нечего",
+        "воспроизводимость checksum на втором свежем non-root раннере — двух одинаковых сумм не существует",
+        "исчезновение записей baseline после provisioning — см. находку ниже: оно и не наступило бы"
+      ],
+      "owner_intake_form": "docs/ops/NORM_ARTIFACT_SOURCE.md — 14 полей, форма не заполнена"
+    },
+    "package_b_network_determinism": {
+      "verdict": "закрыт, матрица §4 сошлась",
+      "receipt": "docs/architecture/receipts/W0-INT-01-network-determinism.json",
+      "root_cause": "Тесты синхронизировались не на том факте, который проверяли, и читали телеметрию ЖИВОГО хоста. Политика ёмкости воркера берёт её из двух независимых источников — psutil (RAM/своп) и stdlib os (getloadavg/cpu_count), — а изолирован был только первый. s_la считается как LA5 на ядро и при >= 1.0 срезает ёмкость до configured_max-1, при >= 1.5 — до нуля; гистерезис роста удерживает заниженное значение дольше ожидания теста. Срок ожидания (_wait, 90 с) здесь ни при чём.",
+      "production_code_touched": "ноль строк — во всех трёх случаях production ведёт себя правильно и намеренно",
+      "prohibited_shortcuts_not_used": "ни skip, ни xfail, ни quarantine, ни новой записи baseline, ни расширения 90-секундного ожидания",
+      "control_experiment": "один стенд, одна нагрузка: до правки 8 красных прогонов из 8, после — 8 зелёных из 8",
+      "independent_verification_by_integrator": "Пять прогонов тройки на дереве интегратора под LA 1.6–3.3: 5 из 5 зелёных, рост числа процессов ноль. Это подтверждение результата пакета, а не повторение его матрицы."
+    },
+    "finding_baseline_group_1_was_misattributed": {
+      "severity": "высокая — опровергает посылку плана волны и шапки baseline",
+      "what_was_claimed": "33 из 35 записей baseline существуют ТОЛЬКО из-за отсутствия norms/vault и обязаны исчезнуть после provisioning (записано в шапке scripts/ci_known_failures.txt, в комментарии .github/workflows/ci.yml и в §3/§5 плана волны).",
+      "what_is_true": "Все 33 узла падают на setup фикстуры с AttributeError: tests/test_norms_status_index_fallback.py монкейпатчит у norms.external_provider атрибуты NORMS_DB_PATH, NORMS_VAULT_PATH и MISSING_NORMS_VAULT_PATHS, которых у модуля нет. Отказ наступает за доли секунды, ДО любого обращения к файловой системе; тесты работают на tmp_path и синтетических деревьях. Появление корпуса не изменит ни одного исхода.",
+      "verified_independently_by_integrator": [
+        "разбор JUnit прогона: 33 error, все в одном классе, все с одним текстом AttributeError",
+        "__all__ провайдера — NORMS_STATUS_INDEX_PATH, load_status_index, resolve_norm_status",
+        "`git log -S NORMS_VAULT_PATH -- norms/external_provider.py` пуст: атрибута не было НИКОГДА",
+        "NORMS_DB_PATH существует, но в другом модуле — norms/_core.py"
+      ],
+      "consequences": [
+        "33 теста нормативного контура сейчас не проверяют ничего, и baseline это маскирует",
+        "прежнее условие пересмотра «при первом же успешном provisioning» недостижимо",
+        "владелец группы был назначен неверно: это не владелец внешнего артефакта"
+      ],
+      "what_was_done": "Исправлена диагностика в шапке baseline и в комментариях ci.yml: названа настоящая причина, назначен владелец нормативного контура, задано достижимое условие пересмотра. НИ ОДНА запись baseline не добавлена, не удалена и не изменена — переизданы только комментарии.",
+      "what_was_deliberately_not_done": "Тесты и провайдер не правились. Они никогда не были зелёными, поэтому неизвестно, какие пройдут после починки, а какие вскроют дефект fallback-провайдера; это правка production-контракта с собственным владельцем, а не уборка CI, и в объём волны она не входила."
+    },
+    "package_c_integration": {
+      "scope_reduced_by_owner_decision": true,
+      "done": [
+        "подключён fail-closed provisioning (пакет A) одним revertable integration change",
+        "исправлена ложная диагностика группы 1 baseline в двух файлах",
+        "переписан порядок включения enforce по факту: одно условие закрыто, одно осталось",
+        "добавлен шаг про четвёртый недетерминированный узел (NB-1) до перевода полосы в блокирующую",
+        "переизданы два пина §2 контракта (ci.yml, ci_known_failures.txt) с обоснованием; версия контракта не менялась"
+      ],
+      "not_done_and_why": {
+        "enforce_not_enabled": "§3.3 и §6 правило 4 привязывают обязательность корпуса именно к enforce; severity_for в ci_runtime_probe.py делает это проверяемым. Без корпуса --enforce дал бы NORM_ARTIFACT_MISSING на каждом прогоне каждой полосы.",
+        "baseline_not_rebuilt": "Пересборка разрешена планом только после успешного provisioning; инструмент и сам откажет. Кроме того, находка выше показывает, что пересборка не убрала бы группу 1.",
+        "continue_on_error_not_removed": "Снятие маскировки падений отложено вместе с enforce: решение владельца."
+      }
+    },
+    "cleanroom_acceptance": {
+      "method": "git archive <commit> в каталог ciuser, отдельный venv, установка ровно как в CI (-c constraints-qr-v1.txt -r requirements-dev.txt), прогон от uid 1001",
+      "commit": "37d09bbba08a0b9ef1116e59ee6990a46861995a",
+      "mode": "--ci (enforce не включается решением владельца)",
+      "platform": {
+        "uid": 1001,
+        "python": "3.12.3",
+        "node": "22.23.1",
+        "npm": "10.9.8",
+        "tz": "UTC",
+        "lc_all": "C.UTF-8",
+        "pythonhashseed": "0"
+      },
+      "pip_freeze_sha256": "557e95885700a44013febcc6559fa8ee278923507b71df8adba761e1e247f99c",
+      "pip_check": "No broken requirements found",
+      "checkout_evidence": "2362 файла; .env и .venv в чекаут не попали",
+      "probe": {
+        "unit": {
+          "exit_code": 0,
+          "mode": "ci",
+          "fail": [],
+          "warn": [
+            "norm_artifact"
+          ]
+        },
+        "contract": {
+          "exit_code": 0,
+          "mode": "ci",
+          "fail": [],
+          "warn": [
+            "norm_artifact"
+          ]
+        },
+        "integration": {
+          "exit_code": 0,
+          "mode": "ci",
+          "fail": [],
+          "warn": [
+            "norm_artifact"
+          ]
+        },
+        "network": {
+          "exit_code": 0,
+          "mode": "ci",
+          "fail": [],
+          "warn": [
+            "norm_artifact"
+          ]
+        },
+        "chaos": {
+          "exit_code": 0,
+          "mode": "ci",
+          "fail": [],
+          "warn": [
+            "norm_artifact"
+          ]
+        }
+      },
+      "lanes": {
+        "unit": {
+          "exit_code": 1,
+          "probe_mode": "ci",
+          "report_status": "ok",
+          "selected": 2658,
+          "passed": 2522,
+          "failed": 2,
+          "errors": 0,
+          "skipped": 134,
+          "probe_exit_code": 0,
+          "source_commit": "37d09bbba08a0b9ef1116e59ee6990a46861995a",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "duration_seconds": 80.747
+        },
+        "contract": {
+          "exit_code": 0,
+          "probe_mode": "ci",
+          "report_status": "ok",
+          "selected": 246,
+          "passed": 245,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 1,
+          "probe_exit_code": 0,
+          "source_commit": "37d09bbba08a0b9ef1116e59ee6990a46861995a",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "duration_seconds": 23.694
+        },
+        "integration": {
+          "exit_code": 1,
+          "probe_mode": "ci",
+          "report_status": "ok",
+          "selected": 3594,
+          "passed": 3522,
+          "failed": 0,
+          "errors": 33,
+          "skipped": 39,
+          "probe_exit_code": 0,
+          "source_commit": "37d09bbba08a0b9ef1116e59ee6990a46861995a",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "duration_seconds": 133.586
+        },
+        "network": {
+          "exit_code": 0,
+          "probe_mode": "ci",
+          "report_status": "ok",
+          "selected": 865,
+          "passed": 859,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 6,
+          "probe_exit_code": 0,
+          "source_commit": "37d09bbba08a0b9ef1116e59ee6990a46861995a",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "duration_seconds": 262.225
+        },
+        "chaos": {
+          "exit_code": 0,
+          "probe_mode": "ci",
+          "report_status": "ok",
+          "selected": 7,
+          "passed": 6,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 1,
+          "probe_exit_code": 0,
+          "source_commit": "37d09bbba08a0b9ef1116e59ee6990a46861995a",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "duration_seconds": 56.118
+        }
+      },
+      "aggregate_gate": {
+        "failures_now": 35,
+        "baseline": 35,
+        "new": 0,
+        "became_green": 0,
+        "went_to_skip": 0,
+        "vanished": 0,
+        "run_summary": "2 failed, 7148 passed, 177 skipped, 6 deselected, 9 warnings, 33 errors in 354.85s",
+        "verdict_line": "[gate] OK — новых падений сверх известного baseline нет."
+      },
+      "frontend_gate": {
+        "ci": "Run `npm audit` for details.",
+        "test": "   Duration  1.79s (transform 414ms, setup 5ms, collect 1.31s, tests 353ms, environment 17ms, prepare 2.74s)",
+        "lint": "> eslint static/js/distributed-service.js static/js/distributed-feature.js static/js/distributed-page.js tests/distributed_ui.test.js",
+        "typecheck": "> tsc -p tsconfig.distributed.json --noEmit",
+        "build": "✓ built in 553ms"
+      },
+      "network_selection_delta_explained": "Полоса network отобрала на 13 тестов больше, чем измерял пакет B (852 → 865). Причина названа и проверена: tests/test_ci_provision_norms.py целиком помечен module-level pytestmark = pytest.mark.network, и пакет A добавил в него 13 тестов. Все 13 зелёные. Ничего постороннего в полосу не попало.",
+      "own_harness_defect_found_and_fixed": "Первый прогон приёмки отказал на preflight во всех пяти полосах: интегратор передал сокращённый 8-символьный SHA в QR_SOURCE_COMMIT, а §8 требует полный (_SHA_RE = ^[0-9a-f]{40}$). Дефект в harness приёмки, не в проекте; прогон повторён целиком с полным SHA. Признаётся здесь, потому что расписка, умалчивающая о непригодном прогоне, ничего не стоит."
+    },
+    "acceptance_against_plan_section_6": {
+      "note": "§6 плана писался под сценарий с включённым enforce. После решения владельца часть условий стала неприменимой; ниже они помечены прямо, а не подогнаны под результат.",
+      "items": [
+        {
+          "criterion": "все пять lane receipt: probe_mode enforce, валидные source_commit/origin, состав §8, пригодный JUnit",
+          "status": "частично",
+          "fact": "source_commit 37d09bbb… с origin QR_SOURCE_COMMIT и report_status=ok у всех пяти полос; probe_mode=ci, а не enforce — enforce не включался решением владельца"
+        },
+        {
+          "criterion": "setup завершён во всех полосах; norm_artifact — PASS с ожидаемым checksum",
+          "status": "частично",
+          "fact": "setup завершён во всех пяти (probe exit 0, ни одной FAIL-проверки); norm_artifact — WARN/advisory OPTIONAL_NORM_CORPUS_ABSENT: корпуса нет, PASS недостижим"
+        },
+        {
+          "criterion": "aggregate gate: новых падений, vanished baseline и baseline-in-skip — 0",
+          "status": "выполнено",
+          "fact": "падений 35 при baseline 35; новых 0, стало зелёных 0, ушло в skip 0, исчезло из прогона 0; GATE_EXIT=0"
+        },
+        {
+          "criterion": "network выполняет evidence matrix §4 без разброса и утечек процессов",
+          "status": "выполнено",
+          "fact": "матрица пакета B сошлась (0 падений, 0 таймаутов, 0 осиротевших); независимая проверка интегратора 5 из 5; приёмочный прогон полосы 865/859/0 и ноль процессов ciuser после прогона"
+        },
+        {
+          "criterion": "frontend test/lint/typecheck/build зелёные",
+          "status": "выполнено",
+          "fact": "npm ci/test/lint/typecheck/build — все rc=0 на Node 22.23.1 (пин §3.1 проверен явно)"
+        },
+        {
+          "criterion": "regression и lane failures блокируют CI; chaos остаётся observe-only",
+          "status": "не выполнено намеренно",
+          "fact": "маскировка кода 1 у Lane и continue-on-error у гейта не сняты — отложены вместе с enforce решением владельца; chaos остаётся observe-only"
+        },
+        {
+          "criterion": "tracked-дерево чистое, source commit достижим из опубликованной ветки",
+          "status": "частично",
+          "fact": "tracked-дерево чистое (untracked только docs/architecture/presentations/ — файлы владельца); commit лежит на локальной dev и в origin не отправлен: решение владельца «коммиты на dev, без push»"
+        },
+        {
+          "criterion": "receipt W0-INT-01 помечает задачу закрытой",
+          "status": "не выполнено",
+          "fact": "задача НЕ закрыта: w0_int_01_closed=false, is_it_g0=false. Из двух blocker'ов закрыт один"
+        }
+      ],
+      "verdict": "Приёмка среза 0.0.03 в объёме, разрешённом решением владельца, пройдена. Приёмкой §6 в её исходной формулировке она НЕ является и не выдаётся за неё."
+    },
+    "open_blockers": [
+      {
+        "id": "источник norm-корпуса",
+        "owner": "владелец программы",
+        "state": "не назван; wiring готов и ждёт заполнения docs/ops/NORM_ARTIFACT_SOURCE.md",
+        "blocks": "перевод CI в enforce (§3.3, §6 правило 4)"
+      },
+      {
+        "id": "33 теста нормативного контура не исполняются",
+        "owner": "владелец нормативного контура",
+        "state": "причина установлена и записана в baseline; правка не начиналась",
+        "blocks": "осмысленность группы 1 baseline; на enforce влияет косвенно"
+      },
+      {
+        "id": "NB-1: четвёртый недетерминированный узел полосы network",
+        "node": "tests/test_agent_gateway_12b.py::test_r_u_scheduler_atomic_offer_and_lost_delivery_recovery",
+        "owner": "владелец распределённого контура",
+        "state": "1 падение на 4 прогона ДО правки; в прогонах после правки не выпал, но evidence matrix по нему не выполнялась",
+        "blocks": "перевод полосы network в блокирующую"
+      }
+    ],
+    "what_this_does_not_prove": [
+      "Не является прохождением Gate G0 и не заменяет его отдельный вердикт. §3.3 прямо говорит: прогон без выбранного корпуса норм G0-распиской не считается — корпус отсутствует.",
+      "Не закрывает W0-INT-01: из двух объявленных blocker'ов закрыт один.",
+      "Не доказывает поведение на раннере GitHub: всё снято на восьмиядерной машине разработчика, образ ubuntu-24.04 не воспроизводился.",
+      "Не доказывает, что полоса network детерминирована целиком: доказано про три обязательных теста, про четвёртый узел (NB-1) известно обратное.",
+      "Не проверяет профиль --enforce ни в одной полосе: он не включался.",
+      "Не доказывает, что 33 теста норм пройдут после починки: они никогда не были зелёными."
+    ]
   }
 }
