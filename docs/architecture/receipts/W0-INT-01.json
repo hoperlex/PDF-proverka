@@ -4,7 +4,7 @@
   "wave": "0.0.02",
   "captured_at": "2026-09-01",
   "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6 по docs/architecture. Эта расписка фиксирует выполнение задачи, а не прохождение чекпоинта.",
-  "revision": "6 (2026-09-02, второй круг ревью волны 0.0.03 и финальная приёмка)",
+  "revision": "7 (2026-09-02, исправления по третьему кругу ревью)",
   "scope": "Собрать подготовленные результаты ENG/WEB/OPS в воспроизводимый clean-room CI и вынести вердикт по переводу регресс-гейта из observe в enforce.",
   "step_1_architectural_admission": {
     "adr_accepted": [
@@ -1165,6 +1165,14 @@
         "found_by": "самостоятельная сверка интегратора по требованию владельца",
         "status": "исправлено следующим коммитом: `git rm --cached`, файлы вернулись в untracked; история не переписана",
         "lesson": "`git add -A <каталог>` в дереве, где есть чужие untracked файлы, — инструмент не по задаче. Индексировать надо поимённо, как делалось во всех остальных коммитах волны."
+      },
+      {
+        "id": "INT-D3",
+        "summary": "первая правка блокировки CI сделала бы сборку красной на каждом прогоне",
+        "detail": "Исправляя замечание 1, интегратор снял не только continue-on-error у гейта, но и маскировку кода 1 у полос unit/contract/integration. Это неверно: полоса знает только свой прогон и НЕ знает baseline — сравнение с известным долгом по построению делает гейт. Итоговая приёмка это и показала: полоса unit даёт exit 1 ровно на двух оставшихся записях baseline и ни на чём другом. Постоянно красный CI хуже маскировки: его перестают читать.",
+        "found_by": "собственной clean-room приёмкой интегратора, до публикации",
+        "status": "исправлено следующим коммитом: блокировка оставлена только у гейта, у полос восстановлено наблюдение с ::warning:: и записанным условием переезда (baseline опустеет)",
+        "lesson": "«сделать строже» и «сделать правильнее» — разные вещи; строгость надо ставить туда, где есть знание для решения."
       }
     ],
     "self_audit_2026_09_02": {
@@ -1188,6 +1196,173 @@
         "honest_limit": "это НЕ полная приёмка пяти полос, а прогон затронутой полосы и гейта; полная снята на 1b3ad3ba",
         "manifest": "docs/architecture/receipts/evidence/0.0.03-delta-acceptance-manifest.json"
       }
+    },
+    "review_round_3": {
+      "verdict_of_owner": "выполнение качественное, но этап не завершён и к релизу не готов; шесть критических замечаний",
+      "points": [
+        {
+          "point": "1. backend CI фактически неблокирующий",
+          "status": "исправлено",
+          "how": "снят continue-on-error у регресс-гейта: новое падение сверх baseline красит сборку. Первая попытка интегратора была ШИРЕ и оказалась неверной — см. integrator_own_defects INT-D3."
+        },
+        {
+          "point": "2. отсутствует norms/vault",
+          "status": "не исправимо интегратором",
+          "how": "источник принадлежит владельцу программы; wiring fail-closed готов, форма приёмки ждёт заполнения. Это остаётся блокером W0-INT-01 и G0."
+        },
+        {
+          "point": "3. нормативный resolver не принят как законченный контракт",
+          "status": "исправлено",
+          "how": "D4 и D5 закрыты: битый индекс различается от отсутствующего и доезжает до _core, KeyError наружу не выходит. Изменение продуктовой семантики от ужесточения префиксов измерено (23.8 % запросов вида «СП 14») и вынесено владельцу отдельным пунктом — интегратор его не решает."
+        },
+        {
+          "point": "4. network lane недостаточно доказан для blocking; NB-2 в chaos",
+          "status": "частично исправлено",
+          "how": "NB-2 и найденный по пути NB-2b закрыты контрольными опытами; полоса chaos в итоговой приёмке дала ноль падений. Полоса network по-прежнему НЕ объявляется доказанной под нагрузочным профилем раннера — условие снятия записано в ci.yml."
+        },
+        {
+          "point": "5. текущий HEAD нельзя выпустить: маршрут публикации без main",
+          "status": "исправлено",
+          "how": "§7 плана переписан: dev → сведение в main → только затем version/0.0.03, потому что production_source_guard требует достижимости из origin/main. Отмечено, что version/0.0.02 как точка возврата этому правилу тоже не удовлетворяет."
+        },
+        {
+          "point": "6. до G0 остаётся существенно больше, чем W0-INT-01",
+          "status": "зафиксировано документом",
+          "how": "выпущена docs/architecture/G0_READINESS_DELTA.md — обязательство §5.7 плана, до сих пор не исполненное. Каждое условие G0 с проверяемым состоянием: ADR-0007…ADR-0012 не созданы вовсе, ADR-0013/0017 proposed, ADR-0014 без retention matrix, EXC-0001 активно. По условиям чужих задач написано «вне компетенции интегратора», а не «вероятно выполнено»."
+        }
+      ]
+    },
+    "final_cleanroom_acceptance_after_review_3": {
+      "commit": "cb33c34db8709228fa991aac4f2504ddcd08f899",
+      "mode": "--ci",
+      "probe": {
+        "unit": {
+          "exit_code": 0,
+          "mode": "ci",
+          "fail": [],
+          "warn": [
+            "norm_artifact"
+          ]
+        },
+        "contract": {
+          "exit_code": 0,
+          "mode": "ci",
+          "fail": [],
+          "warn": [
+            "norm_artifact"
+          ]
+        },
+        "integration": {
+          "exit_code": 0,
+          "mode": "ci",
+          "fail": [],
+          "warn": [
+            "norm_artifact"
+          ]
+        },
+        "network": {
+          "exit_code": 0,
+          "mode": "ci",
+          "fail": [],
+          "warn": [
+            "norm_artifact"
+          ]
+        },
+        "chaos": {
+          "exit_code": 0,
+          "mode": "ci",
+          "fail": [],
+          "warn": [
+            "norm_artifact"
+          ]
+        }
+      },
+      "lanes": {
+        "unit": {
+          "exit_code": 1,
+          "probe_mode": "ci",
+          "report_status": "ok",
+          "selected": 2658,
+          "passed": 2522,
+          "failed": 2,
+          "errors": 0,
+          "skipped": 134,
+          "probe_exit_code": 0,
+          "source_commit": "cb33c34db8709228fa991aac4f2504ddcd08f899",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "duration_seconds": 46.803
+        },
+        "contract": {
+          "exit_code": 0,
+          "probe_mode": "ci",
+          "report_status": "ok",
+          "selected": 260,
+          "passed": 259,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 1,
+          "probe_exit_code": 0,
+          "source_commit": "cb33c34db8709228fa991aac4f2504ddcd08f899",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "duration_seconds": 13.727
+        },
+        "integration": {
+          "exit_code": 0,
+          "probe_mode": "ci",
+          "report_status": "ok",
+          "selected": 3734,
+          "passed": 3695,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 39,
+          "probe_exit_code": 0,
+          "source_commit": "cb33c34db8709228fa991aac4f2504ddcd08f899",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "duration_seconds": 80.875
+        },
+        "network": {
+          "exit_code": 0,
+          "probe_mode": "ci",
+          "report_status": "ok",
+          "selected": 904,
+          "passed": 898,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 6,
+          "probe_exit_code": 0,
+          "source_commit": "cb33c34db8709228fa991aac4f2504ddcd08f899",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "duration_seconds": 303.944
+        },
+        "chaos": {
+          "exit_code": 0,
+          "probe_mode": "ci",
+          "report_status": "ok",
+          "selected": 7,
+          "passed": 6,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 1,
+          "probe_exit_code": 0,
+          "source_commit": "cb33c34db8709228fa991aac4f2504ddcd08f899",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "duration_seconds": 56.163
+        }
+      },
+      "aggregate_gate": {
+        "failures_now": 2,
+        "baseline": 2,
+        "new": 0,
+        "became_green": 0,
+        "went_to_skip": 0,
+        "vanished": 0,
+        "verdict_line": "[gate] OK — новых падений сверх известного baseline нет."
+      },
+      "frontend_gate": "npm ci/test/lint/typecheck/build — все rc=0",
+      "orphan_processes_after_run": 0,
+      "primary_evidence": "docs/architecture/receipts/evidence/0.0.03-cleanroom-cb33c34d-manifest.json (31 файл)",
+      "notable": "chaos впервые дал НОЛЬ падений (было 2): NB-2 и NB-2b закрыты. integration 3734/3695 при нуле ошибок — выборка выросла на 72 узла различения состояния индекса. unit даёт exit 1 ровно на двух записях baseline, и это причина, по которой блокировка осталась у гейта.",
+      "honest_limit": "Приёмка снята на cb33c34d. Следующий коммит меняет только обвязку CI, пин §2 и расписку — тестовое дерево не затронуто, что проверяется диффом. Полного прогона на образе ubuntu-24.04 по-прежнему нет: вся evidence с восьмиядерной машины разработчика."
     }
   }
 }
