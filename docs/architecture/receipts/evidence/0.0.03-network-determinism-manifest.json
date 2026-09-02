@@ -2,7 +2,7 @@
   "tool": "ci_evidence_bundle",
   "manifest_version": "1",
   "label": "первичка пакета B: матрица детерминизма трёх тестов настоящих процессов",
-  "generated_at": "2026-09-02T07:28:02Z",
+  "generated_at": "2026-09-02T10:53:47Z",
   "run_dir": "/home/ciuser/clean-room/evidence-0.0.03-network",
   "file_count": 202,
   "total_bytes": 7601809,
@@ -1022,7 +1022,7 @@
     }
   ],
   "archive": {
-    "path": "/home/ciuser/clean-room/evidence-0.0.03-network.tar.gz",
+    "path": "/home/ciuser/evidence-0.0.03/network-determinism.tar.gz",
     "sha256": "d6f294ed7779e35b65279847ae9b53ec19331b584b0b5ff2634c83741e8a2217",
     "note": "детерминированный tar.gz: владелец, права и время обнулены"
   }

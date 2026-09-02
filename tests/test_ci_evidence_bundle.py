@@ -113,3 +113,23 @@ def test_tree_digest_rule_is_the_shared_one():
     assert mod.tree_digest is probe._norm_artifact_digest, (
         "правило суммы дерева обязано быть общим: вторая реализация разойдётся молча"
     )
+
+
+@pytest.mark.parametrize("where", ["прямо внутри", "во вложенном каталоге"])
+def test_archive_inside_run_dir_is_refused(run_dir, where):
+    """Архив внутри каталога первички — отказ, а не предупреждение.
+
+    Так уже теряли evidence: следующий прогон начинается с `rm -rf` каталога и
+    уносит единственную копию. Манифест остаётся, сверять его становится не с
+    чем.
+    """
+    mod = _module()
+    target = run_dir / "bundle.tar.gz" if where == "прямо внутри" else run_dir / "nested" / "b.tar.gz"
+    with pytest.raises(ValueError, match="ВНУТРИ"):
+        mod.build_manifest(run_dir, archive=target)
+
+
+def test_archive_beside_run_dir_is_allowed(run_dir, tmp_path):
+    mod = _module()
+    m = mod.build_manifest(run_dir, archive=tmp_path / "beside.tar.gz")
+    assert len(m["archive"]["sha256"]) == 64

@@ -157,9 +157,34 @@ def _deterministic_archive(run_dir: Path, target: Path) -> str:
     return _sha256_file(target)
 
 
+def _refuse_archive_inside_run_dir(run_dir: Path, archive: Path) -> None:
+    """Архив не должен лежать внутри каталога первички.
+
+    Найдено на собственной шкуре: архив приёмки был положен рядом с отчётами, в
+    `<run>/evidence.tar.gz`, а следующий прогон начинается с `rm -rf <run>` —
+    и снёс единственную копию. Манифест при этом остался, но сверять его стало
+    не с чем: контрольные суммы без артефактов доказывают ровно ничего.
+    Поэтому это отказ, а не предупреждение.
+    """
+    try:
+        resolved_run = run_dir.resolve()
+        resolved_archive = archive.resolve()
+    except OSError:  # pragma: no cover — недоступный путь
+        return
+    if resolved_run == resolved_archive.parent or resolved_run in resolved_archive.parents:
+        raise ValueError(
+            f"архив {archive} лежит ВНУТРИ каталога первички {run_dir}. Так уже "
+            "теряли evidence: прогон, который начинается с очистки этого "
+            "каталога, уносит единственную копию вместе с ним. Положите архив "
+            "рядом, а не внутрь"
+        )
+
+
 def build_manifest(run_dir: Path, *, label: str = "", archive: Path | None = None) -> dict[str, Any]:
     if not run_dir.is_dir():
         raise FileNotFoundError(f"каталог первички не найден: {run_dir}")
+    if archive is not None:
+        _refuse_archive_inside_run_dir(run_dir, archive)
     files = collect_files(run_dir)
     if not files:
         raise ValueError(

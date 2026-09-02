@@ -2,7 +2,7 @@
   "tool": "ci_evidence_bundle",
   "manifest_version": "1",
   "label": "первичка NB-1/NB-1b: матрица владельца распределённого контура плюс контрольный опыт интегратора (18 чередующихся прогонов)",
-  "generated_at": "2026-09-02T10:36:25Z",
+  "generated_at": "2026-09-02T10:53:46Z",
   "run_dir": "/home/ciuser/nb1/evidence",
   "file_count": 311,
   "total_bytes": 2092132,
@@ -1567,7 +1567,7 @@
     }
   ],
   "archive": {
-    "path": "/home/ciuser/nb1/evidence-nb1.tar.gz",
+    "path": "/home/ciuser/evidence-0.0.03/nb1.tar.gz",
     "sha256": "35b0bd3c8870150ed16a4bbabd46e613505faee9b58f462cf4df4df56c1ba471",
     "note": "детерминированный tar.gz: владелец, права и время обнулены"
   }

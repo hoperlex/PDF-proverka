@@ -4,7 +4,7 @@
   "wave": "0.0.02",
   "captured_at": "2026-09-01",
   "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6 по docs/architecture. Эта расписка фиксирует выполнение задачи, а не прохождение чекпоинта.",
-  "revision": "5 (2026-09-02, итоги волны версии-среза 0.0.03)",
+  "revision": "6 (2026-09-02, второй круг ревью волны 0.0.03 и финальная приёмка)",
   "scope": "Собрать подготовленные результаты ENG/WEB/OPS в воспроизводимый clean-room CI и вынести вердикт по переводу регресс-гейта из observe в enforce.",
   "step_1_architectural_admission": {
     "adr_accepted": [
@@ -848,6 +848,12 @@
         "owner": "владелец распределённого контура совместно с интегратором",
         "state": "пять узлов закрыты; при LA1 ~100 полоса целиком не прогонялась — бюджет §7 не позволяет на этой машине",
         "blocks": "перевод полосы network в блокирующую"
+      },
+      {
+        "id": "NB-2: два узла полосы chaos того же класса",
+        "owner": "владелец распределённого контура",
+        "state": "механизм назван и сигнатура зафиксирована; матрица доказательств не выполнялась",
+        "blocks": "ничего немедленно — chaos observe-only; но это четвёртый случай одного класса, и класс стоит закрыть разметкой ожиданий, а не поштучно"
       }
     ],
     "what_this_does_not_prove": [
@@ -936,6 +942,180 @@
       },
       "production_code_touched": "ноль строк",
       "why_lane_is_still_not_called_deterministic": "Пять узлов закрыты, известных не осталось. Но NB-1b нашёлся только под нагрузкой, а полоса целиком при LA1 ~100 не прогонялась ни разу — она не укладывается в бюджет §7. «Известных узлов не осталось» — измеренная граница, а не гарантия, и подменять одно другим нельзя."
+    },
+    "review_round_2": {
+      "reviewer": "владелец программы",
+      "verdict_accepted": "Отчёт принят как честная фиксация частично завершённой волны; отвергнуто одно заглавное утверждение — «недетерминизм network устранён».",
+      "points_and_what_was_done": [
+        {
+          "point": "1. Полоса network не детерминирована: NB-1 упал у ревьюера на первом же повторе",
+          "done": "NB-1 закрыт по предписанию (bounded-ожидание delivered_at, production не тронут). По пути найден и закрыт NB-1b, показывающийся только под нагрузкой. Overclaim снят отдельным коммитом ДО остальных работ. Полоса по-прежнему НЕ объявляется детерминированной."
+        },
+        {
+          "point": "2. Диагноз 33 тестов верен, путь исправления ясен: status_index-only",
+          "done": "Выполнено буквально: контракт подтверждён, тесты переписаны, проверки _core вынесены на уровень _core, фиктивные атрибуты в провайдер не добавлены, 33 записи сняты по зелёному прямому прогону. Восстановленные тесты нашли три дефекта резолва — исправлены с регрессами."
+        },
+        {
+          "point": "3. Три доводки provisioning перед реальным источником",
+          "done": "Все три плюс лимиты: изменяемая версия (и изменяемый сегмент адреса) отвергаются до обращения к источнику; расхождение раскладки ловится равенством «файлов корпуса = файлов, видимых сборщику»; AUTH_SCHEME доведён до обоих шагов CI; лимиты считают фактически записанное. Проверено интегратором отдельно, включая zip-bomb."
+        },
+        {
+          "point": "4. Числа приёмки подтверждены только распиской, первичка не сохранена",
+          "done": "Заведён scripts/ci_evidence_bundle.py, первичка всех прогонов закреплена манифестами с SHA-256 каждого файла и всего дерева. Инструмент немедленно поймал два дефекта: недетерминированный gzip-заголовок и — уже на живой первичке — утрату артефактов первой приёмки."
+        }
+      ]
+    },
+    "evidence_loss_admitted": {
+      "what": "первичка ПЕРВОЙ clean-room приёмки (на 37d09bbb) утрачена",
+      "how": "Каталог /home/ciuser/acceptance-0.0.03/reports перезаписан следующим прогоном приёмки, а детерминированный архив интегратор положил ВНУТРЬ того же каталога, который прогон начинает с `rm -rf`. Единственная копия ушла вместе с ним.",
+      "consequence": "Манифест той приёмки сохранён как запись о том, что существовало и с какими суммами, но проверить его больше не с чем. Файл переименован в …-SUPERSEDED-artifacts-lost.json и помечен внутри.",
+      "fixed_so_it_cannot_recur": "В ci_evidence_bundle.py добавлен сторож: архив внутри каталога первички — отказ, а не предупреждение. Покрыт тестами. Все три действующих манифеста перевыпущены с архивами в /home/ciuser/evidence-0.0.03/, вне удаляемых каталогов.",
+      "why_admitted_here": "Ревью справедливо указало именно на сохранность первички. Умолчать о том, что первая копия утрачена по вине процедуры интегратора, значило бы повторить ошибку, которую эта волна и разбирала."
+    },
+    "final_cleanroom_acceptance": {
+      "commit": "1b3ad3ba7a601f7a5471b5144ead6aca1eb07e14",
+      "method": "git archive в каталог ciuser, отдельный venv, установка как в CI, uid 1001, Node 22.23.1",
+      "mode": "--ci (enforce не включается решением владельца)",
+      "probe": {
+        "unit": {
+          "exit_code": 0,
+          "mode": "ci",
+          "fail": [],
+          "warn": [
+            "norm_artifact"
+          ]
+        },
+        "contract": {
+          "exit_code": 0,
+          "mode": "ci",
+          "fail": [],
+          "warn": [
+            "norm_artifact"
+          ]
+        },
+        "integration": {
+          "exit_code": 0,
+          "mode": "ci",
+          "fail": [],
+          "warn": [
+            "norm_artifact"
+          ]
+        },
+        "network": {
+          "exit_code": 0,
+          "mode": "ci",
+          "fail": [],
+          "warn": [
+            "norm_artifact"
+          ]
+        },
+        "chaos": {
+          "exit_code": 0,
+          "mode": "ci",
+          "fail": [],
+          "warn": [
+            "norm_artifact"
+          ]
+        }
+      },
+      "lanes": {
+        "unit": {
+          "exit_code": 1,
+          "probe_mode": "ci",
+          "report_status": "ok",
+          "selected": 2658,
+          "passed": 2522,
+          "failed": 2,
+          "errors": 0,
+          "skipped": 134,
+          "probe_exit_code": 0,
+          "source_commit": "1b3ad3ba7a601f7a5471b5144ead6aca1eb07e14",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "duration_seconds": 46.344
+        },
+        "contract": {
+          "exit_code": 0,
+          "probe_mode": "ci",
+          "report_status": "ok",
+          "selected": 257,
+          "passed": 256,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 1,
+          "probe_exit_code": 0,
+          "source_commit": "1b3ad3ba7a601f7a5471b5144ead6aca1eb07e14",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "duration_seconds": 13.495
+        },
+        "integration": {
+          "exit_code": 0,
+          "probe_mode": "ci",
+          "report_status": "ok",
+          "selected": 3662,
+          "passed": 3623,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 39,
+          "probe_exit_code": 0,
+          "source_commit": "1b3ad3ba7a601f7a5471b5144ead6aca1eb07e14",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "duration_seconds": 62.334
+        },
+        "network": {
+          "exit_code": 0,
+          "probe_mode": "ci",
+          "report_status": "ok",
+          "selected": 904,
+          "passed": 898,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 6,
+          "probe_exit_code": 0,
+          "source_commit": "1b3ad3ba7a601f7a5471b5144ead6aca1eb07e14",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "duration_seconds": 261.99
+        },
+        "chaos": {
+          "exit_code": 1,
+          "probe_mode": "ci",
+          "report_status": "ok",
+          "selected": 7,
+          "passed": 4,
+          "failed": 2,
+          "errors": 0,
+          "skipped": 1,
+          "probe_exit_code": 0,
+          "source_commit": "1b3ad3ba7a601f7a5471b5144ead6aca1eb07e14",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "duration_seconds": 55.94
+        }
+      },
+      "aggregate_gate": {
+        "failures_now": 2,
+        "baseline": 2,
+        "new": 0,
+        "became_green": 0,
+        "went_to_skip": 0,
+        "vanished": 0,
+        "verdict_line": "[gate] OK — новых падений сверх известного baseline нет."
+      },
+      "frontend_gate": "npm ci/test/lint/typecheck/build — все rc=0",
+      "orphan_processes_after_run": 0,
+      "tracked_tree": "чисто; untracked только docs/architecture/presentations/ — файлы владельца",
+      "primary_evidence": "docs/architecture/receipts/evidence/0.0.03-cleanroom-final-manifest.json (31 файл), архив вне каталога первички",
+      "what_changed_against_the_previous_acceptance": "integration: было 3594/3522 при 33 ошибках — стало 3662/3623 при НУЛЕ ошибок; полоса впервые чистая. contract 246→257 (тесты манифеста первички), network 865→904 (39 новых тестов provisioning), gate 35→2 записи baseline. chaos дал 2 падения — см. находку NB-2."
+    },
+    "finding_nb2_chaos": {
+      "severity": "средняя — полоса chaos наблюдательная, merge не блокирует",
+      "nodes": [
+        "tests/test_process_chaos_12e.py::test_12e_gateway_graceful_stop_recovery_is_persistence_only",
+        "tests/test_process_chaos_12e.py::test_12e_gateway_sigkill_recovery_is_persistence_only"
+      ],
+      "observed": "2 падения из 7 отобранных в финальной приёмке; в предыдущей приёмке на том же профиле — ноль",
+      "signature": "TypeError: 'NoneType' object is not subscriptable на `assert executor_after[\"pid\"] == executor_before[\"pid\"]` (tests/test_process_chaos_12e.py:112)",
+      "mechanism": "тот же класс, что у NB-1 и у трёх тестов пакета B: строка реестра процессов читается раньше, чем она записана. Это ЧЕТВЁРТЫЙ независимый случай одного и того же дефекта разметки ожиданий в тестах настоящих процессов — то есть речь о классе, а не о трёх невезучих тестах.",
+      "not_fixed_here": "Правка та же по форме и стоит недорого, но закрытие узла требует своей матрицы доказательств (воспроизведение, повторы под нагрузкой, контрольный опыт). Сделать правку без матрицы значило бы выдать предположение за результат — ровно то, за что волна получила замечание.",
+      "owner": "владелец распределённого контура"
     }
   }
 }
