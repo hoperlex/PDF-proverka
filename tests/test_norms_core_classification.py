@@ -11,10 +11,19 @@ needs_revision, вёдра missing/unsupported и отбор цитат в parag
 Раньше эта проверка жила внутри тестов адаптера; уровню адаптера она не
 принадлежит.
 
-Классов ровно ТРИ (контракт status_index-only):
-    authoritative — норма есть в индексе (vault или override_only);
-    missing       — семейство поддержано, записи в индексе нет → ручная очередь;
-    unsupported   — семейство не распознано → ревизия поддержки семейств.
+Классов ЧЕТЫРЕ (контракт status_index-only):
+    authoritative    — норма есть в индексе (vault или override_only);
+    missing          — семейство поддержано, записи в индексе нет → ручная
+                       очередь;
+    unsupported      — семейство не распознано → ревизия поддержки семейств;
+    index_unreadable — индекс НЕПРИГОДЕН (не парсится / не та схема / кривая
+                       запись) → починка артефакта, раздел 4.
+
+Четвёртый класс — это D4. До него битый индекс схлопывался в missing: весь
+корпус разом объявлялся пропущенным и уезжал в очередь на ручное добавление,
+а состояние «индекс сломан» не было видно ни в одном поле и не отличалось от
+состояния «файла индекса нет». Ведро у него отдельное: «добавить документ в
+vault» битый артефакт не чинит.
 
 Четвёртого класса `known_unverified` («знаем из norms_db.json, но vault'ом не
 подтверждено») в этом контракте нет: `norms_db.json` перестал быть источником
@@ -279,6 +288,9 @@ def test_legacy_paragraph_cache_is_reverified(core):
     ({"found": False, "resolution_reason": "not_in_index"}, "not_found"),
     ({"found": False, "resolution_reason": "unsupported_family"}, "unknown"),
     ({"found": False, "resolution_reason": "not_found"}, "unknown"),
+    # index_unreadable → unknown, а НЕ not_found: not_found утверждает, что
+    # нормы в индексе нет, а при непригодном индексе мы этого не знаем.
+    ({"found": False, "resolution_reason": "index_unreadable"}, "unknown"),
 ])
 def test_status_from_resolved(core, resolved, expected):
     assert core._status_from_resolved(resolved) == expected
@@ -289,6 +301,16 @@ def test_status_from_resolved(core, resolved, expected):
     ({"found": False, "resolution_reason": "not_in_index"}, "norms_missing"),
     ({"found": False, "resolution_reason": "unsupported_family"}, "norms_unsupported"),
     ({"found": False, "resolution_reason": "not_found"}, "norms_missing"),
+    # D4: непригодный индекс — отдельная метка, не norms_missing.
+    ({"found": False, "resolution_reason": "index_unreadable"},
+     "norms_index_unreadable"),
+    ({"found": False, "resolution_reason": "index_unreadable",
+      "index_state": "broken", "index_defect": "entry_missing_code"},
+     "norms_index_unreadable"),
+    # Страховка: НИ ОДИН payload со сломанным индексом не имеет права
+    # доехать до norms_missing, каким бы ни был resolution_reason.
+    ({"found": False, "resolution_reason": "not_found",
+      "index_state": "broken"}, "norms_index_unreadable"),
 ])
 def test_verified_via_from_resolved(core, resolved, expected):
     assert core._verified_via_from_resolved(resolved) == expected
@@ -339,3 +361,180 @@ def test_optimization_ids_stay_in_their_own_field(core):
     )
     assert check["affected_findings"] == ["F-1"]
     assert check["affected_optimizations"] == ["OPT-1"]
+
+
+# ---------------------------------------------------------------------------
+# 4. Состояние индекса доезжает до _core  (D4, D5)
+# ---------------------------------------------------------------------------
+# Различение absent / broken / ok рождается в адаптере
+# (norms/external_provider.py) и обязано доезжать сюда: раньше оно терялось
+# в _verified_via_from_resolved(), где любое «не найдено» становилось
+# norms_missing.
+
+#: Индекс, который не парсится.
+_BROKEN_JSON = "{не json"
+#: Индекс той же схемы, но с записью без обязательного "code" (репро D5).
+_BROKEN_ENTRY = '{"meta":{},"norms":[{"title":"x"}]}'
+
+
+def _isolated_core(monkeypatch, tmp_path, index_text: str | None):
+    """`norms._core` с индексом в заданном состоянии (None = файла нет)."""
+    from norms import _core
+    from norms import external_provider as ep
+
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    index_path = tmp_path / "status_index.json"
+    if index_text is not None:
+        index_path.write_text(index_text, encoding="utf-8")
+    monkeypatch.setattr(ep, "NORMS_STATUS_INDEX_PATH", index_path)
+    ep._reset_cache()
+    monkeypatch.setattr(_core, "NORMS_PARAGRAPHS_PATH", tmp_path / "paragraphs.json")
+    return _core
+
+
+@pytest.fixture
+def core_broken_index(monkeypatch, tmp_path):
+    from norms import external_provider as ep
+    yield _isolated_core(monkeypatch, tmp_path, _BROKEN_JSON)
+    ep._reset_cache()
+
+
+@pytest.fixture
+def core_absent_index(monkeypatch, tmp_path):
+    from norms import external_provider as ep
+    yield _isolated_core(monkeypatch, tmp_path, None)
+    ep._reset_cache()
+
+
+def test_broken_index_does_not_masquerade_as_missing(core_broken_index):
+    """D4: битый индекс НЕ объявляет весь корпус пропущенным.
+
+    Репро дефекта: весь корпус получал verified_via="norms_missing" и уезжал
+    в missing_norms_queue с действием add_document_to_vault, а причина —
+    поломка артефакта — нигде не была видна.
+    """
+    result = core_broken_index.generate_deterministic_checks(
+        _norms_data(), project_id="ЭОМ/тест")
+    meta = result["meta"]
+
+    assert meta["total_checked"] == 4
+    assert meta["index_unreadable"] == 4
+    assert meta["missing"] == 0
+    assert meta["unsupported"] == 0
+    assert meta["authoritative"] == 0
+
+    assert result["missing_norms"] == []
+    assert result["unsupported_norms"] == []
+    assert {c["verified_via"] for c in result["checks"]} == {
+        "norms_index_unreadable"}
+    # Цитаты у непроверенных норм не заказываем.
+    assert result["paragraphs_to_verify"] == []
+
+
+def test_broken_index_state_and_defect_reach_core_meta(core_broken_index):
+    """Причина поломки названа один раз на прогон, а не спрятана."""
+    meta = core_broken_index.generate_deterministic_checks(_norms_data())["meta"]
+    assert meta["index_state"] == "broken"
+    assert meta["index_defect"] == "invalid_json"
+
+
+def test_broken_index_has_its_own_bucket_with_repair_action(core_broken_index):
+    """Лечение — починить индекс, а не добавлять документы в vault."""
+    result = core_broken_index.generate_deterministic_checks(_norms_data())
+    bucket = result["index_unreadable_norms"]
+    assert sorted(item["norm"] for item in bucket) == sorted(
+        _norms_data()["norms"])
+    for item in bucket:
+        assert item["action"] == "repair_status_index"
+        assert item["resolution_reason"] == "index_unreadable"
+        assert item["index_defect"] == "invalid_json"
+
+
+def test_broken_index_check_row_is_self_explanatory(core_broken_index):
+    """Запись check называет дефект и не врёт про статус нормы."""
+    checks = _by_norm(core_broken_index.generate_deterministic_checks(_norms_data()))
+    row = checks["СП 256.1325800.2016"]
+    assert row["verified_via"] == "norms_index_unreadable"
+    assert row["index_state"] == "broken"
+    assert row["index_defect"] == "invalid_json"
+    assert row["status"] == "unknown"          # не not_found: мы не знаем
+    assert row["edition_status"] == "unknown"
+    assert row["needs_revision"] is False
+    assert row["authoritative"] is False
+    assert "invalid_json" in row["details"]
+    assert "missing_norms_queue" not in row["details"]
+
+
+def test_entry_without_code_does_not_crash_core(monkeypatch, tmp_path):
+    """D5 на уровне конвейера: KeyError: 'code' больше не роняет прогон."""
+    core_mod = _isolated_core(monkeypatch, tmp_path, _BROKEN_ENTRY)
+    from norms import external_provider as ep
+    try:
+        result = core_mod.generate_deterministic_checks(_norms_data())
+        assert result["meta"]["index_state"] == "broken"
+        assert result["meta"]["index_defect"] == "entry_missing_code"
+        assert result["meta"]["index_unreadable"] == 4
+        assert result["missing_norms"] == []
+    finally:
+        ep._reset_cache()
+
+
+def test_absent_index_is_labelled_absent_but_stays_missing(core_absent_index):
+    """Файла нет — это «absent» и по-прежнему missing, а не поломка.
+
+    Корпус подвозится артефактом только в enforce CI, поэтому отсутствие
+    файла — штатная деградация: ручная очередь тут уместна. Отличить это
+    состояние от битого индекса можно машиной — по index_state.
+    """
+    result = core_absent_index.generate_deterministic_checks(_norms_data())
+    meta = result["meta"]
+    assert meta["index_state"] == "absent"
+    assert meta["index_defect"] is None
+    assert meta["index_unreadable"] == 0
+    assert result["index_unreadable_norms"] == []
+    assert meta["missing"] == 3        # три поддержанных семейства
+    assert meta["unsupported"] == 1
+
+    row = _by_norm(result)["СП 256.1325800.2016"]
+    assert row["verified_via"] == "norms_missing"
+    assert row["index_state"] == "absent"
+    assert row["index_defect"] is None
+
+
+def test_healthy_index_reports_state_ok(core):
+    """Рабочий индекс: state=ok, ведро непригодности пустое."""
+    result = core.generate_deterministic_checks(_norms_data())
+    meta = result["meta"]
+    assert meta["index_state"] == "ok"
+    assert meta["index_defect"] is None
+    assert meta["index_unreadable"] == 0
+    assert result["index_unreadable_norms"] == []
+    assert all(c["index_state"] == "ok" for c in result["checks"])
+
+
+def test_three_index_states_are_distinguishable_at_core(
+        monkeypatch, tmp_path, core):
+    """Итог D4 на уровне _core: absent / broken / ok дают разные ответы.
+
+    Именно здесь различение терялось: все три состояния схлопывались в
+    verified_via="norms_missing" для всего корпуса.
+    """
+    from norms import external_provider as ep
+
+    def snapshot(core_mod):
+        result = core_mod.generate_deterministic_checks(_norms_data())
+        row = _by_norm(result)["СП 256.1325800.2016"]
+        return (result["meta"]["index_state"], row["verified_via"],
+                result["meta"]["index_defect"])
+
+    ok = snapshot(core)
+
+    absent = snapshot(_isolated_core(monkeypatch, tmp_path / "absent", None))
+    broken = snapshot(
+        _isolated_core(monkeypatch, tmp_path / "broken", _BROKEN_JSON))
+    ep._reset_cache()
+
+    assert ok == ("ok", "norms_authoritative", None)
+    assert absent == ("absent", "norms_missing", None)
+    assert broken == ("broken", "norms_index_unreadable", "invalid_json")
+    assert len({ok, absent, broken}) == 3

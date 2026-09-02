@@ -417,11 +417,23 @@ def generate_deterministic_checks(norms_data: dict, project_id: str = "") -> dic
             "checks": [...],                 # статусы всех норм
             "missing_norms": [...],          # supported-семейства без записи
             "unsupported_norms": [...],      # семейство не распознано
+            "index_unreadable_norms": [...], # индекс непригоден (D4)
             "paragraphs_to_verify": [...],   # цитаты для LLM
-            "meta": {...},
+            "meta": {...},                   # + index_state/index_defect
         }
+
+    meta["index_state"] ∈ {ok, absent, broken} отвечает на вопрос «что с
+    индексом», отдельно от вопроса «что с нормой». Непригодный индекс не
+    смешивается с missing: норма получает verified_via=
+    "norms_index_unreadable" и ведро index_unreadable_norms с действием
+    repair_status_index.
     """
-    from norms.external_provider import resolve_norm_status
+    from norms.external_provider import resolve_norm_status, status_index_state
+
+    # Состояние индекса спрашиваем ОДИН раз на прогон: если артефакт битый,
+    # это свойство прогона, а не каждой из сотен норм. Раньше такой прогон
+    # был неотличим от «корпус просто не покрывает эти нормы».
+    index_state = status_index_state()
 
     pdb = load_norms_paragraphs()
     known_paragraphs = pdb.get("paragraphs", {})
@@ -433,6 +445,7 @@ def generate_deterministic_checks(norms_data: dict, project_id: str = "") -> dic
     checks: list[dict] = []
     missing_norms: list[dict] = []
     unsupported_norms: list[dict] = []
+    index_unreadable_norms: list[dict] = []
     paragraphs_to_verify: list[dict] = []
 
     stats = {
@@ -440,6 +453,7 @@ def generate_deterministic_checks(norms_data: dict, project_id: str = "") -> dic
         "authoritative": 0,
         "missing": 0,
         "unsupported": 0,
+        "index_unreadable": 0,
         "active": 0,
         "outdated_edition": 0,
         "replaced": 0,
@@ -495,6 +509,22 @@ def generate_deterministic_checks(norms_data: dict, project_id: str = "") -> dic
                 "resolution_reason": resolved.get("resolution_reason"),
                 "action": "review_family_support",
             })
+        elif via == "norms_index_unreadable":
+            # Отдельное ведро, а не missing: «добавить документ в vault»
+            # битый индекс не чинит, и ставить туда весь корпус — ровно та
+            # маскировка, ради устранения которой заведён этот класс.
+            stats["index_unreadable"] += 1
+            index_unreadable_norms.append({
+                "norm": norm_raw,
+                "norm_key": norm_key,
+                "cited_as": cited_as,
+                "affected_findings": affected,
+                "detected_family": resolved.get("detected_family"),
+                "supported_family": bool(resolved.get("supported_family")),
+                "resolution_reason": resolved.get("resolution_reason"),
+                "index_defect": resolved.get("index_defect"),
+                "action": "repair_status_index",
+            })
 
         # Цитаты: жёсткий фильтр. Отправляем LLM на проверку только если
         #   (1) norma authoritative в Norms-main;
@@ -534,6 +564,12 @@ def generate_deterministic_checks(norms_data: dict, project_id: str = "") -> dic
         "authoritative": stats["authoritative"],
         "missing": stats["missing"],
         "unsupported": stats["unsupported"],
+        "index_unreadable": stats["index_unreadable"],
+        # Три состояния индекса: ok / absent / broken. Различение приходит
+        # из norms/external_provider.status_index_state().
+        "index_state": index_state.get("state"),
+        "index_defect": index_state.get("defect"),
+        "index_defect_location": index_state.get("location"),
         "paragraphs_trusted_skipped": trusted_skipped,
         "paragraphs_legacy_ignored": legacy_ignored,
         "policy_violations": [],
@@ -552,6 +588,7 @@ def generate_deterministic_checks(norms_data: dict, project_id: str = "") -> dic
         "checks": checks,
         "missing_norms": missing_norms,
         "unsupported_norms": unsupported_norms,
+        "index_unreadable_norms": index_unreadable_norms,
         "paragraphs_to_verify": paragraphs_to_verify,
         "meta": meta,
     }
@@ -602,7 +639,11 @@ def _status_from_resolved(resolved: dict) -> str:
         cancelled         → cancelled
         not_in_index      → not_found
         unsupported       → unknown
+        index_unreadable  → unknown
         прочее            → unknown
+
+    index_unreadable — именно unknown, а не not_found: not_found утверждает,
+    что нормы в индексе НЕТ, а при непригодном индексе мы этого не знаем.
     """
     if resolved.get("found"):
         return resolved.get("status", "unknown")
@@ -611,16 +652,33 @@ def _status_from_resolved(resolved: dict) -> str:
         return "not_found"
     if reason == "unsupported_family":
         return "unknown"
+    if reason == "index_unreadable":
+        return "unknown"
     return "unknown"
 
 
 def _verified_via_from_resolved(resolved: dict) -> str:
-    """Метка провайдера для check.verified_via."""
+    """Метка провайдера для check.verified_via.
+
+    Четыре значения, и четвёртое принципиально:
+        norms_authoritative — норма есть в индексе;
+        norms_missing       — индекс читается, нормы в нём нет;
+        norms_unsupported   — семейство не распознано;
+        norms_index_unreadable — индекс НЕПРИГОДЕН (D4).
+
+    До появления четвёртого значения битый индекс схлопывался в
+    norms_missing: весь корпус разом объявлялся пропущенным и уезжал в
+    очередь на ручное добавление, а причина — поломка артефакта — нигде не
+    была видна. Отличить это от «файла индекса нет» было невозможно.
+    """
     if resolved.get("found"):
         return "norms_authoritative"
-    if resolved.get("resolution_reason") == "not_in_index":
+    reason = resolved.get("resolution_reason")
+    if reason == "index_unreadable" or resolved.get("index_state") == "broken":
+        return "norms_index_unreadable"
+    if reason == "not_in_index":
         return "norms_missing"
-    if resolved.get("resolution_reason") == "unsupported_family":
+    if reason == "unsupported_family":
         return "norms_unsupported"
     return "norms_missing"
 
@@ -668,6 +726,13 @@ def _build_check_from_resolved(
             "Не удалось определить семейство нормы — требуется ревизия "
             "поддержки в Norms-main."
         )
+    elif via == "norms_index_unreadable":
+        defect = resolved.get("index_defect") or "unknown_defect"
+        details = (
+            f"Индекс статусов норм непригоден (дефект: {defect}) — статус "
+            "нормы НЕ проверялся. Требуется починка status_index.json; "
+            "в очередь на ручное добавление норма не ставится."
+        )
     else:
         details = resolved.get("details") or ""
 
@@ -693,6 +758,10 @@ def _build_check_from_resolved(
         "has_text": bool(resolved.get("has_text")),
         "norms_title": resolved.get("title"),
         "norms_file": resolved.get("file"),
+        # Диагностика D4: ok / absent / broken. Без неё «нормы нет в
+        # индексе» и «индекса нет» и «индекс битый» неразличимы в отчёте.
+        "index_state": resolved.get("index_state"),
+        "index_defect": resolved.get("index_defect"),
     }
 
 
@@ -1017,9 +1086,11 @@ def validate_norm_checks(norm_checks_path: Path) -> dict:
     stale-кеша больше не применима. Контракты, которые всё ещё имеют смысл:
 
     1. needs_revision=True для replaced/cancelled/outdated_edition.
-    2. verified_via ∈ {norms_authoritative, norms_missing, norms_unsupported}.
-       Любые legacy-значения (cache, cache_stale, pending_websearch, websearch)
-       считаем нарушением политики и нормализуем.
+    2. verified_via ∈ {norms_authoritative, norms_missing, norms_unsupported,
+       norms_index_unreadable}. Любые legacy-значения (cache, cache_stale,
+       pending_websearch, websearch) считаем нарушением политики и
+       нормализуем. norms_index_unreadable в legacy-карту НЕ входит и в
+       norms_missing не сворачивается: это разные диагнозы (D4).
     """
     if not norm_checks_path.exists():
         return {"valid": False, "error": "norm_checks.json не найден"}

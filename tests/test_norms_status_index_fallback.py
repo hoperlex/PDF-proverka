@@ -25,6 +25,8 @@ missing / unsupported` в поле `classification`, сборку индекса
 missing/unsupported) вынесены на свой уровень — tests/test_norms_core_classification.py.
 
 Покрытие:
+  0. три состояния индекса — absent / broken / ok — и отказ с названным
+     дефектом вместо KeyError (D4, D5, раздел 8);
   1. индекса нет → безопасный пустой каркас, not_in_index / unsupported_family;
   2. authoritative-индекс: vault-запись, override_only, устаревшая редакция,
      умолчания для минимальной записи;
@@ -502,6 +504,9 @@ _PAYLOAD_KEYS = {
     "detected_family", "supported_family", "needs_manual_addition", "has_text",
     "replacement_doc", "current_version", "title", "file", "type", "year",
     "details", "source_url", "last_verified", "parse_confidence", "source",
+    # Диагностика состояния индекса (D4): «нормы нет в индексе» обязано
+    # отличаться от «индекс нечитаем» на стороне потребителя.
+    "index_state", "index_defect",
 }
 
 
@@ -573,8 +578,273 @@ def test_public_api_is_status_index_only(provider):
     возврат legacy fallback на norms_db.json, запрещённого norms/tools/README.md.
     """
     assert provider.__all__ == [
-        "NORMS_STATUS_INDEX_PATH", "load_status_index", "resolve_norm_status"]
+        "NORMS_STATUS_INDEX_PATH", "StatusIndexError", "load_status_index",
+        "resolve_norm_status", "status_index_state"]
     for forbidden in ("NORMS_DB_PATH", "NORMS_VAULT_PATH",
                       "MISSING_NORMS_VAULT_PATHS"):
         assert not hasattr(provider, forbidden), (
             f"{forbidden} у провайдера — это legacy fallback на norms_db.json")
+
+
+# ---------------------------------------------------------------------------
+# 8. Три состояния индекса: absent / broken / ok  (D4, D5)
+# ---------------------------------------------------------------------------
+# D4. Битый индекс маскировался под обычное «не найдено»: и отсутствие файла,
+# и битый JSON давали resolution_reason="not_found", supported_family=False,
+# needs_manual_addition=False, а в norms/_core.py — verified_via="norms_missing"
+# для ВСЕГО корпуса. Ни одно поле не сообщало, что индекс сломан, хотя лечится
+# это иначе, чем отсутствие корпуса.
+#
+# D5. Запись без "code" роняла load_status_index() голым KeyError: 'code', а
+# resolve_norm_status() ловил только OSError/JSONDecodeError — падал конвейер.
+# Политика: отказать внятно (StatusIndexError с названным defect) на уровне
+# читателя, не глотая кривую запись, и НЕ бросать на уровне resolve.
+
+
+def _write_raw(provider, path: Path, text: str) -> Path:
+    """Положить в индекс произвольный текст (в т.ч. заведомо непригодный)."""
+    path.write_text(text, encoding="utf-8")
+    provider.NORMS_STATUS_INDEX_PATH = path
+    provider._reset_cache()
+    return path
+
+
+#: Непригодные индексы: (текст файла, ожидаемый код дефекта).
+_BROKEN_INDEXES = [
+    ("{не json", "invalid_json"),
+    ("", "invalid_json"),
+    ("[]", "not_an_object"),
+    ('"строка"', "not_an_object"),
+    ('{"meta": {}}', "norms_key_absent"),
+    ('{"meta": {}, "norms": {}}', "norms_not_a_list"),
+    ('{"meta": {}, "norms": ["СП 256.1325800.2016"]}', "entry_not_an_object"),
+    ('{"meta": {}, "norms": [{"title": "x"}]}', "entry_missing_code"),
+    ('{"meta": {}, "norms": [{"code": ""}]}', "entry_blank_code"),
+    ('{"meta": {}, "norms": [{"code": null}]}', "entry_blank_code"),
+    ('{"meta": {}, "norms": [{"code": 256}]}', "entry_blank_code"),
+    ('{"meta": {}, "norms": [{"code": "СП 1", "aliases": "СП 1"}]}',
+     "entry_aliases_not_a_list"),
+]
+
+
+@pytest.mark.parametrize("raw,defect", _BROKEN_INDEXES)
+def test_broken_index_is_refused_with_named_defect(provider, tmp_path, raw, defect):
+    """D5: непригодный индекс → StatusIndexError с НАЗВАННЫМ дефектом.
+
+    Не KeyError, не JSONDecodeError, не тихий пропуск кривой записи.
+    """
+    _write_raw(provider, tmp_path / "broken.json", raw)
+    with pytest.raises(provider.StatusIndexError) as exc:
+        provider.load_status_index()
+    assert exc.value.defect == defect
+    assert str(tmp_path / "broken.json") == exc.value.path
+    # Сообщение обязано называть дефект — иначе «внятный отказ» не внятный.
+    assert defect in str(exc.value)
+
+
+def test_entry_without_code_no_longer_raises_keyerror(provider, tmp_path):
+    """D5-репро: {"meta":{},"norms":[{"title":"x"}]} давал KeyError: 'code'."""
+    _write_raw(provider, tmp_path / "no_code.json",
+               '{"meta":{},"norms":[{"title":"x"}]}')
+    with pytest.raises(provider.StatusIndexError) as exc:
+        provider.load_status_index()
+    assert not isinstance(exc.value, KeyError)
+    assert exc.value.defect == "entry_missing_code"
+    assert exc.value.location == "norms[0]"
+
+
+def test_broken_entry_is_not_silently_skipped(provider, tmp_path):
+    """Политика D5: кривую запись НЕ глотаем.
+
+    Иначе индекс выглядел бы здоровым и молча не содержал бы норму: её
+    резолв дал бы not_in_index, и дефект сборщика замаскировался бы под
+    «нормы нет в базе» — та же маскировка, что D4, только точечная.
+    """
+    _write_raw(
+        provider, tmp_path / "half_broken.json",
+        '{"meta":{},"norms":[{"code":"СП 256.1325800.2016","doc_status":"active"},'
+        '{"title":"без кода"}]}',
+    )
+    r = provider.resolve_norm_status("СП 256.1325800.2016")
+    # Здоровая соседняя запись НЕ выдаётся как ни в чём не бывало.
+    assert r["found"] is False
+    assert r["resolution_reason"] == "index_unreadable"
+    assert r["index_defect"] == "entry_missing_code"
+
+
+@pytest.mark.parametrize("raw,defect", _BROKEN_INDEXES)
+def test_resolve_never_raises_on_broken_index(provider, tmp_path, raw, defect):
+    """D5: контракт конвейера — resolve_norm_status не бросает НИКОГДА."""
+    _write_raw(provider, tmp_path / "broken.json", raw)
+    for query in ["СП 256.1325800.2016", "какой-то произвольный текст", "", None]:
+        r = provider.resolve_norm_status(query)
+        assert isinstance(r, dict)
+        assert set(r) == _PAYLOAD_KEYS
+        assert r["index_state"] == "broken"
+
+
+@pytest.mark.parametrize("raw,defect", _BROKEN_INDEXES)
+def test_broken_index_is_distinguishable_from_not_found(provider, tmp_path,
+                                                        raw, defect):
+    """D4-репро: битый индекс обязан отличаться от «нормы нет в индексе»."""
+    _write_raw(provider, tmp_path / "broken.json", raw)
+    r = provider.resolve_norm_status("СП 256.1325800.2016")
+    assert r["found"] is False
+    assert r["resolution_reason"] == "index_unreadable"
+    assert r["index_state"] == "broken"
+    assert r["index_defect"] == defect
+    # Ручная очередь — неверное лечение: добавление документа в vault не
+    # чинит битый артефакт.
+    assert r["needs_manual_addition"] is False
+    # Семейство определяется регуляркой и от индекса не зависит — сообщаем
+    # его честно, чтобы было видно, что сам запрос корректен.
+    assert r["detected_family"] == "СП"
+    assert r["supported_family"] is True
+
+
+def test_broken_index_does_not_claim_unsupported_family(provider, tmp_path):
+    """При битом индексе вердикт unsupported_family недопустим.
+
+    unsupported_family означает «в индексе НЕТ И семейство не распознано».
+    Первую половину конъюнкции на битом индексе проверить нельзя.
+    """
+    _write_raw(provider, tmp_path / "broken.json", "{не json")
+    r = provider.resolve_norm_status("какой-то произвольный текст")
+    assert r["resolution_reason"] == "index_unreadable"
+    assert r["index_state"] == "broken"
+    assert r["detected_family"] is None
+    assert r["supported_family"] is False
+    assert r["needs_manual_addition"] is False
+
+
+def test_blank_query_stays_not_found_even_on_broken_index(provider, tmp_path):
+    """Вердикт о пустом запросе — про запрос, а не про индекс."""
+    _write_raw(provider, tmp_path / "broken.json", "{не json")
+    r = provider.resolve_norm_status("   ")
+    assert r["resolution_reason"] == "not_found"
+    # …но состояние индекса не скрывается и здесь.
+    assert r["index_state"] == "broken"
+
+
+# --- Три состояния через status_index_state() -------------------------------
+
+def test_state_absent_when_file_missing(provider):
+    """Файла нет — это «absent», а не поломка."""
+    st = provider.status_index_state()
+    assert st["state"] == "absent"
+    assert st["defect"] is None
+    assert st["norm_count"] == 0
+    assert st["path"] == str(provider.NORMS_STATUS_INDEX_PATH)
+
+
+def test_state_ok_for_populated_index(indexed):
+    st = indexed.status_index_state()
+    assert st["state"] == "ok"
+    assert st["defect"] is None
+    assert st["norm_count"] == len(_authoritative_entries())
+
+
+def test_state_ok_for_valid_empty_index(provider, tmp_path):
+    """ПУСТОЙ индекс валиден: это «ok» с нулём записей, а не «broken»."""
+    _write_index(provider, tmp_path / "empty.json", [])
+    st = provider.status_index_state()
+    assert st["state"] == "ok"
+    assert st["defect"] is None
+    assert st["norm_count"] == 0
+    # И резолв по нему — обычное «нормы нет в индексе».
+    r = provider.resolve_norm_status("СП 256.1325800.2016")
+    assert r["resolution_reason"] == "not_in_index"
+    assert r["index_state"] == "ok"
+    assert r["needs_manual_addition"] is True
+
+
+@pytest.mark.parametrize("raw,defect", _BROKEN_INDEXES)
+def test_state_broken_names_the_defect(provider, tmp_path, raw, defect):
+    _write_raw(provider, tmp_path / "broken.json", raw)
+    st = provider.status_index_state()
+    assert st["state"] == "broken"
+    assert st["defect"] == defect
+    assert st["detail"]
+    assert st["norm_count"] == 0
+
+
+def test_three_states_are_pairwise_distinguishable(provider, tmp_path):
+    """Итог D4: absent / broken / ok различимы машиной, а не по тексту.
+
+    Раньше все три давали один и тот же ответ на одну и ту же норму.
+    """
+    seen = {}
+
+    seen["absent"] = (provider.status_index_state()["state"],
+                      provider.resolve_norm_status("СП 256.1325800.2016"))
+
+    _write_raw(provider, tmp_path / "broken.json", "{не json")
+    seen["broken"] = (provider.status_index_state()["state"],
+                      provider.resolve_norm_status("СП 256.1325800.2016"))
+
+    _write_index(provider, tmp_path / "ok.json", _authoritative_entries())
+    seen["ok"] = (provider.status_index_state()["state"],
+                  provider.resolve_norm_status("СП 256.1325800.2016"))
+
+    assert [seen[k][0] for k in ("absent", "broken", "ok")] == [
+        "absent", "broken", "ok"]
+    marks = {k: (v[1]["index_state"], v[1]["resolution_reason"], v[1]["found"])
+             for k, v in seen.items()}
+    assert marks == {
+        "absent": ("absent", "not_in_index", False),
+        "broken": ("broken", "index_unreadable", False),
+        "ok": ("ok", "exact", True),
+    }
+    assert len(set(marks.values())) == 3
+
+
+# --- Кеш отказа и восстановление -------------------------------------------
+
+def test_broken_index_failure_is_cached_and_stable(provider, tmp_path):
+    """Отказ кешируется наравне с удачным чтением: ответ не «плавает».
+
+    Иначе битый файл перечитывался бы на каждой норме корпуса.
+    """
+    path = _write_raw(provider, tmp_path / "broken.json", '{"meta":{},"norms":[{}]}')
+    first = provider.resolve_norm_status("СП 256.1325800.2016")
+    mtime = path.stat().st_mtime_ns
+    second = provider.resolve_norm_status("СП 256.1325800.2016")
+    assert first == second
+    assert path.stat().st_mtime_ns == mtime
+    with pytest.raises(provider.StatusIndexError):
+        provider.load_status_index()
+
+
+def test_force_reload_recovers_after_index_is_repaired(provider, tmp_path):
+    """Починили артефакт → force_reload возвращает состояние в ok."""
+    path = _write_raw(provider, tmp_path / "index.json", "{не json")
+    assert provider.status_index_state()["state"] == "broken"
+
+    path.write_text(
+        json.dumps({"meta": {}, "norms": [_entry("СП 256.1325800.2016")]},
+                   ensure_ascii=False),
+        encoding="utf-8",
+    )
+    # Без force_reload виден прежний (сломанный) снимок — семантика кеша та же.
+    assert provider.status_index_state()["state"] == "broken"
+
+    assert provider.status_index_state(force_reload=True)["state"] == "ok"
+    r = provider.resolve_norm_status("СП 256.1325800.2016")
+    assert (r["found"], r["index_state"], r["index_defect"]) == (True, "ok", None)
+
+
+def test_provider_never_writes_to_broken_index(provider, tmp_path):
+    """Даже на непригодном индексе адаптер остаётся read-only."""
+    path = _write_raw(provider, tmp_path / "broken.json", '{"meta":{},"norms":[{}]}')
+    before = (path.read_bytes(), path.stat().st_mtime_ns)
+    for q in ["СП 256.1325800.2016", "мусор", ""]:
+        provider.resolve_norm_status(q)
+    assert (path.read_bytes(), path.stat().st_mtime_ns) == before
+
+
+def test_healthy_index_reports_state_ok_in_every_payload(indexed):
+    """index_state есть в ОБЕИХ ветках payload — found и not-found."""
+    for query in ["СП 256.1325800.2016", "СП 50.13330.2024", "просто текст", ""]:
+        r = indexed.resolve_norm_status(query)
+        assert r["index_state"] == "ok"
+        assert r["index_defect"] is None
