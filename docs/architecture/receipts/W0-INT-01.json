@@ -4,7 +4,7 @@
   "wave": "0.0.02",
   "captured_at": "2026-09-01",
   "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6 по docs/architecture. Эта расписка фиксирует выполнение задачи, а не прохождение чекпоинта.",
-  "revision": "8 (2026-09-03, закрытие задачи)",
+  "revision": "9 (2026-09-03, кандидат version-среза и семантика CI-строгости)",
   "scope": "Собрать подготовленные результаты ENG/WEB/OPS в воспроизводимый clean-room CI и вынести вердикт по переводу регресс-гейта из observe в enforce.",
   "step_1_architectural_admission": {
     "adr_accepted": [
@@ -1622,6 +1622,43 @@
         "НЕ подключение корпуса норм: он остаётся долгом владельца программы, и профиль полос остаётся --ci, а не --enforce."
       ],
       "last_defect_found_and_closed": "гейт первой попытки закрытия поймал восьмой недетерминированный узел волны — test_cpu_pool::test_pin_cores_gives_each_worker_own_core. Механизм проверен по исходнику CPython 3.12 на машине: _idle_worker_semaphore стартует с нуля (process.py:730), _adjust_process_count не создаёт воркера при успешном acquire (:778), а release происходит только при возврате результата (:375). Починен барьером через Manager — участие обоих воркеров стало неизбежным по построению. Закрытие объявлено только после зелёного гейта на свежем прогоне."
+    },
+    "version_slice_candidate": {
+      "branch": "review/0.0.03",
+      "commit": "a7c0b1a606f266ff9c4c53a78a52c13638e8e8d2",
+      "composition": "коммит с closure receipt (370b6ee8) ПЛЮС один коммит с ровно двумя файлами: tests/test_norms_index_unification.py и WAVE_0_0_03_PLAN.md. Больше в срез не входит ничего.",
+      "why_not_from_head": "HEAD ветки dev уже содержит последующие работы — W0-SEC-03, W1-INT-00, ADR-0007…0012 и редакцию 3 G0-delta. Фиксация версии от HEAD смешала бы этапы, поэтому граница среза проведена по closure receipt.",
+      "blocker_found_by_owner_and_closed": {
+        "what": "публикация кандидата дала бы НОВОЕ блокирующее падение из ниоткуда: ci.yml объявляет ненастроенный источник корпуса допустимым для --ci, а tests/test_norms_index_unification.py считал корпус обязательным по переменной CI, которую GitHub Actions выставляет сам.",
+        "reproduced": "профиль GitHub без корпуса — 2 failed, 5 passed; с AUDIT_CI_STRICT=0 — 5 passed, 2 skipped",
+        "why_it_slipped_past_the_integrator": "все прежние clean-room прогоны шли БЕЗ переменных CI и GITHUB_ACTIONS. Эмуляция профиля раннера воспроизводила число ядер и нагрузку, но не переменные окружения, которые раннер выставляет сам. Дыра была в эмуляции, а не в проекте.",
+        "fix": "строгость привязана к ФАКТУ настройки источника, а не к признаку «мы в CI». Правило переиспользовано из ci_provision_norms.source_config(), второй реализации не появилось. AUDIT_CI_STRICT сохранён как явный override в обе стороны.",
+        "guards_added": "три сторожа: профиль GitHub без источника обязан пропускать, а не падать; заданный источник обязан делать корпус обязательным; override обязан работать в обе стороны. Первый закрывает КЛАСС дефекта.",
+        "verified_on_three_profiles": "GitHub без источника 8 passed / 2 skipped; локально то же; с заданным источником 2 failed — корпус снова обязателен"
+      },
+      "acceptance_in_github_like_env": {
+        "new_since_previous_runs": "выставлены CI=true и GITHUB_ACTIONS=true — то, чего не хватало прежней эмуляции",
+        "lanes": {
+          "unit": "2662/2528, 0 failed, 0 errors, 134 skipped, new=[]",
+          "contract": "260/259, 0 failed",
+          "integration": "3734/3695, 0 failed, 0 errors",
+          "network": "915/909, 0 failed",
+          "chaos": "7/6, 0 failed"
+        },
+        "probe": "rc=0 во всех пяти профилях",
+        "aggregate_gate": "падений 0 при baseline 0, новых 0, исчезнувших 0; GATE_EXIT=0",
+        "frontend": "npm ci/test/lint/typecheck/build — все rc=0 на Node 22.23.1",
+        "orphan_processes": 0,
+        "manifest": "docs/architecture/receipts/evidence/0.0.03-candidate-manifest.json"
+      },
+      "section_11_synced_with_section_6": "§11 требовал --enforce и корпус как условие ФИКСАЦИИ ВЕРСИИ, тогда как изменённый §6 перенёс их в долг — два раздела одного плана противоречили друг другу. Фаза C приведена в соответствие, фаза D ожидает probe_mode: ci, записана граница среза.",
+      "what_remains_for_the_owner": [
+        "токен со scope workflow: без него push кандидата отклоняется, потому что коммиты меняют .github/workflows/ci.yml",
+        "провести кандидата через review и merge в актуальный origin/main",
+        "убедиться в достижимости финального коммита из origin/main",
+        "только затем создать неизменяемую version/0.0.03 и release receipt"
+      ],
+      "not_done_deliberately": "version/0.0.03 НЕ создана: формальная приёмка version-среза не пройдена — кандидат не опубликован и не достижим из origin/main. Инженерная приёмка задачи W0-INT-01 пройдена отдельно и раньше."
     }
   }
 }
