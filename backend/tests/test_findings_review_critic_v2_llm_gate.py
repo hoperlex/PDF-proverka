@@ -24,6 +24,7 @@ from backend.app.pipeline.stages.findings_review.critic_v2 import (
     EVIDENCE_PARTIAL,
     EVIDENCE_VALID,
     EVIDENCE_WEAK,
+    HIGH_SCORE_VALID_ACCEPT_GUARD_THRESHOLD,
     CriticV2Result,
     LLMCriticDecision,
     LLMGateResult,
@@ -516,14 +517,54 @@ class TestMergeLLMDecisions:
         assert final[0].decision == "merge"
 
     def test_llm_reject_downgrades_accept(self):
-        """LLM reject can downgrade a deterministic accept."""
-        det = [_make_decision("F-1", decision="accept", evidence_quality=EVIDENCE_VALID, score=8)]
-        llm = [LLMCriticDecision("F-1", "reject", 3, "low_business_value", "Not useful")]
+        """LLM reject понижает детерминированный accept — но только квалифицированный.
+
+        Действующая политика critic v2 (введена вместе с самим гейтом,
+        коммит 29d3a0bf): hard-reject от LLM принимается, только если модель
+        назвала taxonomy-причину с fitness=llm_can_handle, сверила источник
+        (evidence_checked=True), не требует доп. контекста
+        (source_dependency=enough_source) и уверена выше порога категории.
+        Неквалифицированный reject — как в прежней формулировке этой проверки,
+        где taxonomy не задавалась вовсе (→ "other", fitness=needs_human), —
+        понижается до borderline правилом R2 в
+        `_apply_confidence_and_taxonomy_gate`.
+
+        Вторым слоем идёт HIGH_SCORE_VALID_ACCEPT_GUARD: det=accept со
+        score >= порога и evidence=valid не может быть hard-reject даже по
+        квалифицированному вердикту. Поэтому детерминированный score здесь
+        берётся ниже порога — иначе проверялся бы guard, а не само понижение
+        (у guard есть свой набор регрессий в
+        test_findings_review_critic_v2_llm_taxonomy_gate.py).
+
+        Проверка разведена на две стороны политики: квалифицированный reject
+        обязан понижать accept, неквалифицированный — обязан НЕ понижать.
+        """
+        det_score = HIGH_SCORE_VALID_ACCEPT_GUARD_THRESHOLD - 1
+
+        # ── сторона 1: квалифицированный reject понижает accept до reject ──
+        det = [_make_decision("F-1", decision="accept", evidence_quality=EVIDENCE_VALID,
+                              score=det_score)]
+        llm = [LLMCriticDecision("F-1", "reject", 3, "low_business_value", "Not useful",
+                                 human_taxonomy_reason="visual_or_ocr_misread",
+                                 confidence=0.9, evidence_checked=True,
+                                 source_dependency="enough_source")]
         final, accepted, rejected, borderline = merge_llm_decisions(
             det, llm, self._raw_by_id(["F-1"])
         )
-        assert final[0].decision == "reject"
+        assert final[0].decision == "reject", final[0].reject_explanation
         assert len(rejected) == 1
+        assert len(accepted) == 0
+
+        # ── сторона 2: неквалифицированный reject не понижает, а уводит в borderline ──
+        det_unq = [_make_decision("F-1", decision="accept", evidence_quality=EVIDENCE_VALID,
+                                  score=det_score)]
+        llm_unq = [LLMCriticDecision("F-1", "reject", 3, "low_business_value", "Not useful")]
+        final_unq, _, rejected_unq, borderline_unq = merge_llm_decisions(
+            det_unq, llm_unq, self._raw_by_id(["F-1"])
+        )
+        assert final_unq[0].decision == "borderline", final_unq[0].reject_explanation
+        assert len(rejected_unq) == 0
+        assert len(borderline_unq) == 1
 
     def test_llm_accept_upgrades_borderline_with_valid_evidence(self):
         """LLM accept can upgrade borderline with valid evidence to accept."""

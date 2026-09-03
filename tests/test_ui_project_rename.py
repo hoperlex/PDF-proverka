@@ -58,8 +58,29 @@ def test_js_rename_functions_and_state_update():
         assert token in JS, token
 
 
-# ─── версионная панель (создание версий) НЕ удалена, только кнопка-тоггл ─────
-def test_versions_panel_still_exists():
-    # сам блок «Версии проекта» и создание версии остаются доступны
-    assert "versions-panel" in HTML
-    assert "showCreateVersionModal" in HTML
+# ─── версионная панель и модалка создания версии удалены (91f48104) ──────────
+# Проверка переписана под действующее поведение. Коммит 91f48104 (2026-07-02)
+# «feat(frontend): удалить кнопку «Версии» и её панель/модалку» намеренно снял
+# кнопку «⚙ Версии» вместе с раскрываемой панелью «Версии проекта» и модалкой
+# «Создать новую версию»; из app.js удалены versionsPanelOpen,
+# showCreateVersionModal, newVersionComment и createNewVersion. Прежняя
+# формулировка требовала обратного («панель НЕ удалена») и не могла стать
+# зелёной, не отменив это решение. Проверка разведена на две стороны решения:
+# удалённое обязано отсутствовать, уцелевшее — присутствовать.
+def test_versions_panel_and_create_modal_removed():
+    for token in ("versions-panel", "showCreateVersionModal",
+                  "newVersionComment", "createNewVersion", "versionsPanelOpen"):
+        assert token not in HTML, token
+        assert token not in JS, token
+
+
+def test_version_switching_survived_panel_removal():
+    # то, ради чего панель существовала — доступ к версиям — осталось в
+    # выпадающем списке «Версия:» в шапке проекта: 91f48104 прямо оставил
+    # «переключение и переименование версий через выпадающий список»
+    assert "project-version-switch__select" in HTML
+    assert "Версия:" in HTML
+    assert "selectVersion(" in HTML
+    assert "in projectVersions" in HTML
+    assert "function selectVersion(" in JS
+    assert "projectVersions" in JS
