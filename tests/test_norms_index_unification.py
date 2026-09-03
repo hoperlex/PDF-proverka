@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -22,37 +23,60 @@ pytestmark = pytest.mark.unit
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _NORMS_VAULT = _REPO_ROOT / "norms" / "vault"
 
-# --- Признак «прогон идёт в CI» -------------------------------------------
+# --- Признак «корпус обязан быть на месте» --------------------------------
 #
 # Решение владельца по C-2 (docs/architecture/ci_environment_matrix.md):
-# нормативный корпус ПОДВОЗИТСЯ артефактом в CI, а не объявляется optional.
-# Отсюда несимметричная семантика: локально отсутствие корпуса — skip с
-# причиной, в CI — падение. Иначе provision однажды сломается, тесты тихо
-# пропустятся, и «зелёный» CI будет означать «нормативный контур не
-# проверялся».
+# нормативный корпус ПОДВОЗИТСЯ артефактом, а не объявляется optional. Отсюда
+# несимметричная семантика: где корпус подвозят, его отсутствие — сломанный
+# provision и падение; где не подвозят — skip с причиной. Иначе provision
+# однажды сломается, тесты тихо пропустятся, и «зелёный» CI будет означать
+# «нормативный контур не проверялся».
 #
-# Выбор признака. Собственного флага «мы в CI» в репозитории нет (grep по
-# AUDIT_CI*/CI_* пуст), а `.github/workflows/ci.yml` вне ведения этой задачи —
-# дописать туда свою переменную нельзя. Поэтому:
-#   1) `AUDIT_CI_STRICT` — явный override в существующем соглашении репозитория
-#      (префикс AUDIT_*, булев разбор один в один как `_env_bool` в
-#      backend/app/core/config.py: {1,true,yes,on}). Им же CI-профиль
-#      включается локально для проверки, и им же (значение "0"/"false")
-#      сознательно ослабляется job, которому корпус не подвозят;
-#   2) при отсутствии override — стандартный `CI` (и `GITHUB_ACTIONS`), который
-#      GitHub Actions, GitLab CI, CircleCI и Travis выставляют сами. Это даёт
-#      требуемое «ломать прогон в CI» без правки workflow.
+# ПОЧЕМУ ПРИЗНАК СМЕНЁН 2026-09-03. Прежняя редакция опознавала строгость по
+# стандартной переменной `CI` (и `GITHUB_ACTIONS`), потому что «собственного
+# флага в репозитории нет, а ci.yml вне ведения этой задачи». Оба основания
+# перестали быть верными, и признак стал ЛОЖНЫМ: GitHub выставляет `CI=true`
+# сам, а `.github/workflows/ci.yml` объявляет отсутствие ненастроенного
+# источника допустимым для профиля `--ci` (`OPTIONAL_NORM_CORPUS_ABSENT`,
+# exit 0). Два утверждения об одном факте расходились, и публикация ветки дала
+# бы два падения полосы `unit` на пустом baseline — то есть новую блокирующую
+# регрессию из ниоткуда. Измерено: профиль GitHub без корпуса — 2 failed,
+# 5 passed.
+#
+# Теперь строгость следует ФАКТУ, а не окружению: корпус обязан быть там, где
+# ИСТОЧНИК АРТЕФАКТА СКОНФИГУРИРОВАН. Это ровно то, что имелось в виду под
+# «подвозится артефактом», и это знание уже есть в проекте — правило одно, и
+# оно переиспользуется из `scripts/ci_provision_norms.source_config()`, а не
+# пишется здесь второй раз. Как только владелец назовёт источник, тест
+# становится строгим сам, без правки workflow и без ручных переменных.
+#
+# `AUDIT_CI_STRICT` сохранён как ЯВНЫЙ override в обе стороны: им включают
+# строгость локально для проверки и им же сознательно ослабляют job, которому
+# корпус не подвозят. Разбор булева значения — как в `_env_bool`
+# (backend/app/core/config.py): {1,true,yes,on}.
 _TRUTHY_ENV = {"1", "true", "yes", "on"}
 
+_SCRIPTS_DIR = _REPO_ROOT / "scripts"
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
 
-def _ci_marker() -> str | None:
-    """Имя переменной, по которой прогон опознан как CI (иначе None)."""
+
+def _corpus_source_configured() -> bool:
+    """Задан ли внешний источник корпуса. Правило одно на проект."""
+    import ci_provision_norms as provision
+
+    return bool(provision.source_config()["configured"])
+
+
+def _strictness_reason() -> str | None:
+    """Почему корпус обязателен в этом прогоне (иначе None)."""
     override = (os.environ.get("AUDIT_CI_STRICT") or "").strip()
     if override:
-        return "AUDIT_CI_STRICT" if override.lower() in _TRUTHY_ENV else None
-    for name in ("CI", "GITHUB_ACTIONS"):
-        if (os.environ.get(name) or "").strip().lower() in _TRUTHY_ENV:
-            return name
+        if override.lower() in _TRUTHY_ENV:
+            return f"AUDIT_CI_STRICT={override!r} (явный override)"
+        return None
+    if _corpus_source_configured():
+        return "источник корпуса сконфигурирован (QR_NORM_ARTIFACT_*)"
     return None
 
 
@@ -74,10 +98,10 @@ def _require_norms_corpus() -> None:
         f"(vault лежит вне git, status_index.json собирается из него "
         f"norms/tools/build_status_index.py)"
     )
-    marker = _ci_marker()
-    if marker is not None:
+    reason = _strictness_reason()
+    if reason is not None:
         pytest.fail(
-            f"{detail}. Признак CI: {marker}={os.environ.get(marker)!r}. "
+            f"{detail}. Основание строгости: {reason}. "
             f"По решению владельца (C-2) корпус подвозится в CI артефактом, "
             f"поэтому его отсутствие — сломанный provision, а не повод "
             f"пропустить нормативный контур"
@@ -171,3 +195,65 @@ def test_sanpin_official_copy_has_unambiguous_paragraphs():
     assert paragraph_4["found"] is True
     assert "Расстояние от контейнерных" in paragraph_4["text"]
 
+
+# --- Сторож против возврата ложного признака -------------------------------
+
+
+def test_github_profile_without_configured_source_skips_not_fails(monkeypatch):
+    """Профиль GitHub без сконфигурированного источника не делает прогон красным.
+
+    Ради этого сторожа он и написан. Прежняя редакция опознавала строгость по
+    переменной `CI`, которую GitHub Actions выставляет сам, — и публикация ветки
+    без корпуса дала бы два падения полосы `unit` на пустом baseline. Это
+    выглядело бы как регрессия, которой нет: `.github/workflows/ci.yml`
+    объявляет ненастроенный источник допустимым для профиля `--ci`.
+
+    Тест закрывает КЛАСС дефекта: любой возврат к признаку «мы в CI» вместо
+    признака «источник задан» роняет его.
+    """
+    for name in ("CI", "GITHUB_ACTIONS", "GITLAB_CI", "TRAVIS", "CIRCLECI"):
+        monkeypatch.setenv(name, "true")
+    monkeypatch.delenv("AUDIT_CI_STRICT", raising=False)
+    for name in ("QR_NORM_ARTIFACT_SOURCE_ID", "QR_NORM_ARTIFACT_URL",
+                 "QR_NORM_ARTIFACT_VERSION", "QR_NORM_ARTIFACT_TOKEN",
+                 "QR_NORM_ARTIFACT_AUTH_SCHEME"):
+        monkeypatch.delenv(name, raising=False)
+
+    assert _strictness_reason() is None, (
+        "строгость снова выводится из окружения CI, а не из факта настройки "
+        "источника — публикация ветки без корпуса даст ложную регрессию"
+    )
+
+
+def test_configured_source_makes_corpus_mandatory(monkeypatch):
+    """Как только источник назван, отсутствие корпуса становится падением.
+
+    Обратная половина: ослабление признака не должно превратиться в «корпус
+    больше никогда не обязателен». Достаточно ОДНОЙ заданной переменной —
+    неполная конфигурация опаснее её отсутствия и трактуется как «источник
+    объявлен».
+    """
+    monkeypatch.delenv("AUDIT_CI_STRICT", raising=False)
+    for name in ("CI", "GITHUB_ACTIONS"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("QR_NORM_ARTIFACT_SOURCE_ID", "owner/norms-vault")
+
+    reason = _strictness_reason()
+    assert reason is not None and "источник корпуса сконфигурирован" in reason
+
+
+def test_explicit_override_wins_in_both_directions(monkeypatch):
+    """`AUDIT_CI_STRICT` перебивает факт в обе стороны — это его назначение."""
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.delenv("QR_NORM_ARTIFACT_SOURCE_ID", raising=False)
+
+    monkeypatch.setenv("AUDIT_CI_STRICT", "1")
+    assert "явный override" in (_strictness_reason() or "")
+
+    monkeypatch.setenv("QR_NORM_ARTIFACT_SOURCE_ID", "owner/norms-vault")
+    monkeypatch.setenv("AUDIT_CI_STRICT", "0")
+    assert _strictness_reason() is None, (
+        "явное ослабление обязано работать и при заданном источнике: иначе job, "
+        "которому корпус не подвозят, нельзя настроить вовсе"
+    )
