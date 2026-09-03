@@ -11153,14 +11153,14 @@ const app = createApp({
             const [y, m, day] = d.week_start_date.split('-');
             const wdIdx = _subSpendWdIndex(d.week_start_date);
             const wd = wdIdx === null ? '' : _SUB_SPEND_WD_GEN[wdIdx] + ' ';
-            return `с ${wd}${day}.${m} ${d.week_start_time || '17:00'} (сброс лимитов)`;
+            return `с ${wd}${day}.${m} ${d.week_start_time || '00:00'} (сброс лимитов)`;
         });
-        // Короткая подпись плана: «сброс пн 17:00 MSK».
+        // Короткая подпись плана: «сброс пн 00:00 MSK».
         const subSpendResetText = computed(() => {
             const d = subSpendData.value;
             const wdIdx = d ? _subSpendWdIndex(d.week_start_date) : null;
             const wd = wdIdx === null ? 'пн' : _SUB_SPEND_WD[wdIdx];
-            const time = (d && d.week_start_time) || '17:00';
+            const time = (d && d.week_start_time) || '00:00';
             const plan = (d && d.plan) || 'Claude Max 20x';
             return `${plan} · сброс ${wd} ${time} MSK · оценка $`;
         });
@@ -11863,6 +11863,7 @@ const app = createApp({
         const scTextAiReviewLoading = ref(false);
         const scTextAiReviewError = ref('');
         const scProjectChangeSummary = ref(null);
+        const scHighLevelProjectChanges = ref(null);
         const scProjectChangeSummaryLoading = ref(false);
         const scProjectChangeSummaryError = ref('');
         const scTextDifferenceFilter = ref('all');
@@ -12025,6 +12026,15 @@ const app = createApp({
             const active = (scSheetLinkRepairs.value && scSheetLinkRepairs.value.active_repairs) || [];
             return active.length ? active[active.length - 1] : null;
         });
+        const scActiveSheetLinkRepairIsContent = computed(() =>
+            Boolean(scActiveSheetLinkRepair.value &&
+                (scActiveSheetLinkRepair.value.changes || []).some(change =>
+                    String(change.rule || '').startsWith('CONTENT_')
+                ))
+        );
+        function scSheetRepairAnchors(change) {
+            return (change && change.unique_anchors || []).slice(0, 6).join(', ');
+        }
         const scUnlinkedLeftPages = computed(() =>
             (scMatchState.value && scMatchState.value.links
                 && scMatchState.value.links.unlinked_left_pages) || []
@@ -12288,6 +12298,11 @@ const app = createApp({
             && !scProjectChangeSummary.value.stale
             && Array.isArray(scProjectChangeSummary.value.sheet_groups)
         ));
+        const scHighLevelProjectChangesAvailable = computed(() => Boolean(
+            scHighLevelProjectChanges.value
+            && !scHighLevelProjectChanges.value.stale
+            && Array.isArray(scHighLevelProjectChanges.value.high_level_changes)
+        ));
         const scCanRunProjectChangeSummary = computed(() => Boolean(
             scActivePair.value
             && scTextAiReviewCompleted.value
@@ -12305,6 +12320,12 @@ const app = createApp({
                 scProjectChangeSummary.value?.summary?.project_changes || 0
             ),
             review: Number(scProjectChangeSummary.value?.summary?.review || 0),
+        }));
+        const scHighLevelProjectChangeTotals = computed(() => ({
+            atomic_evidence: Number(scHighLevelProjectChanges.value?.summary?.atomic_evidence || 0),
+            high_level_changes: Number(scHighLevelProjectChanges.value?.summary?.high_level_changes || 0),
+            material_review: Number(scHighLevelProjectChanges.value?.summary?.material_review || 0),
+            non_material_review: Number(scHighLevelProjectChanges.value?.summary?.non_material_review || 0),
         }));
         const scTextResultSummary = computed(() => {
             const finalResult = scTextFinalComparison.value;
@@ -13171,6 +13192,7 @@ const app = createApp({
             scTextFinalComparison.value = data.text_final_comparison || null;
             scTextAiReviewError.value = '';
             scProjectChangeSummary.value = data.project_change_summary || null;
+            scHighLevelProjectChanges.value = data.high_level_project_changes || null;
             scProjectChangeSummaryError.value = '';
             scTextDifferenceFilter.value = 'all';
             scTextDifferenceSearch.value = '';
@@ -13356,6 +13378,9 @@ const app = createApp({
             if (scProjectChangeSummary.value) {
                 scProjectChangeSummary.value = {...scProjectChangeSummary.value, stale: true};
             }
+            if (scHighLevelProjectChanges.value) {
+                scHighLevelProjectChanges.value = {...scHighLevelProjectChanges.value, stale: true};
+            }
             try {
                 const response = await fetch(
                     scPairUrl(scActivePair.value.id, '/text-comparison'),
@@ -13382,6 +13407,9 @@ const app = createApp({
             if (scProjectChangeSummary.value) {
                 scProjectChangeSummary.value = {...scProjectChangeSummary.value, stale: true};
             }
+            if (scHighLevelProjectChanges.value) {
+                scHighLevelProjectChanges.value = {...scHighLevelProjectChanges.value, stale: true};
+            }
             try {
                 const response = await fetch(
                     scPairUrl(scActivePair.value.id, '/text-differences'),
@@ -13404,6 +13432,9 @@ const app = createApp({
             scTextAiReviewError.value = '';
             if (scProjectChangeSummary.value) {
                 scProjectChangeSummary.value = {...scProjectChangeSummary.value, stale: true};
+            }
+            if (scHighLevelProjectChanges.value) {
+                scHighLevelProjectChanges.value = {...scHighLevelProjectChanges.value, stale: true};
             }
             try {
                 const response = await fetch(
@@ -13431,21 +13462,30 @@ const app = createApp({
             scProjectChangeSummaryLoading.value = true;
             scProjectChangeSummaryError.value = '';
             try {
+                if (!scProjectChangeSummaryAvailable.value) {
+                    const response = await fetch(
+                        scPairUrl(scActivePair.value.id, '/text-change-summary'),
+                        {method: 'POST'},
+                    );
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(data.detail || ('HTTP ' + response.status));
+                    scProjectChangeSummary.value = data;
+                    if (data.sheet_link_repair_applied) {
+                        const pairResponse = await fetch(scPairUrl(scActivePair.value.id, ''));
+                        const pairData = await pairResponse.json().catch(() => ({}));
+                        if (!pairResponse.ok) {
+                            throw new Error(pairData.detail || ('HTTP ' + pairResponse.status));
+                        }
+                        scActivatePairData(pairData);
+                    }
+                }
                 const response = await fetch(
-                    scPairUrl(scActivePair.value.id, '/text-change-summary'),
+                    scPairUrl(scActivePair.value.id, '/high-level-project-changes'),
                     {method: 'POST'},
                 );
                 const data = await response.json().catch(() => ({}));
                 if (!response.ok) throw new Error(data.detail || ('HTTP ' + response.status));
-                scProjectChangeSummary.value = data;
-                if (data.sheet_link_repair_applied) {
-                    const pairResponse = await fetch(scPairUrl(scActivePair.value.id, ''));
-                    const pairData = await pairResponse.json().catch(() => ({}));
-                    if (!pairResponse.ok) {
-                        throw new Error(pairData.detail || ('HTTP ' + pairResponse.status));
-                    }
-                    scActivatePairData(pairData);
-                }
+                scHighLevelProjectChanges.value = data;
             } catch (error) {
                 scProjectChangeSummaryError.value = scTextOperationErrorMessage(error);
             } finally {
@@ -16091,6 +16131,8 @@ const app = createApp({
             scTextDifferences, scTextDifferencesLoading, scTextDifferencesError,
             scTextAiReview, scTextFinalComparison, scTextAiReviewLoading, scTextAiReviewError,
             scProjectChangeSummary, scProjectChangeSummaryLoading, scProjectChangeSummaryError,
+            scHighLevelProjectChanges, scHighLevelProjectChangesAvailable,
+            scHighLevelProjectChangeTotals,
             scProjectChangeSummaryAvailable, scCanRunProjectChangeSummary,
             scProjectChangeGroups, scProjectChangeSummaryTotals, scSummaryEvidenceCount,
             scTextAllDifferenceGroups, scTextDifferenceGroups, scTextResultAvailable,
@@ -16103,7 +16145,8 @@ const app = createApp({
             scRunTextDifferences, scRunTextAiReview, scRunProjectChangeSummary,
             scOpenDifferenceSource,
             scSheetLinks, scAcceptedSheetLinksReady, scSheetMapRows, scPendingSuggestedLinkRows,
-            scSheetLinkRepairs, scActiveSheetLinkRepair, scSheetLinkRepairUndoLoading,
+            scSheetLinkRepairs, scActiveSheetLinkRepair, scActiveSheetLinkRepairIsContent,
+            scSheetRepairAnchors, scSheetLinkRepairUndoLoading,
             scCurrentExplicitLinks, scCurrentRightPages, scCurrentStatus,
             scRightOptions, scUnlinkedLeftPages, scLinkSaving,
             scSheetMapCollapsed, scToggleSheetMap,

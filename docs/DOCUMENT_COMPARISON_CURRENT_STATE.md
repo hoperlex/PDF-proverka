@@ -3,8 +3,9 @@
 Раздел реализует сопоставление PDF-листов стадии П и стадии РД, после
 подтверждения связей — детерминированное исключение доказанно одинакового
 текста, затем группировку оставшегося текста в `changed / removed / added` и
-семантическую ИИ-ревизию всей предварительной классификации. Графика будет
-сравниваться отдельным следующим этапом.
+семантическую ИИ-ревизию всей предварительной классификации. Для уже
+подготовленных графических блоков существует отдельный G1 router с Mode 1
+local vector diff; структурный Mode 2 пока только маршрутизируется.
 
 ## Рабочий поток
 
@@ -383,6 +384,37 @@ API:
 - `POST .../pairs/{pair_id}/sheet-link-repairs/{repair_id}/undo` — безопасно
   отменить актуальную починку и пересчитать этапы 2–5.
 
+## Этап 5.3: верхнеуровневый синтез
+
+Этап 5.3 является аддитивным слоем поверх `project_change_summary.json` и пишет
+`high_level_project_changes.json`. Старые Stage 4/5 artifacts не
+перезаписываются. Перед AI evidence детерминированно группируются по semantic
+family, parameter/system/subject и sheet context; служебные и non-material
+группы модели не отправляются.
+
+Backend отдельно проверяет same-version counterparts между листами. Чистое
+одностороннее `ADDED/REMOVED`, сомнительная sheet link или отсутствие строки не
+могут стать strong conclusion без встречного подтверждения. Validator проверяет
+числа, designations, evidence coverage, type compatibility, detail-vs-new-object
+и запрет promotion служебного evidence. Невалидный group уходит в material
+review, не отбрасывая валидные соседние groups AI batch.
+
+Artifact разделяет `high_level_changes`, нейтральный
+`detail_level_increased`, `material_review`, collapsed `non_material_review` и
+`service_structure_summary`. Каждая запись хранит полные provenance details.
+Контракт уже содержит `evidence_sources: ["TEXT"]`, чтобы позже добавить
+`GRAPHIC/BOTH` без изменения текстового evidence.
+
+UI показывает Stage 5.3 первым. Заметен только REVIEW, способный изменить итог;
+detail, service и low-value review свернуты. Если artifact отсутствует, старый
+Stage 5 экран остаётся доступен без migration.
+
+API:
+
+- `POST .../pairs/{pair_id}/high-level-project-changes` — синтезировать Stage 5.3;
+- `GET .../pairs/{pair_id}/high-level-project-changes` — получить artifact и
+  признак актуальности.
+
 Инженерные решения, которые нельзя ломать:
 
 - состояние вида НЕ реактивно, `transform` пишется прямо в DOM внутри
@@ -405,11 +437,18 @@ API:
 
 ## Границы clean-slate
 
+Графический G1 изолирован от текстовых этапов 2–5. Его production input,
+router, Mode 1, ledger, regression и ограничения описаны в
+[`GRAPHIC_COMPARISON_G1.md`](GRAPHIC_COMPARISON_G1.md). В частности,
+`MODE_2_REQUIRED` не вызывает parser, а `VISION_REQUIRED` в G1 не означает
+global Vision model call.
+
 Здесь нет PreparedDocument, старого sheet matcher/page alignment, affine/ORB,
-image fingerprint, block/entities matching, change regions/groups,
-старого semantic diff, Pipeline V2, Vision или embeddings. Внешние model calls
-ограничены текстовыми Stage 4 reviewer и Stage 5 classifier/aggregator; раздел
-не создаёт findings.
+image fingerprint, block/entities matching, старого semantic diff, Pipeline
+V2, global Vision или embeddings. Новый G1 создаёт только локальные
+графические change regions внутри принятого upstream block scope. Внешние
+model calls ограничены текстовыми Stage 4 reviewer и Stage 5
+classifier/aggregator; G1 не вызывает модель и раздел не создаёт findings.
 
 Основные точки входа:
 
@@ -418,6 +457,7 @@ image fingerprint, block/entities matching, change regions/groups,
 - `backend/app/services/stage_comparison/text_differences.py`;
 - `backend/app/services/stage_comparison/text_ai_reviewer.py`;
 - `backend/app/services/stage_comparison/project_change_summary.py`;
+- `backend/app/services/stage_comparison/graphic_comparison/`;
 - `backend/app/services/stage_comparison/store.py`;
 - `backend/app/api/routers/stage_comparison.py`;
 - `frontend/index.html`;
