@@ -161,7 +161,24 @@ def run_pytest() -> None:
         )
 
 
-def collect_outcomes() -> tuple[set[str], set[str], set[str]]:
+def junit_node_id(testcase: ET.Element) -> str:
+    """Node ID узла JUnit в ТОЙ ЖЕ форме, в какой запись лежит в baseline.
+
+    Форма — `classname::name` из атрибутов JUnit: `tests.test_x::test_y`,
+    `backend.tests.test_y.TestC::test_z`. Строка собирается ровно тем же
+    выражением, что стояло внутри `collect_outcomes()` до выделения функции,
+    поэтому поведение гейта не изменилось.
+
+    Выделено наружу потому, что правило сравнения с baseline обязано быть ОДНО
+    на проект. Его переиспользует `scripts/ci_test_lane.py`: полоса отличает
+    известный долг от новой регрессии тем же кодом, которым это делает гейт.
+    Две реализации одного правила расходятся молча — и «известное падение»
+    начинает значить в двух местах разное.
+    """
+    return f"{testcase.get('classname', '')}::{testcase.get('name', '')}"
+
+
+def collect_outcomes(report: Path | None = None) -> tuple[set[str], set[str], set[str]]:
     """Вернуть (упавшие, пропущенные, все встреченные в прогоне).
 
     Одного множества падений недостаточно. Раньше «стало зелёных» считалось как
@@ -172,15 +189,22 @@ def collect_outcomes() -> tuple[set[str], set[str], set[str]]:
 
     Разница существенна: пропущенный тест ничего не доказывает, и вычёркивать
     его из известного долга как починенный — значит терять сам долг.
+
+    Аргумент `report` — та же функция для ЧУЖОГО отчёта: `ci_test_lane.py`
+    разбирает свой JUnit этим же кодом. Умолчание `None` означает штатный
+    `JUNIT` гейта, поэтому его собственное поведение не изменилось.
     """
-    if not JUNIT.exists():
-        raise SystemExit("[gate] FATAL: junit-отчёт не создан — pytest упал на сборе тестов")
-    tree = ET.parse(JUNIT)
+    path = JUNIT if report is None else report
+    if not path.exists():
+        raise SystemExit(
+            f"[gate] FATAL: junit-отчёт не создан ({path}) — pytest упал на сборе тестов"
+        )
+    tree = ET.parse(path)
     failed: set[str] = set()
     skipped: set[str] = set()
     seen: set[str] = set()
     for tc in tree.iter("testcase"):
-        tid = f"{tc.get('classname', '')}::{tc.get('name', '')}"
+        tid = junit_node_id(tc)
         seen.add(tid)
         tags = {child.tag for child in tc}
         if tags & {"failure", "error"}:

@@ -19,7 +19,12 @@
 * receipt несёт ВСЕ поля из §8 — список берётся из самого документа;
 * таблица бюджетов §7 сверяется с ДОКУМЕНТОМ, а не с числами, переписанными в
   тест. Смысл в том, чтобы расхождение кода и контракта ловилось автоматически:
-  «увеличение timeout для сокрытия deadlock не принимается» (§7).
+  «увеличение timeout для сокрытия deadlock не принимается» (§7);
+* §9: полоса красит прогон ТОЛЬКО новыми падениями, а известный долг из
+  `scripts/ci_known_failures.txt` не скрывает, а называет поимённо. Отдельно
+  проверяется, что скидка на baseline не распространяется на непригодный
+  прогон: таймаут, пустая выборка и отказ probe возвращают свои коды даже
+  тогда, когда упавший узел записан в baseline.
 
 Изоляция и дисциплина прогона
 ─────────────────────────────
@@ -191,6 +196,38 @@ class Harness:
         argv += ["--paths", *(paths if paths is not None else [str(self.tests_dir)])]
         return run_cli(self, argv, timeout=timeout)
 
+    def write_baseline(self, *nodes: str) -> Path:
+        """Записать baseline известных падений в КОПИЮ раннера.
+
+        Файл кладётся ровно туда, где его ищет гейт, — `<root>/scripts/
+        ci_known_failures.txt`, — потому что полоса читает baseline его
+        функцией. Заголовок объявляет `# Кол-во: N`: гейт сверяет это число со
+        списком и отказывается сравнивать прогон с эталоном, который врёт о
+        собственном содержимом.
+        """
+        path = self.root / "scripts" / "ci_known_failures.txt"
+        body = ["# baseline тестовой копии", f"# Кол-во: {len(nodes)}", ""]
+        path.write_text("\n".join([*body, *nodes]) + "\n", encoding="utf-8")
+        return path
+
+    @staticmethod
+    def baseline_node(module: str, name: str, cls: str | None = None) -> str:
+        """Node ID в форме baseline: `<пакет>.<модуль>[.<класс>]::<тест>`.
+
+        Форма записана здесь ЯВНО, а не взята из раннера. Это контракт между
+        тремя сторонами — полосой, гейтом и файлом `ci_known_failures.txt`, — и
+        если хоть одна начнёт нормализовать узлы иначе, расхождение обязано
+        ловиться тестом, а не всплывать красным CI на настоящем baseline.
+
+        Каталог синтетических модулей у Harness — `t/`, поэтому пакетная часть
+        начинается с `t.`: node ID считается от rootdir, а rootdir здесь корень
+        копии.
+        """
+        stem = f"t.{module.removesuffix('.py')}"
+        if cls is not None:
+            stem = f"{stem}.{cls}"
+        return f"{stem}::{name}"
+
     def receipt(self) -> dict:
         return json.loads(self.receipt_path.read_text(encoding="utf-8"))
 
@@ -253,7 +290,12 @@ def harness(tmp_path: Path) -> Harness:
     # redaction, и без него он вообще не грузится. Список — единственное место,
     # где связь раннера с его модулями зафиксирована, поэтому новая зависимость
     # обязана появляться здесь же.
-    for script in ("ci_test_lane.py", "ci_timeout_plugin.py", "ci_redaction.py"):
+    # `ci_regression_gate.py` — не украшение списка: полоса импортирует из него
+    # правило сравнения с baseline (§9), и без файла раннер не стартует вовсе.
+    for script in (
+        "ci_test_lane.py", "ci_timeout_plugin.py", "ci_redaction.py",
+        "ci_regression_gate.py",
+    ):
         shutil.copy2(SCRIPTS / script, root / "scripts" / script)
     return Harness(root)
 
@@ -1436,7 +1478,10 @@ def _reimport_lane_with_report_dir(report_dir: Path):
     root = report_dir.parent.parent          # <root>/.ci/reports → <root>
     scripts = root / "scripts"
     scripts.mkdir(parents=True, exist_ok=True)
-    for name in ("ci_test_lane.py", "ci_timeout_plugin.py", "ci_redaction.py"):
+    for name in (
+        "ci_test_lane.py", "ci_timeout_plugin.py", "ci_redaction.py",
+        "ci_regression_gate.py",
+    ):
         shutil.copy2(SCRIPTS / name, scripts / name)
     spec = importlib.util.spec_from_file_location(
         f"lane_symlink_{report_dir.parent.parent.name}", scripts / "ci_test_lane.py"
@@ -1538,3 +1583,287 @@ def test_receipt_contains_every_field_section_8_requires(tmp_path) -> None:
     )
     missing = required - set(receipt)
     assert not missing, f"§8 требует полей, которых нет в receipt: {sorted(missing)}"
+
+
+# --------------------------------------------------------------------------
+# §9: известный долг против новой регрессии
+# --------------------------------------------------------------------------
+
+#: Долг: два падения, одно из них в классе. Класс здесь не для полноты, а
+#: потому что именно на классах разъезжается нормализация node ID: у записи
+#: baseline classname несёт и модуль, и класс (`t.test_debt.TestDebt`), и
+#: ошибка в этом месте молча превратила бы известный долг в «новое падение».
+SOURCE_DEBT = """def test_ok():
+    assert True
+
+
+def test_known_debt():
+    assert False, "запись baseline"
+
+
+class TestDebt:
+    def test_known_debt_in_class(self):
+        assert False, "запись baseline в классе"
+"""
+
+#: Свежая регрессия: узел, которого в baseline нет и быть не должно.
+SOURCE_REGRESSION = """def test_fresh_regression():
+    assert False, "новое падение"
+"""
+
+
+def debt_nodes(harness: Harness) -> list[str]:
+    """Оба узла долга из `SOURCE_DEBT` в форме baseline."""
+    return [
+        harness.baseline_node("test_debt.py", "test_known_debt"),
+        harness.baseline_node("test_debt.py", "test_known_debt_in_class", cls="TestDebt"),
+    ]
+
+
+def test_baseline_rule_is_imported_from_the_gate():
+    """Правило сравнения — ОДНО на проект и живёт в гейте.
+
+    Полоса не имеет права заводить свой парсер baseline и свою нормализацию
+    node ID: две реализации расходятся молча, и «известное падение» начинает
+    значить в полосе и в гейте разное — ровно тот отказ, который baseline и
+    должен исключать. Поэтому проверяется происхождение функций, а не их
+    поведение: поведение сойдётся и у копии, пока копию не поправят однажды.
+    """
+    assert lane_mod.gate.__name__ == "ci_regression_gate"
+    for name in ("load_baseline", "collect_outcomes", "junit_node_id"):
+        func = getattr(lane_mod.gate, name)
+        assert func.__module__ == "ci_regression_gate", name
+    # Вердикт полосы собирается именно этими функциями, а не одноимёнными
+    # локальными: их видно в глобальном пространстве модуля полосы.
+    assert lane_mod.baseline_verdict.__globals__["gate"] is lane_mod.gate
+
+
+def test_run_is_green_when_every_failure_is_a_baseline_entry(harness: Harness):
+    """Все падения известны — код 0, но долг назван поимённо.
+
+    Это и есть причина правки: полоса, не знающая baseline, красила бы каждый
+    прогон, пока в списке есть хоть одна запись. Молчать о долге при этом
+    нельзя — скрытый долг перестают сокращать, поэтому узлы обязаны быть и в
+    receipt, и в печатной расписке.
+    """
+    harness.write_module("test_debt.py", SOURCE_DEBT)
+    nodes = debt_nodes(harness)
+    harness.write_baseline(*nodes)
+
+    done = harness.run(per_test=10, wall=40)
+
+    assert done.returncode == lane_mod.EXIT_OK, done.stdout + done.stderr
+    receipt = harness.receipt()
+    assert receipt["exit_code"] == 0
+    # Прогон не притворяется чистым: pytest честно вернул 1, а падения
+    # посчитаны. Расхождение кодов объясняют поля §9, и только они.
+    assert receipt["pytest_exit_code"] == 1
+    assert receipt["failed"] == 2
+    assert receipt["report_status"] == "ok"
+    assert receipt["baseline_status"] == lane_mod.BASELINE_APPLIED
+    assert receipt["baseline_entries"] == 2
+    assert receipt["known_failures"] == sorted(nodes)
+    assert receipt["new_failures"] == []
+    for node in nodes:
+        assert node in done.stdout, done.stdout
+    # Граница ответственности проговорена там, где её прочитает дежурный.
+    assert "гейт" in (receipt["note"] or "").lower()
+
+
+def test_a_fresh_failure_blocks_and_is_named(harness: Harness):
+    """Новое падение красит прогон и названо в расписке поимённо.
+
+    Запись baseline, принадлежащая другому узлу, скидки не даёт: сравнение
+    идёт по конкретным node ID, а не по числу падений.
+    """
+    harness.write_module("test_regress.py", SOURCE_REGRESSION)
+    harness.write_baseline(harness.baseline_node("test_debt.py", "test_known_debt"))
+
+    done = harness.run(per_test=10, wall=40)
+
+    assert done.returncode == lane_mod.EXIT_TESTS_FAILED, done.stdout + done.stderr
+    fresh = harness.baseline_node("test_regress.py", "test_fresh_regression")
+    receipt = harness.receipt()
+    assert receipt["known_failures"] == []
+    assert receipt["new_failures"] == [fresh]
+    assert fresh in done.stdout, done.stdout
+    assert "НОВЫЕ" in done.stdout
+
+
+def test_mixed_run_separates_known_debt_from_the_new_failure(harness: Harness):
+    """Смешанный случай: долг остаётся долгом, регрессия красит прогон.
+
+    Проверяется именно РАЗДЕЛЕНИЕ. Свести оба множества в одно «упало трое»
+    значило бы вернуть исходную проблему с другой стороны: дежурный опять не
+    видит, что из этого новое.
+    """
+    harness.write_module("test_debt.py", SOURCE_DEBT)
+    harness.write_module("test_regress.py", SOURCE_REGRESSION)
+    known = debt_nodes(harness)
+    harness.write_baseline(*known)
+
+    done = harness.run(per_test=10, wall=40)
+
+    assert done.returncode == lane_mod.EXIT_TESTS_FAILED, done.stdout + done.stderr
+    fresh = harness.baseline_node("test_regress.py", "test_fresh_regression")
+    receipt = harness.receipt()
+    assert receipt["failed"] == 3
+    assert receipt["known_failures"] == sorted(known)
+    assert receipt["new_failures"] == [fresh]
+    assert f"+ {fresh}" in done.stdout, done.stdout
+    for node in known:
+        assert f"~ {node}" in done.stdout, done.stdout
+
+
+def test_empty_and_absent_baseline_make_every_failure_new(harness: Harness):
+    """Пустой baseline и его отсутствие обязаны краснеть, но различаться.
+
+    Оба случая означают «известного долга нет», и ни один не даёт скидки. Но
+    «файла нет» и «файл есть, записей ноль» — разные утверждения о проекте, и
+    receipt обязан их различать: первое бывает при неполном чекауте, второе —
+    осознанно пустой долг.
+    """
+    harness.write_module("test_debt.py", SOURCE_DEBT)
+    nodes = sorted(debt_nodes(harness))
+
+    without = harness.run(per_test=10, wall=40)
+    assert without.returncode == lane_mod.EXIT_TESTS_FAILED, without.stdout
+    receipt = harness.receipt()
+    assert receipt["baseline_status"] == lane_mod.BASELINE_ABSENT
+    assert receipt["baseline_entries"] == 0
+    assert receipt["known_failures"] == []
+    assert receipt["new_failures"] == nodes
+
+    harness.write_baseline()
+    empty = harness.run(per_test=10, wall=40)
+    assert empty.returncode == lane_mod.EXIT_TESTS_FAILED, empty.stdout
+    receipt = harness.receipt()
+    assert receipt["baseline_status"] == lane_mod.BASELINE_APPLIED
+    assert receipt["baseline_entries"] == 0
+    assert receipt["known_failures"] == []
+    assert receipt["new_failures"] == nodes
+
+
+def test_baseline_entry_outside_this_lane_selection_breaks_nothing(harness: Harness):
+    """Запись baseline, которой нет в выборке полосы, ничего не меняет.
+
+    Полоса видит только свою выборку, поэтому «записи нет в прогоне» для неё
+    не значит ничего: узел может принадлежать другой полосе, быть отфильтрован
+    маркером или действительно исчезнуть. Различает эти исходы агрегатный
+    гейт (§9), и полоса не имеет права ни падать из-за такой записи, ни
+    объявлять её починенной.
+    """
+    harness.write_module("test_debt.py", SOURCE_DEBT)
+    known = debt_nodes(harness)
+    foreign = "backend.tests.test_other_lane::test_never_selected_here"
+    harness.write_baseline(*known, foreign)
+
+    done = harness.run(per_test=10, wall=40)
+
+    assert done.returncode == lane_mod.EXIT_OK, done.stdout + done.stderr
+    receipt = harness.receipt()
+    assert receipt["baseline_entries"] == 3
+    assert receipt["known_failures"] == sorted(known)
+    assert receipt["new_failures"] == []
+    assert foreign not in done.stdout, "чужая запись не касается этой полосы"
+    assert foreign not in json.dumps(receipt, ensure_ascii=False)
+
+
+def test_corrupted_baseline_never_hides_a_failure(harness: Harness):
+    """Baseline, который врёт о себе, лишает полосу права на скидку.
+
+    Заголовок `# Кол-во: N` — самопроверка эталона. Если он разошёлся со
+    списком, неизвестно, по какому именно списку идёт сравнение, и «падение
+    известно» становится непроверяемым утверждением. Отказ читается закрыто:
+    прогон краснеет, а причина пишется в receipt.
+    """
+    harness.write_module("test_debt.py", SOURCE_DEBT)
+    (harness.root / "scripts" / "ci_known_failures.txt").write_text(
+        "# Кол-во: 7\n\n" + "\n".join(debt_nodes(harness)) + "\n", encoding="utf-8"
+    )
+
+    done = harness.run(per_test=10, wall=40)
+
+    assert done.returncode == lane_mod.EXIT_TESTS_FAILED, done.stdout + done.stderr
+    receipt = harness.receipt()
+    assert receipt["baseline_status"] == lane_mod.BASELINE_UNREADABLE
+    assert receipt["known_failures"] is None, "не сравнивали — не список, а null"
+    assert receipt["new_failures"] is None
+    assert "baseline" in (receipt["note"] or "").lower()
+
+
+def test_baseline_does_not_rescue_a_timed_out_run(harness: Harness):
+    """Зависание остаётся зависанием, даже если узел записан в baseline.
+
+    Таймаут — не падение теста, а непригодный прогон: остальные узлы после
+    снятия процесса не выполнялись вовсе. Скидка по baseline здесь означала бы
+    зелёный CI на deadlock — ровно то, что §7 запрещает.
+    """
+    harness.write_module("test_hang.py", SOURCE_HANG)
+    harness.write_baseline(harness.baseline_node("test_hang.py", "test_hangs_forever"))
+
+    done = harness.run(per_test=3, wall=40)
+
+    assert done.returncode == lane_mod.EXIT_LANE_TIMEOUT, done.stdout + done.stderr
+    receipt = harness.receipt()
+    assert receipt["baseline_status"] == lane_mod.BASELINE_NOT_APPLIED
+    assert receipt["known_failures"] is None
+    assert receipt["new_failures"] is None
+    assert receipt["timed_out_node"]
+
+
+def test_baseline_does_not_rescue_an_empty_selection(harness: Harness):
+    """Пустая выборка (код 5) остаётся красной при любом baseline.
+
+    Такой прогон ничего не доказал: доказывать было нечего. Сравнивать его с
+    известным долгом бессмысленно, и статус говорит об этом прямо.
+    """
+    harness.write_module("test_debt.py", SOURCE_DEBT)
+    harness.write_baseline(*debt_nodes(harness))
+
+    done = harness.run("-m", "chaos", per_test=10, wall=40)
+
+    assert done.returncode == lane_mod.EXIT_NO_TESTS, done.stdout + done.stderr
+    receipt = harness.receipt()
+    assert receipt["baseline_status"] == lane_mod.BASELINE_NOT_APPLIED
+    assert receipt["known_failures"] is None
+    assert receipt["new_failures"] is None
+
+
+def test_baseline_is_not_consulted_when_probe_stops_the_lane(harness: Harness):
+    """Отказ probe (код 2) не превращается в разговор о падениях.
+
+    Тестов не было вовсе, поэтому и известных падений быть не может. Пустой
+    список тут врал бы: он читается как «сравнили и ничего не нашли».
+    """
+    harness.write_module("test_debt.py", SOURCE_DEBT)
+    harness.write_baseline(*debt_nodes(harness))
+    write_probe_stub(harness, exit_code=1)
+
+    done = harness.run(per_test=10, wall=40, skip_probe=False)
+
+    assert done.returncode == lane_mod.EXIT_SETUP_FAILURE, done.stdout + done.stderr
+    receipt = harness.receipt()
+    assert receipt["baseline_status"] == lane_mod.BASELINE_NOT_APPLIED
+    assert receipt["known_failures"] is None
+    assert receipt["new_failures"] is None
+
+
+def test_section_8_receipt_fields_survive_the_baseline_addition(harness: Harness):
+    """Поля §9 — добавление к составу receipt, а не замена.
+
+    §8 задаёт МИНИМУМ полей; добавлять к нему можно, отнимать нельзя. Тест
+    сверяется со списком из документа, поэтому потеря любого обязательного
+    поля ради новых будет поймана здесь же.
+    """
+    harness.write_module("test_debt.py", SOURCE_DEBT)
+    harness.write_baseline(*debt_nodes(harness))
+
+    done = harness.run(per_test=10, wall=40)
+    assert done.returncode == lane_mod.EXIT_OK, done.stdout + done.stderr
+
+    receipt = harness.receipt()
+    missing = [field for field in contract_receipt_fields() if field not in receipt]
+    assert not missing, f"в receipt нет полей §8: {missing}"
+    added = {"baseline_status", "baseline_entries", "known_failures", "new_failures"}
+    assert added <= set(receipt), sorted(added - set(receipt))

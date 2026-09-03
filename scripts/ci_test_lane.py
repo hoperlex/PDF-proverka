@@ -23,6 +23,20 @@
 «записать testcase failure типа timeout в свежий JUnit» выполняется именно
 тогда, когда оно и нужно, — на зависании.
 
+§9 Известный долг отделён от регрессии. Полоса сравнивает СВОИ падения с
+   `scripts/ci_known_failures.txt` и возвращает 1 только при НОВЫХ падениях.
+   Правило сравнения не своё: и baseline, и форма node ID берутся импортом из
+   `scripts/ci_regression_gate.py` — одно правило на проект. Если все падения
+   известны, код 0, но факт виден: `known_failures` и `new_failures` в receipt
+   и в печатной расписке называют узлы поимённо.
+
+   ГРАНИЦА: полоса НЕ проверяет записи baseline, которые ИСЧЕЗЛИ из прогона
+   или ушли в `skip`. Она видит только собственную выборку (`-m <lane>`,
+   `--paths`) и не может отличить «запись пропала» от «запись принадлежит
+   другой полосе». Эти три исхода (`passed` / `skipped` / `vanished`)
+   различает агрегатный гейт `ci_regression_gate.py`, гоняющий набор целиком.
+   Полоса ему не замена и не отменяет job `regression-gate`.
+
 Использование:
     python scripts/ci_test_lane.py --lane unit
     python scripts/ci_test_lane.py --lane network --skip-probe
@@ -55,6 +69,14 @@ sys.path.insert(0, str(SCRIPTS))
 from ci_redaction import safe_cmdline  # noqa: E402
 from ci_timeout_plugin import EXIT_TIMEOUT  # noqa: E402
 
+# Правило «что считается известным падением» — ОДНО на проект и живёт в гейте.
+# Импорт, а не копия: второй парсер baseline и вторая нормализация node ID
+# разошлись бы молча, и «известное падение» стало бы значить в полосе и в
+# гейте разное. Отсюда берутся `load_baseline()` (чтение и самопроверка
+# baseline), `collect_outcomes()` (разбор JUnit) и `junit_node_id()` (форма
+# node ID).
+import ci_regression_gate as gate  # noqa: E402
+
 CONTRACT_ID = "quality-runtime/v1"
 CONTRACT_VERSION = "1.1.0"
 HARNESS_VERSION = "1.0.0"
@@ -76,7 +98,7 @@ LANES = tuple(LANE_BUDGETS)
 #: Коды возврата раннера. Отделены от pytest'овых, чтобы CI мог различить
 #: «тесты упали» и «прогон непригоден».
 EXIT_OK = 0
-EXIT_TESTS_FAILED = 1
+EXIT_TESTS_FAILED = 1       # есть НОВЫЕ падения сверх baseline (§9)
 EXIT_SETUP_FAILURE = 2      # probe не пропустил lane
 EXIT_LANE_TIMEOUT = 3       # исчерпан per-test или wall бюджет
 EXIT_REPORT_INVALID = 4     # stale/missing/unparseable JUnit
@@ -379,6 +401,94 @@ def inspect_report(path: Path, started_wall: float) -> tuple[str, dict[str, Any]
 
 
 # ---------------------------------------------------------------------------
+# §9: известный долг против новой регрессии
+# ---------------------------------------------------------------------------
+
+#: Статусы сравнения с baseline, публикуемые в receipt.
+BASELINE_APPLIED = "applied"        # baseline прочитан, сравнение выполнено
+BASELINE_ABSENT = "absent"          # файла baseline нет: известного долга нет вовсе
+BASELINE_UNREADABLE = "unreadable"  # baseline или отчёт не поддались разбору
+BASELINE_NOT_APPLIED = "not_applied"  # прогон непригоден, сравнивать нечего
+
+
+def baseline_not_applied(detail: str | None = None) -> dict[str, Any]:
+    """Вердикт «сравнение не выполнялось».
+
+    `known`/`new` здесь именно `None`, а не пустые списки: пустой список
+    означал бы «сравнили и падений не нашли», а тут не сравнивали вовсе.
+    Путать эти два случая нельзя — на непригодном прогоне (таймаут, битый
+    отчёт, пустая выборка, отказ probe) «падений нет» читалось бы как «чисто».
+    """
+    return {
+        "status": BASELINE_NOT_APPLIED,
+        "entries": None,
+        "known": None,
+        "new": None,
+        "detail": detail,
+    }
+
+
+def baseline_verdict(junit: Path) -> dict[str, Any]:
+    """Разделить падения ЭТОГО прогона на известный долг и новые.
+
+    Правило сравнения целиком чужое и берётся из `ci_regression_gate.py`:
+    `gate.load_baseline()` читает `scripts/ci_known_failures.txt` вместе с его
+    самопроверкой (`# Кол-во: N`), `gate.collect_outcomes()` разбирает JUnit и
+    приводит узлы к форме `gate.junit_node_id()` — ровно к той, в которой
+    записан baseline. Своего парсера здесь нет намеренно: две реализации
+    одного правила расходятся молча.
+
+    ГРАНИЦА ОТВЕТСТВЕННОСТИ. Полоса отвечает на ОДИН вопрос: есть ли среди её
+    падений то, чего нет в baseline. Она НЕ проверяет обратное направление —
+    записи baseline, которые «стали зелёными», ушли в `skip` или исчезли из
+    прогона. Полоса видит только собственную выборку (`-m <lane>`, `--paths`),
+    и отсутствие записи в ней означает лишь «этот узел сюда не попал»: он
+    может принадлежать другой полосе, быть отфильтрован маркером или
+    действительно исчезнуть — различить эти случаи по одной выборке
+    невозможно. Три исхода (`passed` / `skipped` / `vanished`) различает
+    агрегатный гейт, который гоняет набор целиком; §9 контракта требует этого
+    именно от него. Полоса гейту не замена.
+
+    Отказ читается закрыто: если baseline или отчёт не поддались разбору,
+    возвращается `unreadable`, и вызывающий НЕ имеет права ничего скрывать —
+    падения остаются падениями. Скрывать долг по нечитаемому эталону значит
+    выдавать «зелено» за «не проверяли».
+    """
+
+    def _detail(reason: object) -> str:
+        """Причина отказа одной строкой: receipt читают глазами и грепом."""
+        text = " ".join(str(reason or "причина не названа").split())
+        return text if len(text) <= 300 else text[:297] + "…"
+
+    try:
+        entries = gate.load_baseline()
+        failed, _skipped, _seen = gate.collect_outcomes(junit)
+    except SystemExit as exc:
+        # `load_baseline()` отказывает через SystemExit, когда baseline
+        # противоречит собственному заголовку. Для гейта это конец работы, для
+        # полосы — потеря права на сравнение, но не повод бросать прогон:
+        # результат теста уже получен и обязан быть опубликован.
+        return {
+            **baseline_not_applied(_detail(exc.code)),
+            "status": BASELINE_UNREADABLE,
+        }
+    except (ET.ParseError, OSError, ValueError) as exc:
+        return {
+            **baseline_not_applied(_detail(f"{type(exc).__name__}: {exc}")),
+            "status": BASELINE_UNREADABLE,
+        }
+    return {
+        "status": BASELINE_APPLIED if gate.BASELINE.exists() else BASELINE_ABSENT,
+        "entries": len(entries),
+        # Поимённо, а не счётчиком: расписка обязана называть и известные
+        # падения тоже. Скрытый долг перестаёт сокращаться.
+        "known": sorted(failed & entries),
+        "new": sorted(failed - entries),
+        "detail": None,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Preflight и запуск
 # ---------------------------------------------------------------------------
 
@@ -499,6 +609,9 @@ def run_lane(args: argparse.Namespace) -> dict[str, Any]:
                 exit_code=EXIT_SETUP_FAILURE, command="(probe)", per_test=per_test,
                 wall=wall, report_status="missing", counts={}, timed_out=None,
                 note="probe не пропустил lane — pytest не запускался (§6, правило 1)",
+                baseline=baseline_not_applied(
+                    "probe не пропустил lane — падений нет, сравнивать нечего"
+                ),
             )
 
     env = dict(os.environ)
@@ -598,6 +711,34 @@ def run_lane(args: argparse.Namespace) -> dict[str, Any]:
     else:
         final = EXIT_REPORT_INVALID
 
+    # §9. Пригодный прогон, в котором упали тесты, ещё не обязан быть красным:
+    # красным его делают только НОВЫЕ падения. Сравнение применяется ТОЛЬКО к
+    # пригодному прогону — отчёт `ok` и pytest, закончивший 0 или 1. Коды 2
+    # (setup failure), 3 (бюджет §7), 4 (негодный отчёт) и 5 (пустая выборка)
+    # остаются нетронутыми: из такого прогона нельзя делать выводов вообще, и
+    # baseline его не спасает.
+    if final in (EXIT_OK, EXIT_TESTS_FAILED):
+        verdict = baseline_verdict(junit)
+    else:
+        verdict = baseline_not_applied(
+            f"прогон непригоден для сравнения (код {final}): "
+            "известный долг от регрессии здесь не отличить"
+        )
+
+    # Скрывать падение можно только когда КАЖДОЕ из них — запись baseline и
+    # таких записей хотя бы одна. Условие «нет новых» само по себе слабее:
+    # оно же выполняется, когда падений не нашлось вовсе, а pytest вернул 1 —
+    # то есть когда отчёт и код возврата противоречат друг другу. В этом
+    # случае прогон остаётся красным: расхождение разбирают, а не гасят.
+    masked = bool(
+        final == EXIT_TESTS_FAILED
+        and verdict["status"] == BASELINE_APPLIED
+        and verdict["known"]
+        and not verdict["new"]
+    )
+    if masked:
+        final = EXIT_OK
+
     note = None
     if timed_out_by_wall:
         note = f"исчерпан wall-clock бюджет lane {wall:g} s"
@@ -613,6 +754,25 @@ def run_lane(args: argparse.Namespace) -> dict[str, Any]:
             f"pytest завершился кодом {exit_code}: прогон оборван и непригоден "
             "для сравнения с baseline (пригодны только 0 и 1)"
         )
+    elif verdict["status"] == BASELINE_UNREADABLE:
+        note = (
+            f"baseline не прочитан ({verdict['detail']}), поэтому известный долг "
+            "от регрессии не отделён: падения НЕ скрываются, код возврата прежний. "
+            "Починить baseline — scripts/ci_known_failures.txt"
+        )
+    elif masked:
+        note = (
+            f"падения только известные: {len(verdict['known'])} шт. из baseline "
+            f"({verdict['entries']} записей), новых нет — код 0. Узлы перечислены "
+            "в known_failures. Записи baseline, исчезнувшие из прогона или ушедшие "
+            "в skip, полоса не проверяет: её выборка неполная, это работа "
+            "агрегатного гейта ci_regression_gate.py (§9)"
+        )
+    elif verdict["new"]:
+        note = (
+            f"новых падений сверх baseline: {len(verdict['new'])} "
+            f"(известных: {len(verdict['known'])}) — перечислены в new_failures"
+        )
 
     return _finish(
         lane=lane, junit=junit, events=events, receipt_path=receipt_path,
@@ -627,6 +787,7 @@ def run_lane(args: argparse.Namespace) -> dict[str, Any]:
         timed_out=(str(timeout_info.get("nodeid")) if timeout_info else None),
         note=note, pytest_exit_code=exit_code,
         deselected=deselected_count(event_list),
+        baseline=verdict,
     )
 
 
@@ -787,10 +948,18 @@ def _finish(
     exit_code: int, command: str, per_test: float, wall: float,
     report_status: str, counts: dict[str, Any], timed_out: str | None,
     note: str | None = None, pytest_exit_code: int | None = None,
-    deselected: int | None = None,
+    deselected: int | None = None, baseline: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Собрать §8 receipt. Поля перечислены контрактом дословно."""
+    """Собрать §8 receipt. Поля перечислены контрактом дословно.
+
+    Поля §9 (`baseline_status`, `baseline_entries`, `known_failures`,
+    `new_failures`) — ДОБАВЛЕНИЕ к обязательному составу, а не замена: §8
+    задаёт минимум полей, и ни одно из них здесь не исчезло и не поменяло
+    смысла. Без них код возврата 0 при непустом `failed` было бы нечем
+    объяснить, а известный долг стал бы невидимым.
+    """
     env = probe.get("environment") or {}
+    verdict = baseline or baseline_not_applied()
     receipt = {
         "contract_id": CONTRACT_ID,
         "contract_version": CONTRACT_VERSION,
@@ -816,6 +985,15 @@ def _finish(
         # оборвалась), а не ноль — путать эти два случая нельзя.
         "deselected": deselected,
         "timed_out_node": timed_out,
+        # §9. `pytest_exit_code` выше и `exit_code` могут теперь расходиться:
+        # pytest вернул 1, полоса — 0. Расхождение объясняется здесь и только
+        # здесь, поэтому поля обязаны ехать вместе с кодом.
+        "baseline_status": verdict["status"],
+        "baseline_entries": verdict["entries"],
+        # Поимённо. `null` (не сравнивали) и `[]` (сравнили, пусто) — разные
+        # утверждения, и сводить их к одному нельзя.
+        "known_failures": verdict["known"],
+        "new_failures": verdict["new"],
         "per_test_timeout_seconds": per_test,
         "lane_wall_budget_seconds": wall,
         "os_image": env.get("os_image"),
@@ -863,6 +1041,17 @@ def render(receipt: dict[str, Any]) -> str:
     ]
     if receipt.get("timed_out_node"):
         lines.append(f"  ТАЙМАУТ: {receipt['timed_out_node']}")
+    # §9: и известные, и новые падения называются поимённо. Известные — потому
+    # что молчаливо погашенный долг перестаёт сокращаться; новые — потому что
+    # это и есть причина красного кода.
+    known = receipt.get("known_failures") or []
+    new = receipt.get("new_failures") or []
+    if known:
+        lines.append(f"  известные падения baseline ({len(known)}) — не блокируют:")
+        lines += [f"    ~ {node}" for node in known]
+    if new:
+        lines.append(f"  НОВЫЕ падения ({len(new)}) — блокируют:")
+        lines += [f"    + {node}" for node in new]
     if receipt.get("note"):
         lines.append(f"  {receipt['note']}")
     return "\n".join(lines)

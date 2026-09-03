@@ -58,10 +58,17 @@ lane-маркеров §5, `ci.yml` переписан под пять поло�
 `constraints-qr-v1.txt` (materialized lock §4.1; имя — по глобу `constraints*.txt`
 из ADR-0006).
 
-**Переиздание строк от 2026-09-02 (волна 0.0.03).** Пин `ci.yml` переиздан семь раз.
+**Переиздание строк от 2026-09-02 (волна 0.0.03).** Пин `ci.yml` переиздан восемь раз.
 Первый раз — перевод шага provisioning на source-agnostic fail-closed wiring.
 Второй — снятие overclaim, найденного владельцем при ревью: шапка утверждала, что
 полоса `network` детерминирована, тогда как в ней остаётся неразобранный узел NB-1.
+Восьмой — полосы стали baseline-aware, и маскировка кода 1 снята уже по существу:
+`ci_test_lane.py` сравнивает свои падения с `ci_known_failures.txt` ТЕМ ЖЕ кодом,
+которым это делает регресс-гейт, и краснеет только на новом падении. Вместе с ним
+переиздан пин `scripts/ci_regression_gate.py`: из него вынесена наружу
+`junit_node_id()` и `collect_outcomes()` получила необязательный аргумент пути к
+отчёту. Поведение самого гейта не изменено — умолчания прежние; правило сравнения
+осталось ОДНО на проект, второй реализации не появилось.
 Седьмой — provisioning добавлен в job `chaos` (в enforce norm_artifact обязателен
 во всех пяти профилях, а шага там не было — перевод в enforce дал бы тихую
 потерю полосы), и снято отдельное исключение по полосе `network`: прогон под
@@ -124,8 +131,8 @@ setup фикстуры. Правило §3.3 «прогон без выбран�
 | `frontend/package-lock.json` | `c679604b25329bdbcf89f80017011a0c51c07e770e326865b093f63633097040` |
 | `frontend/package.json` | `65749f5180ea6fd1e2d99f35c103365f9188f7e2cabaef3db53e8f051eef2075` |
 | `frontend/tsconfig.distributed.json` | `a3d3fb949642421af5563073f04658160534b04e78c3ebad895d4454eb487863` |
-| `.github/workflows/ci.yml` | `6a88c86b2b64a3c70ea7032ac5f531c976e721a31f2792a954831dac59ef2568` |
-| `scripts/ci_regression_gate.py` | `42fc15209950558781481aaa25d84d6f11a1333acb78eb22644b3a8b50f6f529` |
+| `.github/workflows/ci.yml` | `5470d91bd47570ce1eac70f4805ef70c6d55c24cc2f186b974a86fd114d2fb7c` |
+| `scripts/ci_regression_gate.py` | `673644985e4e075adb5688acd6c05d5e9b8adecbdad001842dd91b5f8285bab4` |
 | `scripts/ci_known_failures.txt` | `1e71d9da145b727697af02cdca720ee0f54c71527a46cafa212909d8126da45b` |
 | `tests/conftest.py` | `395646bd3f738f1da345bb75f2627844f8e27d447991c04ce305b97d13594706` |
 | `backend/tests/conftest.py` | `8df70ba9cc4b1070574148b1b8cbd44cabe98c8316039c9f67f360858aac67e8` |
