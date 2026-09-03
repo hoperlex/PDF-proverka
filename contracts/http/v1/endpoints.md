@@ -6,7 +6,7 @@
 возвращают голый `dict`. Формы ответов закрепляются отдельно, слоем 1б
 (см. `docs/data_storage_modernization/00a_behaviour_freeze.md`).
 
-Всего операций: **265**.
+Всего операций: **270**.
 
 | Метод | Путь | Параметры | Теги |
 | --- | --- | --- | --- |
@@ -217,6 +217,10 @@
 | `POST` | `/api/stage-comparison/sessions/{session_id}/document-pairing/suggest` | path:session_id! | stage-comparison |
 | `POST` | `/api/stage-comparison/sessions/{session_id}/pairs` | body!, path:session_id! | stage-comparison |
 | `GET` | `/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}` | path:pair_id!, path:session_id! | stage-comparison |
+| `GET` | `/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/graphic-comparison` | path:pair_id!, path:session_id! | stage-comparison |
+| `POST` | `/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/graphic-comparison` | body!, path:pair_id!, path:session_id! | stage-comparison |
+| `GET` | `/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/high-level-project-changes` | path:pair_id!, path:session_id! | stage-comparison |
+| `POST` | `/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/high-level-project-changes` | path:pair_id!, path:session_id! | stage-comparison |
 | `GET` | `/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/page-info` | path:pair_id!, path:session_id!, query:page?, query:side! | stage-comparison |
 | `GET` | `/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/page-preview` | path:pair_id!, path:session_id!, query:page?, query:side!, query:width? | stage-comparison |
 | `GET` | `/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/page-svg` | path:pair_id!, path:session_id!, query:page?, query:side! | stage-comparison |
@@ -235,6 +239,7 @@
 | `POST` | `/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/text-comparison` | path:pair_id!, path:session_id! | stage-comparison |
 | `GET` | `/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/text-differences` | path:pair_id!, path:session_id! | stage-comparison |
 | `POST` | `/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/text-differences` | path:pair_id!, path:session_id! | stage-comparison |
+| `GET` | `/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/text-entities` | path:pair_id!, path:session_id! | stage-comparison |
 | `GET` | `/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/text-exclusions` | path:pair_id!, path:session_id! | stage-comparison |
 | `GET` | `/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/text-final-comparison` | path:pair_id!, path:session_id! | stage-comparison |
 | `GET` | `/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/text-search` | path:pair_id!, path:session_id!, query:query!, query:side! | stage-comparison |

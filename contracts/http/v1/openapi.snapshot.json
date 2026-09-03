@@ -768,6 +768,28 @@
         "title": "FlatVersionFromProjectRequest",
         "type": "object"
       },
+      "GraphicComparisonRequest": {
+        "additionalProperties": false,
+        "description": "References to upstream-prepared blocks; no inline bbox override exists.",
+        "properties": {
+          "left_block_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Left Block Ids",
+            "type": "array"
+          },
+          "right_block_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Right Block Ids",
+            "type": "array"
+          }
+        },
+        "title": "GraphicComparisonRequest",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -11138,6 +11160,200 @@
         ]
       }
     },
+    "/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/graphic-comparison": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pair_id",
+            "required": true,
+            "schema": {
+              "title": "Pair Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "tags": [
+          "stage-comparison"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pair_id",
+            "required": true,
+            "schema": {
+              "title": "Pair Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphicComparisonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "tags": [
+          "stage-comparison"
+        ]
+      }
+    },
+    "/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/high-level-project-changes": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pair_id",
+            "required": true,
+            "schema": {
+              "title": "Pair Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "tags": [
+          "stage-comparison"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pair_id",
+            "required": true,
+            "schema": {
+              "title": "Pair Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "tags": [
+          "stage-comparison"
+        ]
+      }
+    },
     "/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/page-info": {
       "get": {
         "parameters": [
@@ -12158,6 +12374,53 @@
         ]
       }
     },
+    "/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/text-entities": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pair_id",
+            "required": true,
+            "schema": {
+              "title": "Pair Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "tags": [
+          "stage-comparison"
+        ]
+      }
+    },
     "/api/stage-comparison/sessions/{session_id}/pairs/{pair_id}/text-exclusions": {
       "get": {
         "parameters": [
@@ -12852,7 +13115,7 @@
             "name": "weekday",
             "required": false,
             "schema": {
-              "default": 0,
+              "default": 6,
               "title": "Weekday",
               "type": "integer"
             }
@@ -12862,7 +13125,7 @@
             "name": "hour_utc",
             "required": false,
             "schema": {
-              "default": 14,
+              "default": 21,
               "title": "Hour Utc",
               "type": "integer"
             }
