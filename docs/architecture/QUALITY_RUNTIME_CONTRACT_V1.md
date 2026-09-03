@@ -58,10 +58,14 @@ lane-маркеров §5, `ci.yml` переписан под пять поло�
 `constraints-qr-v1.txt` (materialized lock §4.1; имя — по глобу `constraints*.txt`
 из ADR-0006).
 
-**Переиздание строк от 2026-09-02 (волна 0.0.03).** Пин `ci.yml` переиздан восемь раз.
+**Переиздание строк от 2026-09-02 (волна 0.0.03).** Пин `ci.yml` переиздан девять раз.
 Первый раз — перевод шага provisioning на source-agnostic fail-closed wiring.
 Второй — снятие overclaim, найденного владельцем при ревью: шапка утверждала, что
 полоса `network` детерминирована, тогда как в ней остаётся неразобранный узел NB-1.
+Девятый — исправлены устаревшие комментарии у job `regression-gate` (фаза C, шаг 4):
+шапка job'а утверждала, что полосы не сравнивают прогон с baseline, тогда как они
+это делают со вчерашнего дня. Заодно из комментария убран счётчик записей baseline —
+он устаревает на каждом коммите, актуальный список живёт в самом файле baseline.
 Восьмой — полосы стали baseline-aware, и маскировка кода 1 снята уже по существу:
 `ci_test_lane.py` сравнивает свои падения с `ci_known_failures.txt` ТЕМ ЖЕ кодом,
 которым это делает регресс-гейт, и краснеет только на новом падении. Вместе с ним
@@ -131,7 +135,7 @@ setup фикстуры. Правило §3.3 «прогон без выбран�
 | `frontend/package-lock.json` | `c679604b25329bdbcf89f80017011a0c51c07e770e326865b093f63633097040` |
 | `frontend/package.json` | `65749f5180ea6fd1e2d99f35c103365f9188f7e2cabaef3db53e8f051eef2075` |
 | `frontend/tsconfig.distributed.json` | `a3d3fb949642421af5563073f04658160534b04e78c3ebad895d4454eb487863` |
-| `.github/workflows/ci.yml` | `5470d91bd47570ce1eac70f4805ef70c6d55c24cc2f186b974a86fd114d2fb7c` |
+| `.github/workflows/ci.yml` | `2c2f532b32fba1a3999943326092fe42cdb57dd59d8601b8d3e1a47fc7f54506` |
 | `scripts/ci_regression_gate.py` | `673644985e4e075adb5688acd6c05d5e9b8adecbdad001842dd91b5f8285bab4` |
 | `scripts/ci_known_failures.txt` | `1e71d9da145b727697af02cdca720ee0f54c71527a46cafa212909d8126da45b` |
 | `tests/conftest.py` | `395646bd3f738f1da345bb75f2627844f8e27d447991c04ce305b97d13594706` |
