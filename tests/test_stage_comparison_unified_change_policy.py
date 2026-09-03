@@ -5,6 +5,8 @@ import importlib
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from backend.app.services.stage_comparison.unified_change_policy import (
     CONFIDENCE_BASES,
     CONFIDENCE_LEVELS,

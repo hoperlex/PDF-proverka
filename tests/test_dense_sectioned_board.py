@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from backend.app.pipeline.stages.block_grounding.dense_sectioned_board import (
     PROFILE_ID,
     build_dense_sectioned_board_graph,

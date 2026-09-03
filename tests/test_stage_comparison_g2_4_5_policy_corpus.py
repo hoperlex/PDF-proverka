@@ -8,6 +8,8 @@ from typing import Any
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from backend.app.services.stage_comparison.unified_change_policy import (
     check_cardinality_safety,
     check_source_validity,

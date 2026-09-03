@@ -9,6 +9,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from backend.app.pipeline.stages.block_analysis import gemma_findings_only as gfo
 
 

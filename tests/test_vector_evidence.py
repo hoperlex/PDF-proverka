@@ -5,6 +5,8 @@ import json
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from backend.app.pipeline.stages.block_grounding.singleline_graph_geometry import (
     _result_blocks_vector_index,
 )

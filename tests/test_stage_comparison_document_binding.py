@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from backend.app.services.stage_comparison.unified_entity_bridge import (
     build_graphic_coverage,
     build_scope_join,

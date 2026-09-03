@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from backend.app.pipeline.stages.block_grounding.system_graph import (
     SCHEMA_VERSION as SYSTEM_GRAPH_SCHEMA_VERSION,
     make_node,

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from backend.app.services.stage_comparison import content_sheet_link_repair as content
 from backend.app.services.stage_comparison import sheet_link_repair
 from backend.app.services.stage_comparison.sheet_content_fingerprint import (

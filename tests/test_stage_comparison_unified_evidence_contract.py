@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from backend.app.services.stage_comparison import high_level_project_changes as high
 from backend.app.services.stage_comparison.graphic_comparison import (
     adapt_system_graph_comparison_to_ledger,

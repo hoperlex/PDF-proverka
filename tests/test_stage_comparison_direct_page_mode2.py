@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from backend.app.services.stage_comparison.graphic_comparison import (
     DirectPageComparisonError,
     compare_selected_pages,

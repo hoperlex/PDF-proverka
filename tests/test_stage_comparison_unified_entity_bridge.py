@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from backend.app.services.stage_comparison import high_level_project_changes as high
 from backend.app.services.stage_comparison.unified_entity_bridge.entity_bridge import (
     BRIDGE_VERSION,

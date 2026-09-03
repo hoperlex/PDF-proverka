@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from backend.app.services.stage_comparison.graphic_comparison.confidence_policy import (
     MODE2_CONFIDENCE_POLICY_V1,
 )
