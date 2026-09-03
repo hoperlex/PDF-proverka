@@ -4,7 +4,7 @@
   "wave": "0.0.02",
   "captured_at": "2026-09-01",
   "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6 по docs/architecture. Эта расписка фиксирует выполнение задачи, а не прохождение чекпоинта.",
-  "revision": "7 (2026-09-02, исправления по третьему кругу ревью)",
+  "revision": "8 (2026-09-03, закрытие задачи)",
   "scope": "Собрать подготовленные результаты ENG/WEB/OPS в воспроизводимый clean-room CI и вынести вердикт по переводу регресс-гейта из observe в enforce.",
   "step_1_architectural_admission": {
     "adr_accepted": [
@@ -518,11 +518,11 @@
     }
   },
   "status_accepted_from_review": {
-    "stage": "clean-room приёмка среза 0.0.03 в режиме observe-first",
+    "stage": "W0-INT-01 закрыта; Gate G0 не пройден",
     "is_it_g0": false,
-    "w0_int_01_closed": false,
+    "w0_int_01_closed": true,
     "next_stage_authorized": false,
-    "why": "Ни один blocker не закрыт полностью. По полосе network закрыт обязательный набор из трёх тестов, но остаётся узел NB-1, поэтому полоса не может стать блокирующей. Источник norm-корпуса владельцем не назван, пакет A остановлен по stop condition §3, enforce не включён. §3.3 не считает прогон без выбранного корпуса G0 receipt."
+    "why": "Четыре условия roadmap §6 для этой задачи выполнены и проверены машинной сверкой по артефактам приёмки: пригодный JUnit у всех пяти полос с полной provenance, probe зелёный, frontend gate зелёный, baseline ПУСТ. Общий вердикт Gate G0 выносится отдельно и по всем условиям §6 roadmap — он не пройден."
   },
   "working_tree_state": {
     "tracked": "чисто",
@@ -1505,6 +1505,123 @@
         "мёртвые правила .versions-panel* в frontend/static/css/styles.css от коммита 91f48104",
         "докстринг merge_llm_decisions перечисляет инвариант «LLM reject can downgrade accept» умалчивая про taxonomy-квалификацию — вероятный источник красного с рождения теста"
       ]
+    },
+    "closure_2026_09_03": {
+      "commit": "b99310a47709e59daf6b5622165359bd7cbf27a6",
+      "basis": "условие Gate G0 для этой задачи в roadmap §6: «W0-INT-01 закрыта: clean-room regression завершается с пригодным JUnit, dependency/TestClient probe зелёный, frontend gate не имеет необъяснённых падений, а known-failure baseline не является вечным allowlist». Корпус и enforce в условии не упомянуты; требование enforce, стоявшее в §6 плана волны, снято решением владельца 2026-09-03 и перенесено в таблицу долга.",
+      "four_conditions_checked_by_machine": {
+        "1_clean_room_regression_valid_junit": true,
+        "2_probe_green": true,
+        "3_frontend_gate": true,
+        "4_baseline_not_eternal_allowlist": true,
+        "baseline_entries": 0
+      },
+      "lanes": {
+        "unit": {
+          "exit_code": 0,
+          "report_status": "ok",
+          "selected": 2659,
+          "passed": 2525,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 134,
+          "probe_mode": "ci",
+          "probe_exit_code": 0,
+          "source_commit": "b99310a47709e59daf6b5622165359bd7cbf27a6",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "baseline_status": "applied",
+          "new_failures": [],
+          "known_failures": [],
+          "junit_bytes": 424845
+        },
+        "contract": {
+          "exit_code": 0,
+          "report_status": "ok",
+          "selected": 260,
+          "passed": 259,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 1,
+          "probe_mode": "ci",
+          "probe_exit_code": 0,
+          "source_commit": "b99310a47709e59daf6b5622165359bd7cbf27a6",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "baseline_status": "applied",
+          "new_failures": [],
+          "known_failures": [],
+          "junit_bytes": 33833
+        },
+        "integration": {
+          "exit_code": 0,
+          "report_status": "ok",
+          "selected": 3734,
+          "passed": 3695,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 39,
+          "probe_mode": "ci",
+          "probe_exit_code": 0,
+          "source_commit": "b99310a47709e59daf6b5622165359bd7cbf27a6",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "baseline_status": "applied",
+          "new_failures": [],
+          "known_failures": [],
+          "junit_bytes": 525348
+        },
+        "network": {
+          "exit_code": 0,
+          "report_status": "ok",
+          "selected": 915,
+          "passed": 909,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 6,
+          "probe_mode": "ci",
+          "probe_exit_code": 0,
+          "source_commit": "b99310a47709e59daf6b5622165359bd7cbf27a6",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "baseline_status": "applied",
+          "new_failures": [],
+          "known_failures": [],
+          "junit_bytes": 124166
+        },
+        "chaos": {
+          "exit_code": 0,
+          "report_status": "ok",
+          "selected": 7,
+          "passed": 6,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 1,
+          "probe_mode": "ci",
+          "probe_exit_code": 0,
+          "source_commit": "b99310a47709e59daf6b5622165359bd7cbf27a6",
+          "source_commit_origin": "QR_SOURCE_COMMIT",
+          "baseline_status": "applied",
+          "new_failures": [],
+          "known_failures": [],
+          "junit_bytes": 1491
+        }
+      },
+      "aggregate_gate": {
+        "failures_now": 0,
+        "baseline": 0,
+        "new": 0,
+        "became_green": 0,
+        "went_to_skip": 0,
+        "vanished": 0,
+        "run_summary": "7388 passed, 177 skipped, 6 deselected, 9 warnings in 354.26s"
+      },
+      "frontend_gate": "npm ci/test/lint/typecheck/build — все rc=0 на Node 22.23.1",
+      "orphan_processes": 0,
+      "primary_evidence": "docs/architecture/receipts/evidence/0.0.03-closure-manifest.json",
+      "what_closure_does_not_mean": [
+        "НЕ прохождение Gate G0: шесть обязательных ADR (0007–0012) не написаны, ADR-0013/0014/0017 не приняты, EXC-0001 активно, половина условий принадлежит владельцам других задач. См. G0_READINESS_DELTA.md.",
+        "НЕ разрешение начинать W1: массовая генерация кода не начинается до отдельного положительного вердикта G0.",
+        "НЕ проверка на настоящем раннере: действующий workflow ни разу не выполнялся на ubuntu-24.04, потому что публикация отклонена — у токена нет scope `workflow`.",
+        "НЕ подключение корпуса норм: он остаётся долгом владельца программы, и профиль полос остаётся --ci, а не --enforce."
+      ],
+      "last_defect_found_and_closed": "гейт первой попытки закрытия поймал восьмой недетерминированный узел волны — test_cpu_pool::test_pin_cores_gives_each_worker_own_core. Механизм проверен по исходнику CPython 3.12 на машине: _idle_worker_semaphore стартует с нуля (process.py:730), _adjust_process_count не создаёт воркера при успешном acquire (:778), а release происходит только при возврате результата (:375). Починен барьером через Manager — участие обоих воркеров стало неизбежным по построению. Закрытие объявлено только после зелёного гейта на свежем прогоне."
     }
   }
 }

@@ -1,0 +1,235 @@
+{
+  "tool": "ci_evidence_bundle",
+  "manifest_version": "1",
+  "label": "приёмка закрытия W0-INT-01 на b99310a47709e59daf6b5622165359bd7cbf27a6, профиль --ci, uid 1001, baseline пуст",
+  "generated_at": "2026-09-03T11:30:31Z",
+  "run_dir": "/home/ciuser/acceptance-b99310a4/reports",
+  "file_count": 31,
+  "total_bytes": 7641652,
+  "tree_digest_rule": "ci_runtime_probe._norm_artifact_digest (путь + содержимое, детерминированный порядок)",
+  "tree_sha256": "cd513e3dd124c70164e4043b9338a92961b87e47789ddb955a6282066d2135b0",
+  "lanes": {
+    "chaos": {
+      "exit_code": 0,
+      "probe_mode": "ci",
+      "report_status": "ok",
+      "selected": 7,
+      "passed": 6,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 1,
+      "source_commit": "b99310a47709e59daf6b5622165359bd7cbf27a6",
+      "source_commit_origin": "QR_SOURCE_COMMIT"
+    },
+    "contract": {
+      "exit_code": 0,
+      "probe_mode": "ci",
+      "report_status": "ok",
+      "selected": 260,
+      "passed": 259,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 1,
+      "source_commit": "b99310a47709e59daf6b5622165359bd7cbf27a6",
+      "source_commit_origin": "QR_SOURCE_COMMIT"
+    },
+    "integration": {
+      "exit_code": 0,
+      "probe_mode": "ci",
+      "report_status": "ok",
+      "selected": 3734,
+      "passed": 3695,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 39,
+      "source_commit": "b99310a47709e59daf6b5622165359bd7cbf27a6",
+      "source_commit_origin": "QR_SOURCE_COMMIT"
+    },
+    "network": {
+      "exit_code": 0,
+      "probe_mode": "ci",
+      "report_status": "ok",
+      "selected": 915,
+      "passed": 909,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 6,
+      "source_commit": "b99310a47709e59daf6b5622165359bd7cbf27a6",
+      "source_commit_origin": "QR_SOURCE_COMMIT"
+    },
+    "unit": {
+      "exit_code": 0,
+      "probe_mode": "ci",
+      "report_status": "ok",
+      "selected": 2659,
+      "passed": 2525,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 134,
+      "source_commit": "b99310a47709e59daf6b5622165359bd7cbf27a6",
+      "source_commit_origin": "QR_SOURCE_COMMIT"
+    }
+  },
+  "files": [
+    {
+      "path": "frontend.build.log",
+      "bytes": 353,
+      "sha256": "fc8b65396b60a8d6557fa3c8664f083dd9c09bf34bdb4fb08d4e104256c8897e"
+    },
+    {
+      "path": "frontend.ci.log",
+      "bytes": 1274,
+      "sha256": "d71722510838cf11bf9cfb03d0556425f9003655fdf11d69f56394aaefaf88c5"
+    },
+    {
+      "path": "frontend.lint.log",
+      "bytes": 172,
+      "sha256": "340e50e86aaf8612e8578dba46ad5cd7012946469fec541554517a0d4ceffd0e"
+    },
+    {
+      "path": "frontend.test.log",
+      "bytes": 2414,
+      "sha256": "fd6c3fbb0877ac033a4e5876d308e740e41da78b91a47e8651719856a7ef01d0"
+    },
+    {
+      "path": "frontend.typecheck.log",
+      "bytes": 87,
+      "sha256": "a55842733dcf2859dcdad8f91091d69f78d1dccd977e9ff456d5436af5893c8e"
+    },
+    {
+      "path": "gate.log",
+      "bytes": 10259,
+      "sha256": "489fef126791e0be2ed3bbd3d03137b75fc8745da3ee60da635f7949099a8d73"
+    },
+    {
+      "path": "lane.chaos.events.jsonl",
+      "bytes": 5255,
+      "sha256": "04084f6f30beb8da944209f41c63a754982d73cc88c4e3545d8306400f3ea6e7"
+    },
+    {
+      "path": "lane.chaos.json",
+      "bytes": 2008,
+      "sha256": "3859deb5e237cf1a09ce5c45996e2d2f45e4db478a323807b8ced446197b6944"
+    },
+    {
+      "path": "lane.chaos.log",
+      "bytes": 723,
+      "sha256": "ac59f924d55b0fcd9b7d151e8adb78ef5890f10a6aa9f805f1f915c1228bdb25"
+    },
+    {
+      "path": "lane.chaos.xml",
+      "bytes": 1491,
+      "sha256": "24b0810a87f7376ca7ab26524bb4440740b16f08f93ecfa061247971d12da3b8"
+    },
+    {
+      "path": "lane.contract.events.jsonl",
+      "bytes": 204968,
+      "sha256": "0239a84f5a93dd672ff0ea3f58f26569e2a16211a55ac31f47e0e4796052e1d5"
+    },
+    {
+      "path": "lane.contract.json",
+      "bytes": 2028,
+      "sha256": "7561a3b4a1e16a3eba5c0b1e9f4263f33e52ac1670ccc0a89d7e74ba528e70a2"
+    },
+    {
+      "path": "lane.contract.log",
+      "bytes": 970,
+      "sha256": "c341aef735d2d61143335393820827105c7cce8ea4ffa937b991f3067cba9441"
+    },
+    {
+      "path": "lane.contract.xml",
+      "bytes": 33833,
+      "sha256": "edffe08fe6bd0f799e2fd7523b4516ecd6e01682b3500e43ee9aeeae15d5748d"
+    },
+    {
+      "path": "lane.integration.events.jsonl",
+      "bytes": 3123772,
+      "sha256": "6780ed8fe7cf9fe6a5606a82764a76053afc30fc0a4d62b9308b7fcc2862925c"
+    },
+    {
+      "path": "lane.integration.json",
+      "bytes": 2036,
+      "sha256": "8cd69cd475d3e7371085093b0c278029ca7e7d6db2b122102a713a815cde1030"
+    },
+    {
+      "path": "lane.integration.log",
+      "bytes": 5849,
+      "sha256": "7e4e544d2a29f4ede88642b024fde35cc6b063e7b8646d659850de63a261b19f"
+    },
+    {
+      "path": "lane.integration.xml",
+      "bytes": 525348,
+      "sha256": "6308b385d8cb01bda37c18b435a97f512a44ba515cfa37fbd6679e3ba506e6ca"
+    },
+    {
+      "path": "lane.network.events.jsonl",
+      "bytes": 750921,
+      "sha256": "bbd4ce207528e87e878cc178d198e122cd73da479d39d2a3db6fe8b91fe18334"
+    },
+    {
+      "path": "lane.network.json",
+      "bytes": 2022,
+      "sha256": "0ec9f87f79bc607539fc8a103c7180190b10805ba84ce2ed6d5cccc4f7008d17"
+    },
+    {
+      "path": "lane.network.log",
+      "bytes": 1703,
+      "sha256": "efd4945a2deb3ab5b89e8335552b4ce6a3f1c282f31e9c1201602f2a64934b42"
+    },
+    {
+      "path": "lane.network.xml",
+      "bytes": 124166,
+      "sha256": "5f7d147fc1c3f070670fda04b2706131a41d2dbaafeb1c66c45693c1cab26401"
+    },
+    {
+      "path": "lane.unit.events.jsonl",
+      "bytes": 2342330,
+      "sha256": "6b01e5b4d1f3b0f5bf543bb2c1247039ccc7d8bf452abc7b68c4ac9ed7cc6762"
+    },
+    {
+      "path": "lane.unit.json",
+      "bytes": 2027,
+      "sha256": "134fb5dfbea764013daaa801561966b86fd044adc38b4935261de28640f14a62"
+    },
+    {
+      "path": "lane.unit.log",
+      "bytes": 3613,
+      "sha256": "98e33c74f55624e09d3c3c76e33bbed430f03a9a8ca5abaf165ba37f02429283"
+    },
+    {
+      "path": "lane.unit.xml",
+      "bytes": 424845,
+      "sha256": "7d206797a9c01de44fd7df5e718020e2c7cfc6b7bf73abbd277daaaaae1da5f0"
+    },
+    {
+      "path": "probe.chaos.json",
+      "bytes": 13481,
+      "sha256": "b706a2eb23e2e8047bd945be037c2779af95fca03eda5382d0c91783196cc59f"
+    },
+    {
+      "path": "probe.contract.json",
+      "bytes": 13360,
+      "sha256": "c0757f012ae1f5e88918aef81bf30af655540b0db7322b5ca63e37bf503791c5"
+    },
+    {
+      "path": "probe.integration.json",
+      "bytes": 13516,
+      "sha256": "24d002b095436dcd97bc8f623ba805c066a73d11eca368e5fb6c1408442a251e"
+    },
+    {
+      "path": "probe.network.json",
+      "bytes": 13463,
+      "sha256": "729f4f42595226891094873d84e577dc3ecec6bed65958ad43834b0e5bc51833"
+    },
+    {
+      "path": "probe.unit.json",
+      "bytes": 13365,
+      "sha256": "dc7ee767d6abe26bdf8bde403e1d9dae7618d997ca93d23764513d44ca06bf8f"
+    }
+  ],
+  "archive": {
+    "path": "/home/ciuser/evidence-0.0.03/closure-b99310a4.tar.gz",
+    "sha256": "57d6779ab8661b2d6cf423023578cc0b80e41b014c65eb084a0f789d0c95e98b",
+    "note": "детерминированный tar.gz: владелец, права и время обнулены"
+  }
+}
