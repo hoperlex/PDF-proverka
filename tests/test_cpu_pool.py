@@ -21,6 +21,7 @@ Run: python -m pytest tests/test_cpu_pool.py -v
 from __future__ import annotations
 
 import asyncio
+import multiprocessing
 import os
 import subprocess
 import sys
@@ -45,6 +46,39 @@ def _probe(marker: int):
     except Exception:
         aff = None
     return os.getpid(), aff, marker
+
+
+# Верхняя граница ожидания напарника на рандеву-барьере. Это НЕ тайминг, от
+# которого зависит исход: в норме барьер срабатывает за десятки миллисекунд, а
+# истечение срока означает ровно одно — пул не поднял второй воркер, и тест
+# обязан упасть с внятным текстом, а не зависнуть.
+_RENDEZVOUS_SEC = 60.0
+
+
+def _probe_rendezvous(barrier, marker: int):
+    """`_probe`, но воркер удерживается, пока в пуле не наберётся напарник.
+
+    Зачем это нужно. `ProcessPoolExecutor` поднимает воркеров ЛЕНИВО:
+    `_adjust_process_count()` сначала пробует `_idle_worker_semaphore`
+    и, найдя свободный процесс, нового НЕ создаёт. Семафор же отпускается
+    (`concurrent.futures.process`, `_ExecutorManagerThread.run`) только когда
+    из воркера вернулся результат. Значит, пока задача стоит на барьере,
+    свободных воркеров в пуле нет — и очередной `submit()` обязан завести
+    второй процесс. Оба воркера появляются ПО ПОСТРОЕНИЮ, а не потому, что
+    event loop успел отправить вторую задачу раньше, чем досчиталась первая.
+
+    Барьер приезжает прокси `multiprocessing.Manager`: сырые примитивы
+    `multiprocessing` разрешено передавать только наследованием при старте
+    процесса, а сюда объект попадает аргументом задачи.
+    """
+    try:
+        barrier.wait(timeout=_RENDEZVOUS_SEC)
+    except Exception as exc:
+        raise RuntimeError(
+            f"воркер {os.getpid()} не дождался напарника за {_RENDEZVOUS_SEC:.0f} с "
+            f"({type(exc).__name__}: {exc}) — пул не поднял второй процесс"
+        ) from exc
+    return _probe(marker)
 
 
 def _boom(marker: int):
@@ -147,23 +181,54 @@ def test_work_spreads_across_processes(monkeypatch):
     not hasattr(os, "sched_setaffinity"), reason="привязка к ядрам только на Linux"
 )
 def test_pin_cores_gives_each_worker_own_core(monkeypatch):
-    """CPU_POOL_PIN_CORES=true → каждый воркер садится на одно (своё) ядро."""
+    """CPU_POOL_PIN_CORES=true → каждый воркер садится на одно (своё) ядро.
+
+    Наблюдать РАЗНЫЕ ядра можно только когда в пуле реально работают оба
+    воркера. Раньше их появление зависело от тайминга: восемь задач уходили в
+    `gather`, и если event loop успевал получить результат первой раньше, чем
+    отправлял вторую, `ProcessPoolExecutor` находил свободный процесс и второй
+    не заводил вовсе — все задачи считал один воркер, привязка выходила одна,
+    и тест падал на исправном продукте (замерено: 2 падения из 25 повторов при
+    LA ~20–31 на восьми ядрах; в отказе `affinities == {(0,)}`, то есть
+    единственный воркер сидел ровно на одном ядре — пиннинг работал).
+    Поэтому воркеры набираются через рандеву-барьер, см. `_probe_rendezvous`.
+    """
     if len(cpu_pool.available_cores()) < 2:
         pytest.skip("нужно минимум 2 ядра")
 
-    monkeypatch.setenv("CPU_POOL_WORKERS", "2")
+    workers = 2
+    monkeypatch.setenv("CPU_POOL_WORKERS", str(workers))
     monkeypatch.setenv("CPU_POOL_PIN_CORES", "true")
 
-    async def _run():
-        return await asyncio.gather(*[cpu_pool.run(_probe, i) for i in range(8)])
+    # Барьер ровно на `workers` участников: задача не отпускает воркера, пока в
+    # пуле не окажется столько же процессов. Число задач кратно `workers`,
+    # поэтому участники набираются полными группами и последняя не зависает.
+    ctx = multiprocessing.get_context("spawn")
+    with ctx.Manager() as manager:
+        barrier = manager.Barrier(workers)
 
-    res = asyncio.run(_run())
+        async def _run():
+            return await asyncio.gather(
+                *[cpu_pool.run(_probe_rendezvous, barrier, i)
+                  for i in range(workers * 4)]
+            )
+
+        try:
+            res = asyncio.run(_run())
+        finally:
+            # Воркеры держат прокси барьера, поэтому гасим их ДО менеджера:
+            # иначе decref прокси упирается в закрытый сервер уже на выходе.
+            cpu_pool.shutdown_pool()
+
+    pids = {pid for pid, _, _ in res}
+    assert len(pids) == workers, f"работали не {workers} воркера, а {len(pids)}: {pids}"
+
     affinities = {aff for _, aff, _ in res}
     assert affinities, "не получили привязок"
     for aff in affinities:
         assert aff is not None and len(aff) == 1, f"воркер не привязан к одному ядру: {aff}"
     # Два воркера — два РАЗНЫХ ядра, а не оба на нулевом.
-    assert len(affinities) == 2, f"воркеры сели на одно ядро: {affinities}"
+    assert len(affinities) == workers, f"воркеры сели на одно ядро: {affinities}"
 
 
 @pytest.mark.unit
