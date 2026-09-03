@@ -1,0 +1,89 @@
+{
+  "tool": "ci_evidence_bundle",
+  "manifest_version": "1",
+  "label": "репетиция шага 3: двойной provisioning на свежих non-root раннерах через настоящий HTTPS с токеном, синтетический маркированный артефакт",
+  "generated_at": "2026-09-03T06:19:48Z",
+  "run_dir": "/home/ciuser/step3-rehearsal/evidence",
+  "file_count": 14,
+  "total_bytes": 18865,
+  "tree_digest_rule": "ci_runtime_probe._norm_artifact_digest (путь + содержимое, детерминированный порядок)",
+  "tree_sha256": "cff3727547e6c7f4576879056bc2f73311747aa81b5b3582982f424b9a79569f",
+  "lanes": {},
+  "files": [
+    {
+      "path": "negTamper.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "negTamper.json",
+      "bytes": 3105,
+      "sha256": "3365cc330f1f7b7a5df3ddfb2547ce94fd1527cc158db7aef2cb55db4615483f"
+    },
+    {
+      "path": "negToken.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "negToken.json",
+      "bytes": 2967,
+      "sha256": "7041bfdd54da55545451367812d02379be491e578fa92603507d8bd20363a8ee"
+    },
+    {
+      "path": "rehearsal_server.py",
+      "bytes": 1582,
+      "sha256": "95e05d04dbb67d7f4ec2eb8d37fb2f89d5c62388d0172fd4d8c4f2c66d7018b1"
+    },
+    {
+      "path": "repeatA.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "repeatA.json",
+      "bytes": 3303,
+      "sha256": "a030d842b3b8cbe22ec05ff33b4da234d761fd1d93f2ac80439d0c04d141dbee"
+    },
+    {
+      "path": "runA.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runA.json",
+      "bytes": 3323,
+      "sha256": "16b9893ee003a5295bc813306ebc96388e5be9a2a4998ce0c065ff6624b475dc"
+    },
+    {
+      "path": "runB.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runB.json",
+      "bytes": 3323,
+      "sha256": "5621a18bd0ccf99330c6314282377b283576782a1ba993bc7ccc6774ca9e3380"
+    },
+    {
+      "path": "server.log",
+      "bytes": 394,
+      "sha256": "5cd30269226589ec12fcb2ee7dc510a336d2486a9c77562ce60e07b0b648fc94"
+    },
+    {
+      "path": "server.stdout",
+      "bytes": 54,
+      "sha256": "d69ffdc34bf9772acd0c78947f20a1009ce83c68a51d731475e0434e19bc748a"
+    },
+    {
+      "path": "step3_run.sh",
+      "bytes": 814,
+      "sha256": "ca4cffd553d6d3d724cb559611d2c8fef2e4adf3263651d680b3e3fbff6b50bf"
+    }
+  ],
+  "archive": {
+    "path": "/home/ciuser/evidence-0.0.03/step3-rehearsal.tar.gz",
+    "sha256": "0c7bae910d48a9116038506a76e3aa4942b87b2fcc02722ab13261f40c54ee34",
+    "note": "детерминированный tar.gz: владелец, права и время обнулены"
+  }
+}

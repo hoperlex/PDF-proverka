@@ -1386,7 +1386,19 @@
         "7 — сведение с origin/main и публикация",
         "8 — условия G0: ADR, security/auth, baselines, journeys, inventory",
         "9 — W1-INT-00 после отдельного вердикта G0"
-      ]
+      ],
+      "step_3_rehearsed_not_executed": {
+        "status": "ОТРЕПЕТИРОВАНО, НЕ ВЫПОЛНЕНО",
+        "why_the_distinction_matters": "Шаг 3 требует двойного воспроизведения на РЕАЛЬНОМ корпусе. Его нет, поэтому шаг остаётся невыполненным. Отрепетирована процедура — чтобы её дефект не всплыл в момент, когда владелец уже ждёт результата.",
+        "receipt": "docs/architecture/receipts/W0-INT-01-step3-rehearsal.json",
+        "manifest": "docs/architecture/receipts/evidence/0.0.03-step3-rehearsal-manifest.json",
+        "key_result": "два свежих non-root раннера дали ОДИНАКОВЫЙ checksum дерева и ПОБАЙТОВО одинаковый status_index.json (178961 байт, 256 записей)",
+        "transport": "настоящий HTTPS с самоподписанным сертификатом и обязательным Authorization; file:// не проверил бы ни отправку credential, ни потоковое скачивание, ни обработку HTTP-ошибок",
+        "negatives": "подделанный архив → CHECKSUM_MISMATCH без создания vault; неверный token → SOURCE_UNAVAILABLE (401); повтор на provisioned раннере → already_present без обращения к источнику",
+        "credential_hygiene": "токен не найден ни в одном выходном файле; сервер видел схему Bearer во всех четырёх запросах",
+        "synthetic_artifact_marking": "каждый файл начинается с пометки «СИНТЕТИЧЕСКИЙ ФАЙЛ… ЭТО НЕ НОРМАТИВНЫЙ ДОКУМЕНТ»: неотличимая синтетика опаснее отсутствия корпуса. Артефакт лежит вне репозитория, norms/vault в рабочем дереве не появился.",
+        "owner_decision": "процедура НЕ добавлена в репозиторий — по решению владельца в git идут только расписка и манифест"
+      }
     }
   }
 }
