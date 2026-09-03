@@ -51,6 +51,11 @@ AR_STAGE53_PATH = (
 )
 
 
+def _require_real_corpus(*paths: Path) -> None:
+    if any(not path.exists() for path in paths):
+        pytest.skip("real comparison corpus is not installed")
+
+
 def _detail(evidence_id: str, text: str, **overrides) -> dict:
     payload = {
         "evidence_id": evidence_id,
@@ -471,6 +476,7 @@ def test_graph_entity_ids_ignore_node_and_edge_array_order():
 
 
 def test_real_ios_vru_a_deduplicates_representations_but_stays_ambiguous():
+    _require_real_corpus(IOS_STAGE53_PATH)
     stage53 = json.loads(IOS_STAGE53_PATH.read_text(encoding="utf-8"))
     system_graph = json.loads(RIGHT_GRAPH_PATH.read_text(encoding="utf-8"))
     text = build_text_entities(stage53)
@@ -531,6 +537,7 @@ def test_real_graph_qf1_is_unknown_without_context_and_high_with_bus1():
 
 
 def test_real_ar_produces_26_rooms_and_no_synthetic_graphic_links():
+    _require_real_corpus(AR_STAGE53_PATH)
     stage53 = json.loads(AR_STAGE53_PATH.read_text(encoding="utf-8"))
     text = build_text_entities(stage53)
     graphic = build_graph_entities([])

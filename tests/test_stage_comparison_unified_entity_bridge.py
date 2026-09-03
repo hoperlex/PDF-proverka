@@ -45,6 +45,11 @@ REFERENCE_LINKS_PATH = (
 )
 
 
+def _require_real_corpus(*paths: Path) -> None:
+    if any(not path.exists() for path in paths):
+        pytest.skip("real comparison corpus is not installed")
+
+
 def _text(entity_id: str, name: str, **overrides) -> dict:
     payload = {
         "id": entity_id,
@@ -401,6 +406,7 @@ def test_real_ios_entities_have_no_high_link_in_current_grsh_graph():
 
 
 def test_real_ar_room_designations_are_not_paired_without_ar_graph_entities():
+    _require_real_corpus(AR_STAGE53_PATH)
     artifact = json.loads(AR_STAGE53_PATH.read_text(encoding="utf-8"))
     details = []
     for bucket in (
@@ -448,6 +454,7 @@ def test_real_grsh_qf1_without_parent_context_is_unknown():
 
 
 def test_old_stage53_artifact_opens_unchanged_after_bridge_use():
+    _require_real_corpus(STAGE53_PATH)
     artifact = json.loads(STAGE53_PATH.read_text(encoding="utf-8"))
     original = copy.deepcopy(artifact)
 

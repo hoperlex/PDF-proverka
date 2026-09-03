@@ -93,6 +93,11 @@ def _read(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _require_real_corpus(*paths: Path) -> None:
+    if any(not path.exists() for path in paths):
+        pytest.skip("real comparison corpus is not installed")
+
+
 def _stage53(
     *,
     text: str = "ВРУ-А изменено.",
@@ -278,6 +283,12 @@ def _build_for_pairs(real_ios, pairs: list[dict]):
 
 @pytest.fixture(scope="module")
 def real_ios():
+    _require_real_corpus(
+        IOS_STAGE53_PATH,
+        LEFT_GRAPH_PATH,
+        RIGHT_GRAPH_PATH,
+        COMPARISON_PATH,
+    )
     stage = _read(IOS_STAGE53_PATH)
     left = _read(LEFT_GRAPH_PATH)
     right = _read(RIGHT_GRAPH_PATH)
@@ -1097,6 +1108,7 @@ def test_production_scope_group_producer_groups_all_pairs_by_canonical_page_pair
 
 
 def test_real_ar_without_graphs_has_only_not_checked_semantic_coverage():
+    _require_real_corpus(AR_STAGE53_PATH)
     stage = _read(AR_STAGE53_PATH)
     text, graphs, links = _base(stage)
     scopes = build_scope_join(
