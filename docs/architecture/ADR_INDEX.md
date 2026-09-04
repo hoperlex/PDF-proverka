@@ -16,6 +16,12 @@
 | [ADR-0004](adr/ADR-0004-nextjs-frontend.md) | accepted | Next.js/React/TypeScript и поэтапная миграция маршрутов | после первого сложного PDF/findings route |
 | [ADR-0005](adr/ADR-0005-parallel-delivery.md) | accepted | контрактные волны и file ownership для параллельной разработки | после двух волн, по lead time/conflicts |
 | [ADR-0006](adr/ADR-0006-target-repository-layout.md) | accepted | целевая раскладка репозитория, зоны владения и правила импортов | после первого перенесённого модуля или при смене composition root |
+| [ADR-0007](adr/ADR-0007-postgresql-topology-and-migrations.md) | proposed | топология PostgreSQL, владение миграциями, HA/backup/pooling, RPO/RTO | `W0-ADR-01`, до metadata shadow-write |
+| [ADR-0008](adr/ADR-0008-s3-provider-and-bucket-policy.md) | proposed | провайдер S3, ключи, шифрование, versioning, lifecycle, стоимость | `W0-ADR-02`, до `s3_shadow_write` |
+| [ADR-0009](adr/ADR-0009-durable-jobs-and-outbox.md) | proposed | durable jobs: state machine, leases, retries, outbox, recovery | `W0-ADR-03`, до нового production job writer |
+| [ADR-0010](adr/ADR-0010-authn-authz-and-tenant-object-scope.md) | proposed | session, roles, object checks, service identity, audit | `W0-ADR-06`, до нового write API и Next route |
+| [ADR-0011](adr/ADR-0011-observability-and-slo.md) | proposed | logs/traces/metrics, retention, alerts, ownership, SLO | `W0-ADR-07`, до production canary |
+| [ADR-0012](adr/ADR-0012-legacy-analysis-package-protocol.md) | proposed | схема пакета анализа, checksum, версия, отмена, повтор | `W0-ADR-08`, до вызова legacy engine из control plane |
 | [ADR-0013](adr/ADR-0013-llm-reproducibility-and-cost.md) | proposed | prompt/norm/model routing versioning, replay и cost policy | `W0-ADR-04`, до analysis writer |
 | [ADR-0014](adr/ADR-0014-data-classification-retention-and-erasure.md) | proposed | data classes, retention matrix и erasure workflow | `W0-ADR-05`, до storage canary |
 | [ADR-0015](adr/ADR-0015-program-execution-model.md) | proposed | staffed team или human integrator + agents; WIP/forecast | `W0-DEC-01` |
