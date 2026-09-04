@@ -461,6 +461,7 @@
   "rollback": "Удалить два созданных файла и пункт 20 из порядка чтения docs/architecture/README.md. Кода задача не трогала, поэтому откат не влияет ни на один прогон.",
   "revalidated_on_canonical": {
     "what": "Кандидат пересобран от origin/main; факты перепроверены по каноническому коду",
+    "metrics_scope": "Числа citations_checked_word_for_word, citations_remapped_to_canonical и claims_rewritten_on_substance ниже относятся к единому проходу по всему пакету фазы 1, а не к этой расписке отдельно",
     "why": "первая редакция снималась на ветке dev, отпочковавшейся 2026-09-03 от 370b6ee8 и не содержащей 1613 файлов, добавленных в origin/main позже",
     "citations_checked_word_for_word": 265,
     "citations_remapped_to_canonical": 25,
