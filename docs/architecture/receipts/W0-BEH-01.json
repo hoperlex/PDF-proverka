@@ -1,0 +1,207 @@
+{
+  "type": "task_receipt",
+  "task_id": "W0-BEH-01",
+  "wave": "0",
+  "lane": "ENG",
+  "captured_at": "2026-09-04",
+  "source_commit": "6dc3aadf",
+  "branch": "review/g0-phase1 (база origin/main@6dc3aadf)",
+  "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6. Это квитанция задачи.",
+  "scope": {
+    "does": "Выделить каталог критических пользовательских journeys и измерить их ФАКТИЧЕСКОЕ покрытие детерминированными тестами и fixtures.",
+    "does_not": [
+      "не изготавливает fixtures — это W0-BEH-02",
+      "не пишет кассеты и не выбирает формат записи — это W0-LLM-02 после W0-LLM-01",
+      "не правит код, существующие тесты, scripts/**, .github/**, ADR и чужие расписки",
+      "не объявляет условие Gate G0 №5 выполненным"
+    ]
+  },
+  "delivered": {
+    "document": "docs/architecture/CRITICAL_JOURNEYS_V1.md",
+    "readme_entry": "docs/architecture/README.md — пункт 8 порядка чтения",
+    "lines": 693
+  },
+  "method": {
+    "journey_definition": "Сценарий с воспроизводимым входом, наблюдаемым результатом (файл/запись/ответ API) и проверяемым утверждением о нём. Маршрут UI journey'ем не является: адрес — не сценарий.",
+    "criticality_rule": "Класс назначается по последствию поломки, а не по частоте использования. P0 — рвётся цепочка «комплект → аудит → замечания → решение эксперта → отчёт» либо теряются данные; P1 — теряется самостоятельно оплачиваемая функция без потери данных; P2 в каталог не включён.",
+    "expert_decision_rule": "Замечание модели воспроизводимо повторным прогоном, вердикт человека — нет. Любой journey, способный молча потерять expert_review.json или decisions_log.json, получает P0 (J-12, J-13, J-20, J-27).",
+    "coverage_scales": {
+      "axis_1_test": {
+        "Д": "сквозной тест до наблюдаемого результата, данные создаёт сам тест, без сети, боевых projects/** и живой модели",
+        "Ч": "покрыты отдельные шаги, только негативные ветки либо только сервисный слой",
+        "Н": "теста на journey нет"
+      },
+      "axis_2_fixture": "именованный версионированный набор входных данных вне тела теста, переиспользуемый несколькими тестами — это и есть предмет формулировки G0",
+      "axis_3_dependencies": "боевые projects/**, сеть, живая модель",
+      "synthetic_model_note": "Подмена модели синтетикой (fake_providers, monkeypatch на call_gpt_for_block) не лишает метки Д, но journey помечается «модель синтетическая» и НЕ засчитывается как LLM-replay по G0."
+    },
+    "evidence_rule": "Journey объявлен покрытым только при указании конкретного файла теста. Проверено чтением tests/ (328 файлов test_*.py), backend/tests/ (68), frontend/tests/ (32), backend/app/pipeline/**, backend/app/api/routers/** и contracts/http/v1/openapi.snapshot.json."
+  },
+  "result": {
+    "journeys_total": 31,
+    "by_priority": {
+      "P0": 21,
+      "P1": 10
+    },
+    "coverage": {
+      "deterministic_end_to_end": 16,
+      "partial": 15,
+      "uncovered": 0,
+      "of_deterministic_with_synthetic_model": 2
+    },
+    "reusable_golden_fixture": {
+      "full": 0,
+      "partial": 1,
+      "programmatic_factory": 1,
+      "detail": "частично — backend/tests/fixtures/findings_review/ (5 JSON, один шаг J-09); программная фабрика — tests/distributed_audit_e2e/fixture.py::build_project_fixture (J-30). Общего корпуса нет: локальные _make_project/_make_v2_doc/_write_project примерно в 35 файлах tests/ и 11 файлах backend/tests/."
+    },
+    "llm_journeys": {
+      "whole": 7,
+      "with_llm_substep": 2,
+      "passing_replay": 0,
+      "hybrid": 1
+    },
+    "honest_statement": "Из 30 критических journeys 16 имеют сквозной детерминированный тест, 14 — частичный, ни один не опирается на версионированный golden-корпус, и ни один LLM-journey не воспроизводится на записанных ответах.",
+    "api_surface_on_canonical": {
+      "paths": 246,
+      "operations": 270,
+      "delta_vs_first_edition": "265 → 270 операций; три новых пути, все в stage-comparison: graphic-comparison (GET+POST), high-level-project-changes (GET+POST), text-entities (GET)",
+      "cross_check": "contracts/http/v1/openapi.snapshot.json на каноне даёт те же 246/270"
+    },
+    "journey_added_on_canonical": {
+      "id": "J-31",
+      "name": "Верхнеуровневые изменения проекта П↔РД",
+      "priority": "P1",
+      "coverage": "Ч",
+      "why_only_one_of_three": "критерий §2 требует сценария, доводимого пользователем до конца; SPA вызывает только high-level-project-changes (frontend/static/js/app.js:13483)",
+      "tests": "24 в tests/test_stage_comparison_high_level_project_changes.py + 2 в tests/test_stage_comparison_high_level_store.py; ни один не идёт через HTTP-маршрут и ни один не подменяет транспорт модели"
+    }
+  },
+  "g0_condition_5": {
+    "text": "20–30 критических journeys имеют deterministic fixtures, а хотя бы один LLM-journey проходит replay на записанных ответах",
+    "first_half": "перечень собран и обоснован — 30 journeys, верх диапазона; но «deterministic fixtures» в смысле версионированного корпуса отсутствуют, поэтому условие НЕ закрыто",
+    "second_half": "не выполнено: replay-механизма в коде нет вовсе",
+    "verdict": "не пройдено; разрыв измерен и равен объёму W0-BEH-02 и W0-LLM-02",
+    "delta_row": "docs/architecture/G0_READINESS_DELTA.md строка 5 остаётся открытой; эта задача её измеряет, а не закрывает"
+  },
+  "llm_replay_readiness": {
+    "cassettes_exist": false,
+    "record_mode_exists": false,
+    "library_present": false,
+    "grep_evidence": "слово cassette в *.py — 0 вхождений; vcrpy/pytest-recording/respx/responses отсутствуют в requirements*.txt, pyproject.toml, constraints-qr-v1.txt",
+    "reusable_parts": [
+      "backend/app/pipeline/execution/fake_providers.py — подстановка CLI в PATH, разбор argv, фактический контракт claude/codex; отдаёт СИНТЕТИКУ",
+      "backend/app/pipeline/execution/provider_bridge_stub.py — четыре фактических ответа claude",
+      "tests/distributed_audit_e2e/openrouter_stub.py — настоящий сокет, поддельный собеседник, журнал sha256-отпечатков",
+      "audit_worker/providers/openrouter_adapter.py — AUDIT_WORKER_PROVIDER_OPENROUTER_BASE_URL + ..._ENDPOINTS_STUBBED, легальный fail-closed HTTP-шов на воркере",
+      "audit_worker/providers/inference_ledger.py — call_key() (sha256 provider/purpose/prompt/attachments/action) и STATE_REPLAY, возвращающее сохранённый ProviderInferenceResult",
+      "backend/app/pipeline/stages/block_analysis/stage02_paid_cache.py — compute_cache_key() с нормализованной идентичностью картинки, schema v2",
+      "backend/app/pipeline/stages/findings_review/critic_v2/llm_gate.py::_make_provider — фабрика на mock|noop|claude_runner|openrouter"
+    ],
+    "blockers": [
+      "нет шва у центрального OpenRouter: три независимых захардкоженных URL и три клиента — openai.AsyncOpenAI (services/llm/llm_runner.py, config.py:784 без env-override), httpx (stages/block_analysis/gemma_findings_only.py:95), requests (critic_v2/llm_gate.py:1584)",
+      "нет единой точки перехвата claude -p: шесть модулей зовут subprocess.run мимо claude_runner._run_cli (absence_guard.py:314, critic_v2/kb_gate.py:174, critic_v2/llm_gate.py:1465, decision_carryover_service.py:335, migrated_findings_service.py:1233, discussions/discussion_service.py:435,656)",
+      "нет режима record и правила «промах кассеты — ошибка»: stage02_paid_cache при промахе идёт в сеть",
+      "нет глобального guard'а против живого вызова в прогоне тестов — ни один из трёх conftest не ставит autouse-блокировку LLM и не поднимает сетевой guard; защищает только пустой OPENROUTER_API_KEY и PAID_API_ENABLED=false",
+      "W0-LLM-01 и W0-LLM-02 не сданы (расписок в docs/architecture/receipts/ нет), ADR-0013 в статусе proposed — ключ кассеты не определён",
+      "санитизация не решена: ADR-0013 §4 запрещает автоматически превращать production payload в git fixture"
+    ],
+    "recorded_answers_in_git": {
+      "path": "experiments/stage_comparison_text_ai_reviewer/artifacts/runs/*.json",
+      "files": 12,
+      "shape": "provider, requested_model, dataset_sha256, batches[].usage, batches[].answer — дословный текст ответа модели",
+      "consumers_in_code": 0,
+      "caveat": "это evidence эксперимента, не кассеты: ключа запроса нет, санитизация не проверялась"
+    },
+    "first_replay_candidate": {
+      "primary": "J-25, шаг AI-review текстовых различий — записи шести моделей уже в git, валидатор детерминирован и покрыт 40 unit-тестами (tests/test_stage_comparison_text_ai_reviewer.py), journey не трогает 03_findings.json",
+      "fallback": "J-07 Stage 02 — есть нормализованный ключ и фактические ответы в _output, но их нужно вынести из боевых данных, санитизировать и сделать промах ошибкой; дороже, зато закрывает P0 основной цепочки"
+    }
+  },
+  "environment_facts_verified": {
+    "projects_dir_empty": "ls projects 2>/dev/null | wc -l → 0; grep -nx 'projects/' .gitignore → 177:projects/",
+    "storage_sandboxed_on_import": "tests/conftest.py и backend/tests/conftest.py уводят AUDIT_PROJECTS_DIR, AUDIT_OBJECTS_FILE, AUDIT_ACTION_LOG_DIR и копию backend/app/data в песочницу процесса",
+    "live_corpus_tests_skip_not_fail": "skipif в tests/test_low_voltage_geometry.py, test_singleline_graph_etalon.py, test_singleline_graph_red_sheets.py, test_singleline_rich_prompt.py, test_blocks_analysis_endpoint.py:215, test_protection_table_check.py:179, test_eval_harness.py:135, backend/tests/test_critic_v2_assisted_round1.py::TestRealReviewPackage и 12 файлах геометрии",
+    "no_real_provider_calls_in_tests": "проверено; подделан только последний метр",
+    "lane_markers": {
+      "unit": 816,
+      "contract": 29,
+      "integration": 959,
+      "network": 212,
+      "chaos": 8
+    },
+    "known_failure_baseline": "scripts/ci_known_failures.txt — 0 записей",
+    "api_surface": {
+      "paths": 243,
+      "operations": 265,
+      "snapshot": "contracts/http/v1/openapi.snapshot.json"
+    },
+    "frontend_has_no_browser_e2e": "frontend/package.json — только vitest; playwright/puppeteer/cypress/jsdom отсутствуют; 32 теста читают index.html/app.js как текст, поэтому UI-journey сквозным тестом не покрывается в принципе",
+    "fixture_files": "7 файлов (было 6): на каноне добавился tests/fixtures/g2_4_5_policy_cases_v2.json — корпус случаев политики графического сравнения, не journey"
+  },
+  "gaps_named_for_w0_beh_02": [
+    "корпус версии-образца со всеми артефактами _output/ в нормализованном виде — вход для J-04, J-06…J-11, J-14…J-16, J-18, J-23, J-24",
+    "фикстура комплекта нового формата (ZIP: pdf + *_results.md + *_results.html + *_blocks.json) — пробел J-01 и снятие зависимости backend/tests/test_results_md_parser.py и соседей от experiments/новая структура.",
+    "фикстура «версия N-1 с вердиктами эксперта» — общий вход для J-12, J-13, J-20, J-21",
+    "срез нормативной базы для J-10; связано с §3.3 quality contract и scripts/ci_provision_norms.py",
+    "HTTP-концы без единого теста при существующих сервисных тестах: POST/GET /api/knowledge-base/expert-review/{project_id} (J-20), POST /api/audit/{id}/retry/{stage} (J-16), POST /api/export/excel и /api/export/excel/section (J-23) — здесь нужна не фикстура, а тест"
+  ],
+  "excluded_candidates": {
+    "discussions": "маршрут #/project/{id}/discussions удалён коммитом aeb0b2f2 (RI-1 route inventory); API из 12 операций жив, тестов ноль, но достижимости пользователем нет. Владелец решения — W0-ADR-09",
+    "schedule": "P2; покрыт tests/test_schedule.py (64), test_schedule_plans.py (24), test_schedule_completion_stamp.py",
+    "critic_v2_ui": "экспериментальный контур, CRITIC_V2_ENABLED по умолчанию OFF, LLM в стадии принудительно выключен; учтён внутри J-09",
+    "workers_admin": "эксплуатационный, не пользовательский результат",
+    "objects_registry": "P2",
+    "projects_v2_migration": "не journey — собственная программа docs/data_storage_modernization/",
+    "vectograf_and_geometry": "шаг внутри J-05; большая часть тестов требует боевого корпуса и скипается"
+  },
+  "verification": {
+    "commands": "§9 документа; все пять журнальных чисел и четыре факта окружения воспроизведены на коммите 53d85e99",
+    "results": {
+      "catalog_rows": 30,
+      "deterministic": 16,
+      "partial": 14,
+      "p0": 21,
+      "p1": 9,
+      "fixture_data_files": 6,
+      "cassette_hits_in_py": 0,
+      "openapi": "243 пути, 265 операций",
+      "projects_dir_entries": 0
+    }
+  },
+  "scope_discipline": {
+    "files_created": [
+      "docs/architecture/CRITICAL_JOURNEYS_V1.md",
+      "docs/architecture/receipts/W0-BEH-01.json"
+    ],
+    "files_modified": [
+      "docs/architecture/README.md"
+    ],
+    "not_touched": [
+      "код приложения и тесты",
+      "scripts/**",
+      ".github/**",
+      "существующие ADR и ADR_INDEX.md",
+      "QUALITY_RUNTIME_CONTRACT_V1.md",
+      "G0_READINESS_DELTA.md",
+      "чужие расписки в docs/architecture/receipts/"
+    ],
+    "not_committed": "изменения оставлены в рабочем дереве; коммит — решение владельца"
+  },
+  "consumers": [
+    "W0-BEH-02 — golden fixtures по списку gaps_named_for_w0_beh_02",
+    "W0-LLM-02 — sanitized cassettes и replay одного critical journey; кандидат назван",
+    "W0-ADR-03 (ADR-0009 durable jobs) — J-14…J-17 описывают наблюдаемые состояния прогона",
+    "W0-ADR-08 (ADR-0012) — §1.3 ADR прямо ссылается на отсутствие этого каталога",
+    "W0-ADR-09 (ADR-0017) — J-18…J-22 и судьба discussions"
+  ],
+  "rollback": "удаление двух новых файлов и строки из README возвращает прежнее состояние; никакой код и ни один тест не менялись.",
+  "revalidated_on_canonical": {
+    "what": "Кандидат пересобран от origin/main; факты перепроверены по каноническому коду",
+    "why": "первая редакция снималась на ветке dev, отпочковавшейся 2026-09-03 от 370b6ee8 и не содержащей 1613 файлов, добавленных в origin/main позже",
+    "citations_checked_word_for_word": 265,
+    "citations_remapped_to_canonical": 25,
+    "claims_rewritten_on_substance": 1,
+    "claim_rewritten": "J-07: вызов OpenRouter идёт через _post_openrouter_with_transient_retry, а не прямым client.post"
+  }
+}

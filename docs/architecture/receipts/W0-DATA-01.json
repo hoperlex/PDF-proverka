@@ -1,0 +1,271 @@
+{
+  "type": "task_receipt",
+  "task_id": "W0-DATA-01",
+  "lane": "MIG",
+  "captured_at": "2026-09-04",
+  "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6 по docs/architecture. Эта расписка фиксирует выполнение задачи, а не прохождение чекпоинта и не прохождение Gate G0.",
+  "scope": "Полный инвентарь категорий данных продукта: где продукт хранит данные, кто пишет и читает, есть ли срок хранения, что произойдёт при erasure-запросе, и какие категории нельзя классифицировать без владельца данных.",
+  "deliverable": "docs/architecture/DATA_INVENTORY_V1.md",
+  "source_of_truth": {
+    "repo": "/root/projects/PDF-proverka/PDF-proverka",
+    "branch": "dev",
+    "commit": "53d85e99",
+    "head_moved_during_work": "aed8abf1 — два коммита W0-OPS-01 и W0-BEH-01; git diff --name-only 53d85e99..aed8abf1 даёт только docs/**, ни один факт о коде не устарел",
+    "note": "Это dev-чекаут, а не production. Живой портал работает из /home/coder/auditmanager/current (CLAUDE.md, AGENTS.md); в этой песочнице такого дерева нет."
+  },
+  "cross_checked_with": {
+    "document": "docs/architecture/OPS_BASELINE_V1.md",
+    "task": "W0-OPS-01",
+    "what": "§3.6 независимо измерил ту же версию: du -sb = 28 000 785 против 28 007 009 у инвентаря (разница — _system/old_to_new_map.json и object.json, которые инвентарь считает); амплификация хранения 3.07× от входного PDF; растровые кропы — 77 % объёма 03_analysis/.",
+    "verdict": "два независимых измерения сошлись; ни одно не является production-объёмом"
+  },
+  "code_changes": "нет. Задача не трогает код, тесты, scripts/**, .github/**, существующие ADR и расписки.",
+  "files_created": [
+    "docs/architecture/DATA_INVENTORY_V1.md",
+    "docs/architecture/receipts/W0-DATA-01.json"
+  ],
+  "files_modified": [
+    "docs/architecture/README.md — одна строка ссылки в «Порядок чтения»"
+  ],
+  "result": {
+    "categories_total": 55,
+    "customer_document_content_or_derivatives": 32,
+    "customer_identifiers_only": 10,
+    "staff_personal_data": 11,
+    "secrets_and_key_material": 3,
+    "no_class_in_adr_0014_matrix": 16,
+    "class_assigned_but_behaviour_not_described_by_class": 4,
+    "ambiguous_requiring_owner_decision": 24,
+    "purpose_not_established_from_code": 7,
+    "categories_added_on_canonical": {
+      "ids": [
+        "D-53",
+        "D-54",
+        "D-55"
+      ],
+      "detail": "graphic_change_ledger.json (derived), high_level_project_changes.json (класс llm — первая категория этого класса вне конвейера аудита), text_entities.json (derived, полностью производна от D-54)",
+      "retention": "ни у одной нет; @router.delete у /api/stage-comparison нет ни одного, TTL и фонового удаления в store.py/paths.py не найдено",
+      "ambiguity_added": "A-24 — объявленные, но ненаполняемые пути graph_entities.json и entity_links.json (paths.py:100-105): схемы есть, продюсеров нет"
+    }
+  },
+  "what_was_checked_and_how": {
+    "path_universe": {
+      "how": "Прочитан backend/app/core/config.py целиком по константам путей; отдельно снят полный список env-переменных, задающих пути, командой grep по backend/, audit_worker/, src/, norms/, scripts/ и корневым скриптам.",
+      "result": "40 имён env; тестовые, смоук-скриптовые, системные и не-пути исключены, остальные разобраны в инвентаре.",
+      "known_limitation": "grep — эвристика по суффиксам DIR/ROOT/PATH/FILE/STORE/CACHE и не ловит, например, AUDIT_STAGE_COMPARISON_ROOTS. Полнота держится на чтении кода, а не на команде."
+    },
+    "pipeline_artifacts": {
+      "how": "Прочитаны backend/app/pipeline/manager.py (списки _clean_stage_files, снимки, эвакуация кропов), 17 stage-каталогов, blocks.py, process_project.py, graph_builder.py, crop_cache.py, block_crop_store.py, block_crop_lru.py.",
+      "result": "Разобраны все JSON-этапы, shadow-артефакты, кропы, батч-пакеты, диагностические копии findings и три раскладки output_dir (legacy / контейнер версий / projects_v2)."
+    },
+    "app_state": {
+      "how": "Прочитаны сервисы backend/app/services/** и роутеры backend/app/api/routers/**, соответствующие каждому файлу APP_DATA_DIR; сверено с каноническим перечнем живого рантайм-стейта в backend/tests/conftest.py:26-45.",
+      "result": "Каждый файл APP_DATA_DIR имеет писателя, читателя, состав полей и статус ретеншна."
+    },
+    "distributed_workers": {
+      "how": "Прочитаны backend/app/services/distributed_workers/{schema,settings,job_service,project_package,auth,repositories}.py, audit_worker/{config,local_store,local_db,retention,package_io}.py, contracts/agent_stream/v1/*.proto, deploy/systemd/*.env.example.",
+      "result": "workers.db — 36 таблиц, SCHEMA_VERSION 13; секреты хранятся только SHA-256; строки завершённых заданий не удаляются никогда; source package увозит на воркер PDF, PNG-кропы и все JSON-артефакты версии; ретеншн воркера написан, но AUDIT_WORKER_RETENTION_DELETE_ENABLED по умолчанию false."
+    },
+    "action_log": {
+      "how": "Прочитан backend/app/core/action_log.py (allowlist _AUDIT_FIELDS, _DIAG_LIMITS, _cleanup_prefix, суточный потолок) и сверен с docs/action_log.md.",
+      "result": "Фактический allowlist durable-канала — 16 полей (документация перечисляет их частично, обобщая пять полей безопасности воркера и не называя max_bytes). Ретеншн 180/14 дней реализован и работает, но триггер — запись, а не планировщик: при простое сервера файлы не удаляются."
+    },
+    "erasure": {
+      "how": "Прочитаны все DELETE-эндпоинты backend/app/api/routers/**, project_service.delete_project и _delete_project_v2_primary, v2_primary_wiring.backup_version_before_destructive.",
+      "result": "Операции erasure у продукта нет. delete_project в режиме projects_v2_primary (он включён в этом окружении) перед удалением делает обязательный backup ВСЕХ версий в projects_v2/_system/destructive_backups, и в коде прямо записано «Никакого auto-cleanup». DELETE /api/objects по докстрингу не удаляет файлы проектов вовсе."
+    },
+    "measurements": {
+      "how": "du/find по каталогам данных; stat по inode для проверки дублирования PDF; git rev-list --objects --all | git cat-file --batch-check для истории; git rev-list --objects origin/main для проверки, что уже у хостера; find по числу копий снапшота.",
+      "reproduction": "Команды приведены целиком в §17 документа."
+    }
+  },
+  "measured_2026_09_04": {
+    "projects_v2_bytes": 28007009,
+    "projects_v2_files": 116,
+    "projects_dir": "пуст (0 файлов) — окружение работает в projects_v2_primary",
+    "backend_app_data": "3.0 МБ, 42 файла",
+    "norms": "60 МБ, 41 файл (крупнейший — norms/tools/paragraphs.jsonl, 57 МБ)",
+    "logs_actions": "2 файла, 48 КБ",
+    "git_dir": "550 МБ",
+    "worktrees": "1.4 ГБ, 4 дерева",
+    "git_history_blobs_total": "17048 blob / 1889.6 МБ",
+    "git_history_projects_blobs": "6218 blob / 845.2 МБ (3171 .json, 2380 .png, 449 .md, 158 .html, 35 .csv, 24 .jsonl, 1 .xlsx; .pdf в истории нет)",
+    "git_history_knowledge_base_blobs": "21 blob / 34.6 МБ",
+    "git_history_experiments_blobs": "2676 blob / 285.8 МБ",
+    "projects_objects_reachable_from_origin_main": 6886,
+    "input_pdf_duplication": "01_input/<base>.pdf и 02_work/document.pdf — по 9133138 байт, разные inode (1837231 и 1837236): копия, не жёсткая ссылка",
+    "customer_snapshot_copies_on_disk": 5
+  },
+  "not_measured_and_why": {
+    "production_volumes": "Production-дерево /home/coder/auditmanager/current в песочнице отсутствует. Все объёмы в документе — нижняя граница этого чекаута. Production baseline принадлежит W0-OPS-01.",
+    "absent_stores": [
+      "projects/ (пуст)",
+      "knowledge_base/",
+      "cache/block_crops/",
+      "отчет/",
+      "comparison/ и comparison_sources/",
+      "norms/vault/",
+      "critic v2 test/",
+      "backend/app/data/users.json",
+      "/var/lib/auditmanager/distributed_workers",
+      "/var/lib/audit-worker",
+      "/etc/auditmanager/pki",
+      "~/archives/legacy-rescue-20260710/"
+    ],
+    "consequence": "Для этих категорий описаны раскладка, писатели, читатели и ретеншн по коду, но не объёмы. Их измерение требует доступа к живому серверу и остаётся за владельцем."
+  },
+  "quoted_not_re_measured": [
+    {
+      "fact": "legacy projects/ = 11 ГБ, диск заполнен на 92%",
+      "source": "docs/projects_v2_legacy_quarantine_plan.md",
+      "date": "2026-07-10"
+    },
+    {
+      "fact": "кропы блоков 12.2 ГБ / 64 764 файла при заполнении 98%",
+      "source": "docs/block_crop_lifecycle.md",
+      "date": "2026-08-03"
+    },
+    {
+      "fact": "440 версий в projects_v2, у 183 index блоков только в runs/",
+      "source": "docs/block_crop_lifecycle.md, projects_v2_adapter.py:425",
+      "date": "2026-08-03"
+    },
+    {
+      "fact": "20 433 записи в decisions_log.json на 117 проектах",
+      "source": "backend/app/services/knowledge_base/knowledge_base_service.py:29-30",
+      "date": "2026-08-06"
+    },
+    {
+      "fact": "дедуп кропов освободил 3.6 ГБ, 16564/16564 файла байт-идентичны",
+      "source": "docs/block_crop_lifecycle.md",
+      "date": "2026-08-03"
+    }
+  ],
+  "unexpected_findings": [
+    {
+      "id": "DATA01-F1",
+      "what": "845.2 МБ артефактов projects/** лежит в истории git, и 6886 объектов этого пути достижимы из origin/main (remote — GitHub).",
+      "why_it_matters": ".gitignore действует вперёд, а не назад: удаление файла из рабочего дерева не удаляет его из истории и из копии у хостера. Любая политика удаления source documents без ответа на этот пункт не работает.",
+      "owner_question": "A-05"
+    },
+    {
+      "id": "DATA01-F2",
+      "what": "backend/app/data/section_optimization_pipeline/73a0e59a__EOM.snapshot.json (2.4 МБ) отслеживается git и содержит 1952 строки спецификаций оборудования 18 проектов реального объекта. Внесён коммитом «wip: снапшот незакоммиченных правок перед слиянием origin/main». На диске существует в 5 экземплярах (основное дерево + 4 worktree).",
+      "owner_question": "A-06"
+    },
+    {
+      "id": "DATA01-F3",
+      "what": "В режиме projects_v2_primary удаление проекта делает обязательный backup ВСЕХ версий в projects_v2/_system/destructive_backups; в v2_primary_wiring.py:298 прямо записано «Никакого auto-cleanup: восстановление и retention остаются явными действиями».",
+      "why_it_matters": "Сегодня удаление не удаляет, а перемещает данные в каталог без срока и без владельца.",
+      "owner_question": "A-09"
+    },
+    {
+      "id": "DATA01-F4",
+      "what": "manager._snapshot_output_before_codex_run копирует все JSON/JSONL/MD/XLSX каталога вывода и весь audit_trail/ в <COMPARISON_ROOT>/classic_codex_ab/backups/**, то есть в корень другой подсистемы.",
+      "why_it_matters": "Ни один путь удаления проекта эту копию не видит.",
+      "owner_question": "A-23"
+    },
+    {
+      "id": "DATA01-F5",
+      "what": "Ответы моделей хранятся на центре в шести местах (_stage02_paid_response_cache, audit_trail/, _stage01_findings_only_runs/, _optimization_ensemble/, critic_v2/, block_batch_NNN.json); уборка есть только у последнего.",
+      "why_it_matters": "Класс «LLM request/response evidence» в ADR-0014 предполагает один TTL, а адресов шесть.",
+      "owner_question": "A-22"
+    },
+    {
+      "id": "DATA01-F6",
+      "what": "usage_service.py:42 объявляет CLAUDE_SESSIONS_DIR = ~/.claude/projects, и GlobalUsageScanner разбирает все JSONL-транскрипты Claude Code, включая сопоставление имени папки с именем проекта.",
+      "why_it_matters": "Продукт читает файлы, которые ему не принадлежат и содержимое которых он не контролирует.",
+      "owner_question": "A-10"
+    },
+    {
+      "id": "DATA01-F7",
+      "what": "DISTRIBUTED_WORKERS_DATA_DIR по умолчанию /var/lib/auditmanager/distributed_workers, воркер живёт в /var/lib/audit-worker, PKI — в /etc/auditmanager/pki. Три хранилища данных вне репозитория и вне любого релиза.",
+      "why_it_matters": "Данные заказчика (source package с PDF и кропами) физически уезжают на удалённый VPS, а ретеншн воркера по умолчанию работает в сухом режиме."
+    },
+    {
+      "id": "DATA01-F8",
+      "what": ".env.example и deploy/systemd/backend.env.example (оба отслеживаются git) содержат реальные логины сотрудников (igor, alexey, filipp, marina, alexandra, andrey) и адрес шлюза 176.12.77.128; тот же адрес встречается в двух десятках документов docs/distributed_audit_workers/**.",
+      "owner_question": "A-08"
+    },
+    {
+      "id": "DATA01-F9",
+      "what": "config.py:127 OBJECT_NAME = '213. Мосфильмовская 31А \"King&Sons\"' — название, адрес и организация реального объекта зашиты в исходный код и используются object_service._ensure_default_object.",
+      "owner_question": "A-01"
+    },
+    {
+      "id": "DATA01-F10",
+      "what": "deliverables/audit_trackers/**, sds_chat_history/**, sds_manual/** отслеживаются git и содержат полные разборы замечаний реальных проектов (ПД-00542664-*, СТ26_01-14-ОВ1-3-РД_V1) с названием объекта заказчика.",
+      "owner_question": "A-07"
+    },
+    {
+      "id": "DATA01-F11",
+      "what": "Входной PDF хранится в версии дважды (01_input и 02_work), разными inode. На один документ это 18.3 МБ вместо 9.1 МБ.",
+      "why_it_matters": "Стоимость раскладки, зафиксированной стандартом projects_v2, до сих пор не была посчитана; это вход для ADR-0008."
+    },
+    {
+      "id": "DATA01-F12",
+      "what": "Ретеншн журнала действий (180/14 дней) реализован и работает, но его триггер — запись в новый день или после рестарта, а не планировщик. При простое сервера старые файлы не удаляются никогда. logrotate/cron в репозитории нет.",
+      "why_it_matters": "Формально срок соблюдён, фактически он условен."
+    },
+    {
+      "id": "DATA01-F13",
+      "what": "Единственный файл журнала на диске (actions-2026-08-25.jsonl, 189 строк) написан ДО разделения каналов W0-LOG-01 и содержит в durable-канале сырой path, query, ip и текст исключения с абсолютным путём.",
+      "why_it_matters": "Это не дефект текущего кода, но это данные, уже лежащие в форме, которую новый контракт не описывает."
+    },
+    {
+      "id": "DATA01-F14",
+      "what": "docs/CLAUDE.md называет каталогом кропов blocks_gemma_100, тогда как production-каталог, создаваемый stages/crop_blocks/runner.py, — blocks_stage02_100.",
+      "why_it_matters": "Расхождение документации и кода в названии места хранения; для инвентаря разобрано как одна категория с тремя именами."
+    }
+  ],
+  "left_to_the_owner": {
+    "blocking_for_adr_0014": "Именованного владельца данных в документах программы нет: ADR-0014 называет роли и в матрице пишет «назначить». Пока роль не занята конкретным человеком, ни одна из 23 развилок §15 не закрывается, и это, а не отсутствие цифр, главный блокер ADR-0014.",
+    "ambiguities": "23 развилки A-01…A-23 в §15 документа. У каждой записаны причина неоднозначности, варианты и тот, кто решает. Формулировка «вероятно, ПДн нет» в документе не используется ни разу.",
+    "purpose_not_established": [
+      "critic v2 test/ — каталог по умолчанию CRITIC_V2_FEEDBACK_DIR, читается эндпоинтами, писателя в продуктовом коде нет",
+      "_output/_experiments/gemma_enrichment/** — читается latest_gemma_enrichment, писателя в текущем коде нет",
+      "_output/tiles/page_*/*.png — считаются resume_detector и влияют на возобновление, писателя в текущем коде нет",
+      "_output/prompt_overrides.json — назначение известно, наличие в тексте данных заказчика зависит от оператора",
+      "deliverables/sds_chat_history/ — по имени история переписки; участники и основание не установлены",
+      "projects_v2/_system/schema.json и migration_inventory.json — объявлены стандартом, на диске отсутствуют",
+      "судьба logs/actions/actions-2026-08-25.jsonl дораздельного формата"
+    ],
+    "requires_production_access": [
+      "объёмы всех категорий на живом дереве (принадлежит W0-OPS-01)",
+      "существование projects_legacy_archive_<date> и ~/archives/legacy-rescue-20260710/",
+      "приватность репозитория на GitHub и допустимость стороннего хостинга по договору"
+    ],
+    "recommended_to_adr_0014_not_decided_here": "Матрица должна покрывать не только «что мы храним», но и «где это дублируется»: retention класса source не имеет силы, пока существуют история git (§12.1), рабочие деревья (§12.3), destructive_backups (§12.4) и pre-Codex снимки (§12.5)."
+  },
+  "g0_conditions": {
+    "condition_6": {
+      "text": "inventory не содержит неразобранной категории данных",
+      "state": "материал предоставлен: 52 категории, у каждой писатель, читатель, класс, срок либо его отсутствие и поведение при erasure",
+      "not_claimed": "Заявлять «выполнено» вправе владелец inventory после приёмки, а не автор документа. Отдельно зафиксировано: у 7 позиций назначение из кода не установлено, и они помечены именно так, а не отнесены к классу по догадке."
+    },
+    "condition_14": {
+      "text": "неизвестные/неоднозначные данные имеют статус, владельца и решение",
+      "state": "материал предоставлен: 23 развилки со статусом, вариантами и решающим; 7 позиций со статусом «назначение не установлено»",
+      "not_closed": "Решений по ним нет и быть не может без назначенного владельца данных. Условие закрывается решением, а не инвентарём."
+    },
+    "is_it_g0": false
+  },
+  "not_done_deliberately": [
+    "не назначен ни один TTL и не заполнена retention matrix — это ADR-0014 (W0-ADR-05)",
+    "не сделана классификация по уровням доступа — это W0-SEC-02 поверх W0-SEC-01",
+    "не измерен production baseline — это W0-OPS-01",
+    "не сделан маппинг legacy identity → UID — это W0-DATA-02",
+    "не тронуты код, тесты, scripts/**, .github/**, ADR_INDEX.md, QUALITY_RUNTIME_CONTRACT_V1.md, существующие ADR и расписки, G0_READINESS_DELTA.md",
+    "ничего не закоммичено"
+  ],
+  "source_commit": "6dc3aadf",
+  "branch": "review/g0-phase1 (база origin/main@6dc3aadf)",
+  "revalidated_on_canonical": {
+    "what": "Кандидат пересобран от origin/main; факты перепроверены по каноническому коду",
+    "why": "первая редакция снималась на ветке dev, отпочковавшейся 2026-09-03 от 370b6ee8 и не содержащей 1613 файлов, добавленных в origin/main позже",
+    "citations_checked_word_for_word": 265,
+    "citations_remapped_to_canonical": 25,
+    "claims_rewritten_on_substance": 1,
+    "claim_rewritten": "J-07: вызов OpenRouter идёт через _post_openrouter_with_transient_retry, а не прямым client.post"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "type": "task_receipt",
+  "task_id": "W0-WS-01",
+  "captured_at": "2026-09-04",
+  "not_a_checkpoint": "Пилот изоляции рабочих деревьев. Решение по ADR-0016 принимает владелец задачей W0-DEC-02; эта расписка — evidence, а не решение.",
+  "scope": "проверить вариант C (гибрид worktree) по ADR-0016 §3 на non-production задачах с непересекающимися allowed paths",
+  "document": "docs/architecture/WORKTREE_PILOT_W0-WS-01.md",
+  "method": "обе стороны наблюдались на настоящей работе, а не на модельной: 2026-09-03 три задачи шли в ОДНОМ чекауте, 2026-09-04 четыре — в изолированных worktree от origin/main",
+  "measured_shared_checkout": {
+    "full_suite_runtime": "718 с против 384 с при одиночном прогоне — параллельные pytest делили ядра",
+    "cross_contamination": [
+      "test_adr_index_consistency упал из-за того, что сосед положил файлы ADR, но ещё не внёс их в реестр",
+      "test_frozen_receipt_matches_document упал из-за временной правки закреплённого §2 входа tests/conftest.py другим исполнителем"
+    ],
+    "consequence": "каждый отчёт был вынужден доказывать, что падение чужое; ни одно из падений не было дефектом продукта"
+  },
+  "measured_isolated_worktrees": {
+    "worktrees": 4,
+    "base_commit": "6dc3aadf (origin/main)",
+    "runs": "ADR 37 passed, SEC-03 97 passed, скелет 20 passed — ни одного чужого падения"
+  },
+  "criteria_adr0016_section_3": {
+    "canonical_checkout_clean": true,
+    "production_source_guard": "rc=4, PRODUCTION_SOURCE_NOT_CANONICAL [commit_not_published] — правильный отказ, страж не обманывается наличием worktree",
+    "integration_separate_change": true,
+    "task_card_recorded": true,
+    "no_hidden_shared_contract_change": false,
+    "cleanup_after_integration_only": true
+  },
+  "main_finding": {
+    "what": "две ветки независимо изменили один общий файл — таблицу §2 QUALITY_RUNTIME_CONTRACT_V1.md",
+    "proof": "git merge-tree даёт «changed in both» по этому файлу — слияние обеих веток конфликтует",
+    "why_it_happened": "пин §2 обязан ехать вместе с файлом, на который ссылается: test_frozen_receipt_matches_document содержит assert path.is_file() и падает на строке, ссылающейся на несуществующий вход. Поэтому пин conftest.py уехал с кандидатом W0-SEC-03, а пин pyproject.toml — со скелетом",
+    "conclusion": "изоляция worktree разводит ПРОГОНЫ, а не права на файл. Конкуренцию за общий контракт она не снимает и условие 5 в чистом виде не выполняет"
+  },
+  "verdict": "вариант C измеримо снимает интерференцию прогонов (5 условий из 6), но недостаточен сам по себе: работает только вместе с правилом «общие файлы меняет один интегратор». По букве §3 невыполнение хотя бы одного условия оставляет вариант A — трактовать мягче интегратор не вправе, развилка передаётся владельцу",
+  "what_this_does_not_prove": [
+    "по одному наблюдению на сторону, один день работы — не статистика",
+    "исполнители — агенты, а не люди; человек вряд ли запустил бы три полных набора одновременно, и часть интерференции есть свойство режима работы",
+    "выкатка не проверялась вовсе — пилот не касался production checkout и deploy, как §3 и требует",
+    "стоимость дискового места не измерялась: четыре worktree это четыре копии дерева"
+  ],
+  "owner_decision_needed": "W0-DEC-02: остаётся вариант A либо принимается C вместе с явным дополнением §3 про единоличное владение общими файлами",
+  "source_commit": "6dc3aadf",
+  "branch": "review/g0-phase1 (база origin/main@6dc3aadf)",
+  "revalidated_on_canonical": {
+    "what": "Кандидат пересобран от origin/main; факты перепроверены по каноническому коду",
+    "why": "первая редакция снималась на ветке dev, отпочковавшейся 2026-09-03 от 370b6ee8 и не содержащей 1613 файлов, добавленных в origin/main позже",
+    "citations_checked_word_for_word": 265,
+    "citations_remapped_to_canonical": 25,
+    "claims_rewritten_on_substance": 1,
+    "claim_rewritten": "J-07: вызов OpenRouter идёт через _post_openrouter_with_transient_retry, а не прямым client.post"
+  }
+}

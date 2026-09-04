@@ -1,0 +1,469 @@
+{
+  "type": "task_receipt",
+  "task_id": "W0-LLM-01",
+  "wave": "0",
+  "lane": "AI",
+  "captured_at": "2026-09-04",
+  "source_commit": "6dc3aadf",
+  "branch": "review/g0-phase1 (база origin/main@6dc3aadf)",
+  "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6. Это квитанция задачи.",
+  "scope": {
+    "does": "Инвентаризировать всё, что определяет ответ модели: промпты, нормативный вход, маршрутизацию, транспорты, параметры вызова и mutable sources. По каждому предмету ответить на вопрос воспроизводимости — что зафиксировать, чтобы повторный прогон дал тот же ответ, и что зафиксировать невозможно в принципе.",
+    "does_not": [
+      "не изготавливает кассеты, не выбирает формат записи и не пишет ключ — это W0-LLM-02",
+      "не правит код, тесты, scripts/**, .github/**, ADR, ADR_INDEX.md, QUALITY_RUNTIME_CONTRACT_V1.md, G0_READINESS_DELTA.md и чужие расписки",
+      "не переписывает ADR-0013 и не переводит его в accepted",
+      "не объявляет условие Gate G0 №5 выполненным",
+      "не оценивает качество аудита — это слой 3 behaviour freeze"
+    ]
+  },
+  "delivered": {
+    "document": "docs/architecture/LLM_INVENTORY_V1.md",
+    "readme_entry": "docs/architecture/README.md — пункт 20 порядка чтения",
+    "lines": 1170
+  },
+  "method": {
+    "evidence_rule": "Утверждение попадает в документ только при наличии пути с номером строки либо команды с её выводом. Отрицательные утверждения доказываются так же — командой с пустым или нулевым выводом.",
+    "marking_scale": {
+      "фиксируемо": "состояние можно записать нашими силами и предъявить при повторе; отсутствие записи — недоделанный механизм",
+      "нефиксируемо": "состояние принадлежит внешней стороне и меняется без нашего ведома; доступно только наблюдение и его дата",
+      "фиксируемо частично": "записать можно объявленное значение, но не то, что за ним стоит"
+    },
+    "boundary": "Внутрь границы включено всё, что определяет ответ модели, в том числе не считающееся обычно частью LLM-контура: рукописный нормативный справочник дисциплины, таблица моделей вне git, редактирование промпта из веб-интерфейса, ambient-контекст Claude Code, кэш платных ответов.",
+    "read_first": [
+      "docs/architecture/adr/ADR-0013-llm-reproducibility-and-cost.md",
+      "docs/architecture/CRITICAL_JOURNEYS_V1.md §5",
+      "docs/blocks_and_stage02.md",
+      "docs/critic_corrector.md",
+      "docs/claude_local_quota.md",
+      "docs/data_storage_modernization/00a_behaviour_freeze.md §4",
+      "CLAUDE.md"
+    ]
+  },
+  "result": {
+    "prompts": {
+      "files_in_prompts_dir": 152,
+      "breakdown": {
+        "pipeline/ru": 11,
+        "pipeline/ru/phase1": 6,
+        "pipeline/en": 9,
+        "disciplines": 126
+      },
+      "disciplines": 14,
+      "corpus_bytes": 724374,
+      "corpus_sha256_of_sha256s": "445584a0b8d28b52355d8717dd90c0863af6e4d7441354f610fd65c3275de966",
+      "language_sent_to_model": "en при наличии файла, иначе ru; решение по факту существования файла (task_builder.py:187-197)",
+      "ru_only_templates": [
+        "norm_requote_task.md",
+        "optimization_norm_fix_task.md",
+        "rejected_finding_expert_audit.md"
+      ],
+      "inline_prompts_in_code": {
+        "role_system_occurrences": 31,
+        "of_them_from_file": 8,
+        "of_them_inline": 23,
+        "literals_over_250_chars": "около 36, ≈34 000 символов (первая редакция: около 35, ≈33 000)",
+        "full_system_roles": 13,
+        "biggest": "gemma_findings_only.py:198 SYSTEM_PROMPT_BASE, 3562 симв."
+      },
+      "prompt_files_outside_prompts_dir": [
+        "backend/app/pipeline/stages/findings_review/critic_v2/prompts/llm_gate_human_taxonomy.ru.md",
+        "backend/app/pipeline/stages/findings_review/critic_v2/prompts/kb_augmented.ru.md"
+      ],
+      "versioning": {
+        "prompt_bundle_id_contract": "объявлен в contracts/domain/v1/identifiers.json как pmt_<ULID>, owner_module=analysis",
+        "contract_identifiers_declared_but_unimplemented": [
+          "analysis_profile_id (prf)",
+          "prompt_bundle_id (pmt)",
+          "norms_snapshot_id (nrm)"
+        ],
+        "prompt_bundle_id_implementation": "0 вхождений всех трёх идентификаторов в backend, audit_worker, scripts, src, frontend",
+        "prompt_bundle_hash": "есть, но только на пути распределённого аудита и с исключением каталога disciplines/ (project_package.py:490)",
+        "prompt_sha256": "есть, только на provider-adapter транспорте (claude_runner.py:1053,1434,1915; provider_json_stage.py:291,304); пишется в _output/<stage>_provider_run.json",
+        "sync_json_md5": "единственный хеш содержимого файла промпта; УСТАРЕЛ ПОЛНОСТЬЮ — 8 из 8 записей не совпадают с фактом, при этом synced:true",
+        "prompt_version_strings": 4,
+        "verdict": "сквозного версионирования промптов нет"
+      },
+      "runtime_mutability": {
+        "http_endpoints_editing_prompts": 5,
+        "editable_stages": [
+          "text_analysis",
+          "block_analysis",
+          "findings_merge",
+          "optimization"
+        ],
+        "effect": "правка переписывает версионируемый файл в рабочей копии без коммита, автора, метки времени и хеша до/после",
+        "per_project_override": "<version>/_output/prompt_overrides.json, закрыт .gitignore:25"
+      },
+      "ambient_context": {
+        "clean_cwd_default": false,
+        "run_cli_call_sites": 15,
+        "call_sites_passing_clean_cwd": 1,
+        "loaded_into_model_context": [
+          "CLAUDE.md (27548 Б)",
+          "AGENTS.md (895 Б)",
+          ".claude/settings.json + SessionStart hook load_context.py",
+          ".claude/settings.local.json (gitignored)",
+          "~/.claude/** учётной записи"
+        ],
+        "code_measurement_quoted": "claude_runner.py:226-229 — чистая cwd даёт −42% input/блок, −36% cli_cost, +35% findings",
+        "consequence": "самый крупный кусок входа промпта не покрыт ни prompt_bundle_hash, ни prompt_sha256"
+      }
+    },
+    "norms": {
+      "two_independent_corpora": true,
+      "handwritten_reference_per_discipline": "prompts/disciplines/<КОД>/norms_reference.md, 8–28 КБ, уходит в system Stage 01 ЦЕЛИКОМ (prompt_builder.py:529-531)",
+      "machine_corpus": {
+        "norms_db_entries": 1252,
+        "replacements": 181,
+        "verified_paragraphs": 122,
+        "last_updated": "2026-05-06T14:33:25.818089",
+        "stale_after_days": 180,
+        "update_history_records": 7,
+        "in_git": [
+          "norms_db.json",
+          "norms_paragraphs.json",
+          "paragraphs.jsonl",
+          "embeddings.npz",
+          "status_overrides.yaml"
+        ],
+        "absent_in_this_checkout": [
+          "norms/vault/",
+          "norms/tools/status_index.json",
+          "norms/tools/venv/"
+        ],
+        "corpus_state": "provisioned=false, reason_code=OPTIONAL_NORM_CORPUS_ABSENT"
+      },
+      "channels_into_prompt": 7,
+      "stage04_network_access": "нет; WebSearch/WebFetch запрещены в четырёх местах кода и в тексте промпта. Пополнение корпуса через WebSearch делалось человеком (update_history: websearch:2026-05-06, 99 норм)",
+      "snapshot_mechanisms_present": [
+        "scripts/ci_runtime_probe.py:1138-1146 _norm_artifact_digest — SHA-256 дерева vault",
+        "scripts/ci_provision_norms.py — версионированный артефакт, раскладка только после совпадения контрольной суммы, status_index_sha256",
+        "scripts/ci_regression_gate.py:279-306 — отказ --record без provisioned-корпуса"
+      ],
+      "snapshot_gaps": [
+        "norms_snapshot_id объявлен в контракте, не реализован",
+        "norm_checks.json.meta не несёт ни хеша корпуса, ни числа записей индекса",
+        "norms_reference.md — главный вход промпта — локально не покрыт ничем",
+        "NORMS_STATUS_INDEX_PATH подменяет источник статусов одной переменной окружения"
+      ]
+    },
+    "routing": {
+      "providers_called": 5,
+      "registry": "backend/app/services/audit_routing/registry.py:31-43 — claude, codex, openrouter (Gemini Direct вне реестра)",
+      "stage_model_table": {
+        "file": "backend/app/data/stage_models.json",
+        "in_git": false,
+        "gitignore_line": 187,
+        "stages": 11,
+        "actual_values": [
+          "openai/gpt-5.4"
+        ],
+        "diverges_from_code_defaults_on_stages": 11,
+        "gitignore_comment_quoted": "любой checkout тихо уводил конвейер на другие модели при следующем рестарте"
+      },
+      "decision_sources": 4,
+      "decision_order": "замороженный план 11J → STAGE_MODEL_CONFIG в памяти → stage_models.json → литерал openai/gpt-5.4",
+      "frozen_plan_cannot_carry_exact_model": "registry.py:325-340 _EXACT_MODEL_PATTERNS запрещает идентификаторы моделей в плане машинно; модель разрешает исполнитель",
+      "fallbacks": 12,
+      "silent_fallbacks": [
+        "F2 config.py:672",
+        "F3 config.py:668",
+        "F10 discussion_service.py:581,760",
+        "F12 block_analysis/runner.py:637-643"
+      ],
+      "cross_provider_fallback_on_quota": false,
+      "recorded_in_artifacts": [
+        "model",
+        "reasoning_effort",
+        "response_id и finish_reason только для HTTP-пути"
+      ],
+      "known_defect": "CLIResult не имеет поля model (models/usage.py:121-134), поэтому manager.py:1055 подставляет legacy-словарь — в usage_data.json и pipeline_log.json для CLI-стадий записана НЕ та модель",
+      "provider_revision_disclosure": {
+        "measured_on": "experiments/stage_comparison_text_ai_reviewer/artifacts/runs/*.json, 12 файлов в git",
+        "claude": "reported_model = эхо запрошенного алиаса",
+        "codex": "reported_model пустое",
+        "verdict": "ревизия модели не раскрывается ни одним провайдером"
+      }
+    },
+    "transports": {
+      "total": 35,
+      "production": 22,
+      "with_seam": 27,
+      "without_seam": 8,
+      "production_without_url_seam": 5,
+      "openrouter_url_literals_in_center": 3,
+      "openrouter_url_literals_files": [
+        "backend/app/core/config.py:784",
+        "backend/app/pipeline/stages/block_analysis/gemma_findings_only.py:95",
+        "backend/app/pipeline/stages/findings_review/critic_v2/llm_gate.py:1584"
+      ],
+      "only_correct_seam": "audit_worker/providers/openrouter_adapter.py:155-201 — env AUDIT_WORKER_PROVIDER_OPENROUTER_BASE_URL + AUDIT_WORKER_PROVIDER_ENDPOINTS_STUBBED, объявление уезжает в heartbeat",
+      "env_proxy_declared_but_unread": "в .env заданы AI_PROVIDER_MODE=proxy, PROXY_LLM_BASE_URL, OPENROUTER_BASE_URL; ни одно имя не читается кодом — grep по backend/audit_worker/scripts пуст",
+      "run_cli_bypasses": {
+        "listed_in_journeys_5_3": 6,
+        "actual": 9,
+        "newly_found_production": [
+          "backend/app/pipeline/stages/block_analysis/gemma_findings_only.py:1666 (create_subprocess_exec, CLAUDE_CLI_BIN)",
+          "backend/app/services/external_register/matcher.py:187 (run_command)",
+          "backend/app/api/routers/audit.py:230,269,281 (claude auth status/logout/login)"
+        ],
+        "correction": "discussions/discussion_service.py:435,656 использует process_runner.run_command, а не subprocess.run; critic_v2/kb_gate.py:174 достижим из боевого API"
+      },
+      "cli_binary_resolution": {
+        "center": "config.py:175-203 _find_claude_cli, третья ступень — _scan_vscode_claude (config.py:150-172) берёт САМОЕ СВЕЖЕЕ ПО MTIME расширение VSCode",
+        "recorded_anywhere_in_run": false,
+        "counterexample": "backend/app/services/worker_bootstrap/remote.py:611,666 — pins {claude: 2.1.220, codex: 0.147.0} с проверкой SHA-256 и отказом cli_version_unpinned"
+      },
+      "mcp": "два stdio-сервера в .mcp.json; путь сервера норм указывает на чужой чекаут /home/coder/…, в этом дереве нерабочий"
+    },
+    "model_parameters": {
+      "deterministic": {
+        "temperature": "0.2 на всех HTTP-путях, ни один вызов конвейера не переопределяет (config.py:1026, llm_runner.py:262,350, gemma_findings_only.py:1378, openrouter_adapter.py:620)",
+        "max_tokens_stage01_02": 16000,
+        "reasoning_effort_stage01_02": "low, переопределить нечем (runner.py:653)",
+        "response_format": "json_schema strict на центральном пути, json_object у воркера",
+        "timeout": "литералы по стадиям 600/1800/3600 с"
+      },
+      "not_deterministic": {
+        "seed": "не задан НИГДЕ — 17 вхождений слова seed в backend/app и audit_worker, ни одно не про LLM",
+        "top_p": "0 вхождений",
+        "cli_transport_params": "claude -p и codex exec не принимают temperature и max_tokens; reasoning_effort у Claude принимается _run_cli, но игнорируется _build_cmd:213-224",
+        "max_tokens_general_openrouter": "плавает по подстроке 'gemini' in model (llm_runner.py:258-261)",
+        "max_turns_center": "флаг --max-turns у центра не передаётся вовсе; у воркера = 1"
+      },
+      "recorded_in_run_artifacts": [
+        "reasoning_effort"
+      ],
+      "not_recorded": [
+        "temperature",
+        "top_p",
+        "seed",
+        "max_tokens",
+        "response_format",
+        "timeout"
+      ]
+    },
+    "mutable_sources": {
+      "total_rows": 58,
+      "explicit_negatives": 2,
+      "groups": 8,
+      "not_fixable_count": 15,
+      "date_in_prompt": false,
+      "block_order_deterministic": true,
+      "cache_findings": {
+        "stage02_paid_cache_ttl": "отсутствует",
+        "stage02_paid_cache_miss_behaviour": "идёт в сеть — правильно для денег, недопустимо для детерминизма",
+        "image_identity_mismatch": "ключ считается по метаданным, модель получает байты; worker-путь ключует по sha256 байтов — два пути используют РАЗНЫЕ определения идентичности картинки",
+        "inference_ledger_key_lacks_model": "call_key() не включает модель — смена политики моделей при том же промпте вернёт из журнала ответ другой модели",
+        "audit_trail_has_response_without_request": "промпта и его отпечатка в audit_trail нет, поэтому как кассета он не годится"
+      },
+      "dependency_pins": {
+        "requirements.txt": "openai>=1.60.0, requests>=2.31.0 — диапазоны",
+        "constraints-qr-v1.txt": "openai==3.3.1, httpx==0.28.1, requests==2.34.2",
+        "requirements-worker-pipeline.txt": "openai==2.31.0",
+        "note": "мажорное расхождение SDK, формирующего HTTP-запрос к провайдеру, в одном дереве"
+      },
+      "cost": {
+        "price_table": "backend/app/data/model_prices.json — в git, 9 моделей, читается один раз на импорте (llm_runner.py:163)",
+        "unknown_model_effect": "cost=0.0 и один warning — тихий недоучёт",
+        "network_updates": false,
+        "subscription_cli_calls_not_in_paid_ledger": true
+      },
+      "rows_from_first_edition": 51,
+      "rows_added_by_delta_audit": 7,
+      "counting_error_in_first_edition": "расписка первой редакции называла 14: строка реестра №50 не попала в разбор из-за экранированной вертикальной черты в ячейке, а №50 и №51 были объединены в одну запись «цена и раскладка prompt cache»",
+      "not_fixable_by_class": {
+        "A_state_not_observable": {
+          "count": 3,
+          "rows": [
+            1,
+            21,
+            37
+          ]
+        },
+        "B_observation_recordable": {
+          "count": 7,
+          "rows": [
+            4,
+            5,
+            13,
+            23,
+            31,
+            36,
+            50
+          ]
+        },
+        "C_recordable_only_by_operator": {
+          "count": 2,
+          "rows": [
+            3,
+            14
+          ]
+        },
+        "D_not_reproducible_in_principle": {
+          "count": 3,
+          "rows": [
+            2,
+            43,
+            51
+          ]
+        },
+        "sum": 15,
+        "where": "§10.1 документа; проверяется командой из §12"
+      },
+      "first_edition_flat_list": [
+        "версия модели за неизменным алиасом",
+        "недетерминизм сэмплинга",
+        "строка модели, которую воркер сопоставляет способности (решает администратор VPS)",
+        "entitlement провайдера (HTTP 403 организации)",
+        "остаток лимита подписки",
+        "вывод SessionStart-хука со статусом проектов",
+        ".claude/settings.local.json и ~/.claude/** учётной записи",
+        "реальный статус нормы в мире",
+        "missing_norms_online_*.json, восстанавливаемые из интернета",
+        "путь к бинарю CLI (выбор по mtime расширения VSCode)",
+        "пауза по rate limit, вызванная посторонней сессией того же пользователя",
+        "распознавание rate limit по меняющемуся тексту провайдера",
+        "восстановление кропа по внешнему crop_url",
+        "фактическая цена от провайдера и раскладка prompt cache"
+      ]
+    },
+    "new_model_call_site_found_on_canonical": {
+      "stage": "stage_comparison_high_level_project_changes",
+      "file": "backend/app/services/stage_comparison/high_level_project_changes.py",
+      "transport": "codex exec через subprocess (services/llm/codex_runner.py:709), вызов store.py:1200",
+      "model": "литерал gpt-5.6-luna в project_change_summary.py:21 — мимо stage_models.json и мимо AUDIT_CODEX_MODEL",
+      "prompt": "литерал в коде, high_level_project_changes.py:153, 1002 символа; в prompts/** отсутствует",
+      "consequence": "источников решения о модели не четыре, а пять: пятый — не спрашивать никого. Тот же приём в text_ai_reviewer.py:25"
+    },
+    "openrouter_transient_retry_policy": {
+      "where": "gemma_findings_only.py:161 (обёртка), вызов :1556",
+      "env": [
+        "STAGE01_OPENROUTER_TRANSIENT_RETRIES (по умолчанию 2, зажат 0..5)",
+        "STAGE01_OPENROUTER_RETRY_BASE_DELAY_S (по умолчанию 2.0, зажат 0..60)"
+      ],
+      "retryable": "статусы 408, 409, 429 и любой ≥500, плюс транспортные исключения",
+      "backoff": "base * 2^(n-1) плюс джиттер random.uniform(0, delay*0.5) из незасеянного random",
+      "retry_after": "числовой заголовок ЗАМЕНЯЕТ вычисленную паузу, зажат 0..60 с",
+      "why_it_matters": "один логический вызов может стоить как три; attempts/retry_count/retry_errors пишутся в метаданные вызова",
+      "codex_analogue": "CODEX_TRANSIENT_RETRIES и CODEX_TRANSIENT_RETRY_BASE_DELAY_S существовали и в первом срезе — пропуск первой редакции, а не изменение кода"
+    }
+  },
+  "adr_0013_blockers": {
+    "count": 9,
+    "items": [
+      "prompt_bundle_id не реализован; prompt_bundle_hash исключает 126 файлов профилей и не покрывает ~35 inline-промптов",
+      "norms_snapshot_id не реализован; norms_reference.md — главный вход промпта — не покрыт ничем",
+      "routing: четыре конкурирующих источника, таблица моделей вне git, два молчаливых fallback",
+      "sampling/tool/timeout/retry параметры в запись прогона не попадают (кроме reasoning_effort)",
+      "cost policy: подписочные CLI-вызовы не попадают в денежный журнал",
+      "ModelCallRecord как единый объект не существует; поля собраны порознь и на разных путях",
+      "гейта «неизвестная версия profile/prompt/norm блокирует публикацию run» нет ни одного",
+      "кассет и режима record нет вовсе — 0 вхождений cassette, 0 библиотек записи в манифестах",
+      "профиль анализа заведомо неполон: ambient-контекст CLI добавляет CLAUDE.md и вывод хука после расчёта prompt_sha256"
+    ],
+    "not_a_blocker_but_a_limit": "model revision провайдером не раскрывается — записывается объявленный ID, дата, провайдер и отпечаток запроса, как и предписывает ADR-0013 §3",
+    "already_satisfied": "payload хранится приватно и не попадает в обычные отчёты — объявлено в коде (provider_json_stage.py:310-313)"
+  },
+  "decisions_required_from_owner": {
+    "Р-1": {
+      "question": "границы prompt bundle: включать ли 126 файлов профилей дисциплин и ~35 inline-промптов",
+      "today": "хеш считается по 26 файлам из ~187 источников текста",
+      "owner": "analysis architecture"
+    },
+    "Р-2": {
+      "question": "судьба правки промптов из UI: запретить или версионировать с автором и временем",
+      "today": "правка молча меняет версионируемый файл без истории",
+      "owner": "владелец продукта"
+    },
+    "Р-3": {
+      "question": "место таблицы моделей: git или БД с историей",
+      "today": "stage_models.json вне git и расходится с дефолтами кода по всем 11 стадиям",
+      "owner": "operations"
+    },
+    "Р-4": {
+      "question": "санитизация записанных ответов перед превращением в fixture",
+      "today": "12 записанных ответов лежат в experiments/** и попали в git до появления правила ADR-0013 §4",
+      "owner": "владелец данных, см. W0-DATA-01"
+    },
+    "Р-5": {
+      "question": "ambient-контекст CLI: сделать clean_cwd умолчанием либо объявить CLAUDE.md, .claude/** и вывод хука частью AnalysisProfile",
+      "today": "clean_cwd=False у 14 из 15 CLI-этапов; вариант «оставить как есть» делает профиль заведомо неполным",
+      "owner": "analysis architecture + operations"
+    }
+  },
+  "verification": {
+    "commands": "docs/architecture/LLM_INVENTORY_V1.md §12",
+    "results": {
+      "find prompts -type f | wc -l": 152,
+      "find prompts/pipeline/ru -type f | wc -l": 17,
+      "find prompts/pipeline/en -type f | wc -l": 9,
+      "find prompts/disciplines -type f | wc -l": 126,
+      "ls prompts/disciplines | grep -v _registry | wc -l": 14,
+      "sha256 корпуса промптов": "445584a0b8d28b52355d8717dd90c0863af6e4d7441354f610fd65c3275de966",
+      "_sync.json устаревших записей": "8 из 8",
+      "git log --oneline -- prompts/ | wc -l": 30,
+      "git log --oneline -- prompts/disciplines | wc -l": 6,
+      "git check-ignore backend/app/data/stage_models.json": ".gitignore:187",
+      "уникальные значения stage_models.json": [
+        "openai/gpt-5.4"
+      ],
+      "grep -w seed backend/app audit_worker | wc -l": 17,
+      "grep -w top_p backend/app audit_worker | wc -l": 0,
+      "grep -rli cassette --include=*.py . | wc -l": 0,
+      "vcrpy|respx|pytest-recording в манифестах": 0,
+      "_env_* в config.py": 90,
+      "переменных в .env.example": 22,
+      "вызовов _run_cli": 15,
+      "из них с clean_cwd": 1,
+      "wc -c CLAUDE.md": 29108,
+      "TTL в stage02_paid_cache.py": 0,
+      "norms_db.json norms/replacements/last_updated": [
+        1252,
+        181,
+        "2026-05-06T14:33:25.818089"
+      ],
+      "norms_paragraphs.json paragraphs": 122,
+      "norms/vault и status_index.json": "отсутствуют",
+      "литералов openrouter.ai в центре": 3
+    }
+  },
+  "scope_discipline": {
+    "files_created": [
+      "docs/architecture/LLM_INVENTORY_V1.md",
+      "docs/architecture/receipts/W0-LLM-01.json"
+    ],
+    "files_modified": [
+      "docs/architecture/README.md — одна строка-ссылка в порядке чтения"
+    ],
+    "not_touched": [
+      "код, тесты, scripts/**, .github/**",
+      "docs/architecture/adr/** (включая ADR-0013)",
+      "docs/architecture/ADR_INDEX.md",
+      "docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md",
+      "docs/architecture/G0_READINESS_DELTA.md",
+      "docs/architecture/CRITICAL_JOURNEYS_V1.md и чужие расписки",
+      "prompts/**, norms/**, backend/app/data/**"
+    ],
+    "not_committed": "рабочее дерево оставлено без коммита по указанию задачи",
+    "heavy_runs": "не запускались; сеть не использовалась"
+  },
+  "consumers": [
+    "W0-ADR-04 — принятие ADR-0013: §11 даёт список из 9 блокеров и 5 решений владельца",
+    "W0-LLM-02 — кассеты и replay: §9 даёт состав ключа и профиля",
+    "W0-ADR-08 — ADR-0012 legacy analysis package protocol",
+    "W1-AI-01 — analysis registry: PromptBundle/NormsSnapshot/AnalysisProfile",
+    "W1-AI-02 — replay adapter и ModelCallRecord contract tests",
+    "W2-C-05 — analysis replay + live quality/cost policy"
+  ],
+  "rollback": "Удалить два созданных файла и пункт 20 из порядка чтения docs/architecture/README.md. Кода задача не трогала, поэтому откат не влияет ни на один прогон.",
+  "revalidated_on_canonical": {
+    "what": "Кандидат пересобран от origin/main; факты перепроверены по каноническому коду",
+    "why": "первая редакция снималась на ветке dev, отпочковавшейся 2026-09-03 от 370b6ee8 и не содержащей 1613 файлов, добавленных в origin/main позже",
+    "citations_checked_word_for_word": 265,
+    "citations_remapped_to_canonical": 25,
+    "claims_rewritten_on_substance": 1,
+    "claim_rewritten": "J-07: вызов OpenRouter идёт через _post_openrouter_with_transient_retry, а не прямым client.post"
+  }
+}

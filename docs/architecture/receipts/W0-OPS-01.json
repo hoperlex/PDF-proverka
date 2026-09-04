@@ -1,0 +1,420 @@
+{
+  "type": "task_receipt",
+  "task_id": "W0-OPS-01",
+  "part": "измеримая часть baseline эксплуатации",
+  "captured_at": "2026-09-04",
+  "not_a_checkpoint": "Именованные чекпоинты — только CP0/CP1/CP2/CP4/CP6 по docs/architecture/checkpoints/README.md. Это квитанция задачи, а не точка возврата программы.",
+  "delivers": {
+    "document": "docs/architecture/OPS_BASELINE_V1.md",
+    "consumed_by": [
+      "W0-ADR-07 / ADR-0011 §4.5 (числовые budgets и абсолютные границы)",
+      "HYBRID_REWRITE_ROADMAP.md §5.1 (B_p95, B_error, B_cost, B_quality, B_runs_7d)",
+      "Gate G0, условие №7"
+    ]
+  },
+  "branch": "review/g0-phase1 (база origin/main@6dc3aadf)",
+  "environment": {
+    "python": "3.12.3",
+    "venv": ".venv репозитория",
+    "uid": 0,
+    "host": "8 vCPU, RAM 11857 МиБ, swap 16383 МиБ (занято 8427 МиБ на момент замера)",
+    "app_mode": "PORTAL_RUNTIME_MODE=local_dev, AUDIT_DISABLE_DOTENV=1",
+    "note": "Прогон под root на нагруженном хосте — по §6 QUALITY_RUNTIME_CONTRACT_V1 это НЕ валидное clean-room окружение. Числа приведены как порядок величины и как доказательство метода, не как нормативный baseline."
+  },
+  "honest_boundary": {
+    "measurable_here": [
+      "длительности этапов состоявшегося прогона конвейера",
+      "латентность HTTP-обработчиков внутрипроцессно",
+      "перцентили по единственному существующему журналу действий",
+      "RSS приложения и тестовых процессов",
+      "занятость диска и объёмы по категориям",
+      "размеры артефактов одной версии документа",
+      "поверхность API и фактическая кардинальность реестра метрик"
+    ],
+    "not_measurable_here": [
+      "P95 и error rate боевых запросов — нет боевого трафика",
+      "стоимость аудита — за всю историю $0.000358 на двух самотестах",
+      "runs/неделю — завершённых production-аудитов ноль, истории журнала один день",
+      "B_quality — принадлежит W0-LLM-02, не эксплуатации"
+    ],
+    "rule_applied": "Ни одно число не оценено и не выведено по аналогии. Где данных нет — стоит «нет данных» с указанием, что именно требуется."
+  },
+  "form_completeness": {
+    "metrics_total": 24,
+    "filled_with_measured_value": 17,
+    "empty_no_data": 7,
+    "roadmap_5_1_variables_filled": 0,
+    "roadmap_5_1_variables_total": 5,
+    "note": "Все 17 заполненных — локально измеримое. Ни одна из пяти величин §5.1 (B_p95, B_error, B_cost, B_quality, B_runs_7d) не заполнена."
+  },
+  "measured": {
+    "http_from_existing_log": {
+      "source": "logs/actions/actions-2026-08-25.jsonl — единственный файл журнала в дереве",
+      "file_bytes": 30017,
+      "records": 189,
+      "window": "2026-08-25T12:02:20.903+05:00 → 2026-08-25T16:02:40.059+05:00 (4 ч 00 мин)",
+      "kinds": {
+        "api": 158,
+        "system": 24,
+        "pipeline": 7
+      },
+      "dur_ms": {
+        "min": 1,
+        "p50": 5,
+        "p90": 238,
+        "p95": 684,
+        "p99": 774,
+        "max": 813,
+        "mean": 78.6
+      },
+      "statuses": {
+        "200": 111,
+        "404": 46,
+        "409": 1,
+        "5xx": 0
+      },
+      "error_rate_5xx_percent": 0.0,
+      "error_rate_4xx_5xx_percent": 29.75,
+      "server_restarts_in_window": 12,
+      "tool": "разовый скрипт разбора JSONL (в репозитории инструмента перцентилей нет)",
+      "disqualifier": "формат ДО разделения каналов W0-LOG-01 (path/ip/dur_ms лежат в actions-*); метод измерения не совпадает с действующим — по §5.1 сравнение с будущим контуром недействительно"
+    },
+    "http_in_process": {
+      "method": "starlette TestClient, прогрев + 30 замеров на маршрут, time.perf_counter()",
+      "routes_measured": 14,
+      "requests_total": 434,
+      "slowest_200_route": {
+        "route": "/api/audit/templates",
+        "p50_ms": 8.02,
+        "p95_ms": 10.09,
+        "max_ms": 10.61
+      },
+      "fastest_200_route": {
+        "route": "/api/knowledge-base/stats",
+        "p50_ms": 0.79,
+        "p95_ms": 0.99,
+        "max_ms": 1.02
+      },
+      "disqualifier": "нет сети, нет конкуренции, каталог projects/ пуст — это нижняя граница, а не типичное значение"
+    },
+    "pipeline": {
+      "source": "projects_v2/.../13АВ-РД-АР-ТП1-ТП2_V1/versions/v001/03_analysis/latest/{pipeline_log.json,audit_log.jsonl}",
+      "runs_in_tree": 1,
+      "crop_blocks_sec": 39,
+      "crop_blocks_blocks": 47,
+      "crop_blocks_sec_per_block": 0.83,
+      "block_context_sec": 2.13,
+      "gemma_enrichment_sec": null,
+      "prepare_data_end_to_end_sec": 41.13,
+      "stage_failures": "1 отказ из 2 попыток crop_blocks (crop subprocess failed: exit code 1)",
+      "stages_declared": 13,
+      "stages_measured": 3,
+      "stages_with_number": 2
+    },
+    "rss_kib": {
+      "interpreter_start": 10884,
+      "after_import_action_log": 15388,
+      "after_import_main": 90056,
+      "after_lifespan_startup": 91360,
+      "after_20_requests": 94496,
+      "after_434_requests": 96412,
+      "peak_ru_maxrss_same_run": 95764,
+      "pytest_test_action_log_child_peak": 65596,
+      "pytest_collect_only_child_peak": 246960,
+      "method": "VmRSS из /proc/self/status; для дочерних — resource.getrusage(RUSAGE_CHILDREN).ru_maxrss (GNU time на хосте отсутствует)"
+    },
+    "disk": {
+      "fs_total_bytes": 126828056576,
+      "fs_used_bytes": 98728587264,
+      "fs_free_bytes": 21646000128,
+      "used_percent_api_info": 77.8,
+      "used_percent_df": 83.0,
+      "method_discrepancy_pp": 5.2,
+      "method_note": "shutil.disk_usage считает used = total − free; df вычитает зарезервированные root-блоки. Оба верны. Порог без указания метода недействителен.",
+      "by_category_bytes": {
+        "projects_v2_user_data": 28007009,
+        "norms": 62693439,
+        "backend_app": 23529707,
+        "frontend_dist": 1134740,
+        "logs_actions": 30174,
+        "projects_legacy_root": 0
+      },
+      "action_log_growth_bytes_per_hour_observed": 7493,
+      "action_log_day_cap_bytes": 268435456
+    },
+    "artifacts_one_version": {
+      "document": "13АВ-РД-АР-ТП1-ТП2_V1 / v001, 47 блоков",
+      "input_pdf_bytes": 9133138,
+      "version_total_bytes": 28000785,
+      "storage_amplification": 3.07,
+      "amplification_note": "нижняя оценка: 04_review, 05_export и 99_service пусты, анализ не завершён",
+      "layers_bytes": {
+        "01_input": 9936454,
+        "02_work": 10407134,
+        "03_analysis": 7656667,
+        "version_json": 530
+      },
+      "blocks_stage02_100": {
+        "files": 48,
+        "bytes": 5910862,
+        "avg_bytes": 123143
+      },
+      "block_vector_graphs": {
+        "files": 47,
+        "bytes": 1067820,
+        "avg_bytes": 22720
+      }
+    },
+    "cost": {
+      "paid_cost_total_lifetime_usd": 0.000358,
+      "paid_cost_calls": 2,
+      "paid_cost_sources": [
+        "stand_selftest",
+        "stand_selftest_stream"
+      ],
+      "paid_cost_by_stage_usd": {
+        "text_analysis": 0.00022,
+        "discussion": 0.000138
+      },
+      "usage_data_records": 13,
+      "usage_data_verdict": "все записи model=\"fake\", project=\"ПРО/ект\", cost_usd=0.0 — синтетический остаток тестов",
+      "blocked_events": 75,
+      "blocked_events_sources": {
+        "test": 75
+      },
+      "blocked_reasons": {
+        "daily_limit_exceeded": 60,
+        "paid_api_disabled": 15
+      },
+      "verdict": "ни одного платного вызова в составе завершённого аудита; B_cost — нет данных"
+    },
+    "api_surface_and_metric_cardinality": {
+      "openapi_paths": 243,
+      "openapi_operations": 265,
+      "by_method": {
+        "GET": 126,
+        "POST": 112,
+        "DELETE": 14,
+        "PUT": 12,
+        "PATCH": 1
+      },
+      "noise_filtered_paths": 41,
+      "noise_filtered_safe_method_operations": 31,
+      "noise_filtered_get_share_percent": 24.6,
+      "metric_series_after_434_requests": 14,
+      "metric_series_ceiling": 500,
+      "cardinality_headroom_statuses_per_operation": 1.89,
+      "histogram_buckets_ms": [
+        5,
+        10,
+        25,
+        50,
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000,
+        10000
+      ]
+    },
+    "test_suite": {
+      "collected": "7657/7663 (6 deselected)",
+      "collect_wall_sec_cold": 19.2,
+      "collect_wall_sec_warm": 3.64,
+      "module_run": "backend/tests/test_action_log.py — 102 passed за 0.62 s"
+    }
+  },
+  "inventory_confirmed": {
+    "claim_checked": "ADR-0011 §1.1: три реестра метрик без экспорта",
+    "verdict": "подтверждено на коммите 25a3c145",
+    "registries": [
+      {
+        "where": "backend/app/core/action_log.py:474-527",
+        "content": "счётчики по kind + гистограмма dur_ms по method×route×status, потолок 500 серий",
+        "export": "нет; metrics_snapshot() вызывается только из backend/tests/test_action_log.py:700,716"
+      },
+      {
+        "where": "backend/app/agent_gateway/metrics.py:9-24",
+        "content": "25 имён METRIC_NAMES, метки {protocol_version, reason, result}",
+        "export": "нет; snapshot() читают только тесты"
+      },
+      {
+        "where": "audit_worker/grpc_transport.py:49-69",
+        "content": "19 имён WORKER_METRIC_NAMES",
+        "export": "нет; metrics_snapshot() читают только тесты"
+      }
+    ],
+    "absent": [
+      "prometheus_client",
+      "opentelemetry",
+      "statsd",
+      "sentry_sdk",
+      "эндпоинт /metrics"
+    ],
+    "checked_in": [
+      "все *.py дерева",
+      "requirements.txt",
+      "requirements-dev.txt",
+      "requirements-gateway.txt",
+      "requirements-proto.txt",
+      "requirements-worker.txt",
+      "requirements-worker-grpc.txt",
+      "requirements-worker-pipeline.txt",
+      "constraints-qr-v1.txt",
+      "pyproject.toml",
+      "deploy/systemd/**"
+    ]
+  },
+  "findings_that_change_the_collection_plan": [
+    {
+      "id": "OPS01-F1",
+      "summary": "Шум-фильтр вырезает поллинговые GET и из журнала, и из метрик",
+      "evidence": "ранний return в action_log.py:719-729 стоит ДО log_event → _observe_metrics; измерено: 41 путь из 243 и 31 GET-операция из 126 (24.6 %)",
+      "impact": "B_p95 «интерактивного чтения», снятый по действующему журналу, систематически не видит самые частые интерактивные чтения",
+      "owner": "W1-OPS-01"
+    },
+    {
+      "id": "OPS01-F2",
+      "summary": "dur_ms живёт только в диагностическом канале с ретеншном 14 дней",
+      "evidence": "docs/action_log.md, таблица каналов; _DIAG_LIMITS в action_log.py:200-209; в durable audit из чисел только status и duration_sec",
+      "impact": "требование §5.1 «медиана за 7 дней по последним восьми полным неделям» по HTTP-латентности файловым каналом невыполнимо: восемь недель dur_ms не хранятся нигде",
+      "owner": "W1-OPS-01 + решение владельца по ретеншну (ADR-0011 D-4)"
+    },
+    {
+      "id": "OPS01-F3",
+      "summary": "При активном EXC-0002 (ACTION_LOG_REDACTION=0) метрики не собираются вовсе",
+      "evidence": "_observe_metrics вызывается после проверки _redaction_enabled(), action_log.py:596-605",
+      "impact": "аварийный откат обнуляет единственный источник гистограмм — дополнительный аргумент к §4.6 ADR-0011",
+      "owner": "W0-ADR-07"
+    },
+    {
+      "id": "OPS01-F4",
+      "summary": "Потолок 500 серий против 265 операций API — 1.89 статуса на операцию",
+      "evidence": "измерено: 243 пути / 265 операций OpenAPI; _METRICS_MAX_SERIES = 500",
+      "impact": "потолок будет достигнут штатным трафиком, а не аварией; <over-cardinality> начнёт поглощать легитимные ряды",
+      "owner": "W1-OPS-01"
+    },
+    {
+      "id": "OPS01-F5",
+      "summary": "Инструмента, считающего перцентили, в репозитории нет",
+      "evidence": "action_log.stats() (строка 1024) даёт объёмы и число ошибок по дням; scripts/analyze_action_log.py печатает dur_ms события и не агрегирует",
+      "impact": "повторное снятие baseline не воспроизводимо; числа этого документа получены разовым скриптом вне дерева",
+      "owner": "W1-OPS-01"
+    },
+    {
+      "id": "OPS01-F6",
+      "summary": "Занятость диска считается двумя способами и расходится на 5.2 п.п.",
+      "evidence": "GET /api/info (shutil.disk_usage) — 77.8 %; df -h на той же ФС в ту же минуту — 83 %",
+      "impact": "порог алерта без указания метода сработает или не сработает в зависимости от того, кто его считал",
+      "owner": "владелец (ADR-0011 §8), реализация — W0-OPS-02"
+    },
+    {
+      "id": "OPS01-F7",
+      "summary": "Статус этапа completed не приводит к записи duration_sec",
+      "evidence": "_pop_stage_duration() снимает засечку по статусу running; duration_sec пишется для done/partial/skipped/error (audit_logger.py:232,239); в измеренном прогоне block_context и gemma_enrichment завершились как completed без длительности",
+      "impact": "покрытие duration_sec по этапам неполно; B_p95 конвейера будет считаться по подмножеству этапов",
+      "owner": "lane ENG — вне границ W0-OPS-01, здесь только измерено"
+    },
+    {
+      "id": "OPS01-F8",
+      "summary": "B_cost неоднозначен по полю: cost_usd против cost_usd_notional",
+      "evidence": "backend/app/models/usage.py:21-22 — cost_usd = 0 для CLI по подписке, cost_usd_notional = «сколько бы стоило»",
+      "impact": "без явного выбора поля два контура посчитают B_cost по-разному и сравнение на G2 будет недействительным",
+      "owner": "владелец (ADR-0011 D-1, ADR-0013)"
+    }
+  ],
+  "blockers": {
+    "needs_export_code": [
+      "B_p95 по поллинговым маршрутам (OPS01-F1)",
+      "метрики, переживающие рестарт (12 рестартов за наблюдаемый день)",
+      "воспроизводимость baseline (OPS01-F5)",
+      "окно длиннее 14 дней (OPS01-F2)",
+      "метрики при активном EXC-0002 (OPS01-F3)",
+      "полнота duration_sec (OPS01-F7)"
+    ],
+    "needs_production_deployment": [
+      "B_p95",
+      "B_error",
+      "B_runs_7d",
+      "P95 стоимости аудита",
+      "RSS конвейера под нагрузкой",
+      "длительности десяти незапускавшихся этапов"
+    ],
+    "needs_owner_decision": [
+      "поле для B_cost (OPS01-F8)",
+      "метод занятости диска (OPS01-F6)",
+      "абсолютные границы ADR-0011 §4.5 (D-2)",
+      "дежурство и адресат уведомлений (D-3)",
+      "ретеншн метрик и место под них (D-4)",
+      "потолок кардинальности против агрегации по классам (OPS01-F4)"
+    ]
+  },
+  "budgets_verdict": {
+    "can_name_preliminary_budgets": false,
+    "reasons": [
+      "все относительные пороги §5.1 кратны величине, которой нет",
+      "единственная выборка латентности получена методом до разделения каналов W0-LOG-01 — §5.1 прямо запрещает сравнение при разных методах измерения",
+      "выборка нерепрезентативна: 158 запросов, один день, loopback, пустой каталог данных, 12 рестартов внутри окна",
+      "B_error из этой выборки равен 0.00 % и, подставленный в ≤ max(B_error, 1%), замаскировал бы отсутствие данных видимостью благополучия",
+      "B_cost из $0.000358 на двух самотестах дал бы порог, который любой настоящий аудит нарушает с первого вызова",
+      "B_runs_7d по формуле требует восемь полных недель; истории один день"
+    ],
+    "what_can_be_accepted_now": [
+      "форма из 24 величин с единицами, методом, источником, владельцем и сроком",
+      "список блокеров с адресами: шесть — кодом, шесть — решением владельца, один класс — только эксплуатацией",
+      "правила метода измерения, не зависящие от величин: поле стоимости, метод занятости диска, судьба шум-фильтра, ретеншн dur_ms, потолок кардинальности"
+    ],
+    "recommendation_to_W0-ADR-07": "принять ADR-0011 с формой и правилами метода, но без числовых budgets; D-1 остаётся открытым до появления боевого окна; canary, ссылающийся на §5.1, до этого не считается пройденным"
+  },
+  "gate_g0_condition_7": {
+    "text": "baseline содержит P50/P95/MAX, error rate, RSS, disk и стоимость",
+    "status": "закрыто частично",
+    "closed": [
+      "P50/P95/MAX — сняты, с явной меткой «dev-сессия, не боевой трафик»",
+      "error rate — снят (5xx = 0 из 158), с той же меткой",
+      "RSS — снят по семи точкам замера",
+      "disk — снят, включая расхождение двух методов"
+    ],
+    "not_closed": [
+      "стоимость — за всю историю $0.000358 на двух самотестах; боевого расхода нет"
+    ],
+    "honest_statement": "Условие может быть закрыто только в части «форма и локально измеримое». Пока боевого развёртывания нет, это надо повторять на каждом gate — как того требует ADR-0011 §6."
+  },
+  "scope_discipline": {
+    "files_created": [
+      "docs/architecture/OPS_BASELINE_V1.md",
+      "docs/architecture/receipts/W0-OPS-01.json"
+    ],
+    "files_modified": [
+      "docs/architecture/README.md — одна ссылка в разделе эксплуатационных runbook'ов"
+    ],
+    "not_touched": [
+      "код",
+      "тесты",
+      "scripts/**",
+      ".github/**",
+      "существующие ADR",
+      "ADR_INDEX.md",
+      "QUALITY_RUNTIME_CONTRACT_V1.md",
+      "G0_READINESS_DELTA.md",
+      "чужие расписки"
+    ],
+    "code_changes": 0,
+    "commits": 0,
+    "note": "Ни один замер не потребовал правки кода. Приложение поднималось только на чтение. Раскрытие побочного эффекта: первый замер RSS (rss2.py) был выполнен БЕЗ переопределения AUDIT_ACTION_LOG_DIR и оставил в боевом каталоге две записи durable audit — logs/actions/actions-2026-09-04.jsonl, {kind: system, event: startup} и {kind: system, event: shutdown} за 2026-09-04T14:32:27+05:00, 157 байт. HTTP-записей нет: /api/info вырезан шум-фильтром. Записи НЕ удалены — удаление записи durable audit по P-13 является инцидентом, а не уборкой. Каталог logs/ в .gitignore:249, в индекс ничего не попало. Последующие замеры выполнялись с AUDIT_ACTION_LOG_DIR в scratchpad вне дерева."
+  },
+  "reproducibility": {
+    "instructions": "docs/architecture/OPS_BASELINE_V1.md §7",
+    "comparability_condition": "тот же профиль окружения; замер 2026-09-04 сделан под root на нагруженном хосте вне clean-room профиля qr-v1, и при сравнении с будущим замером это обязано быть учтено, иначе разница окружений будет прочитана как регрессия"
+  },
+  "source_commit": "6dc3aadf",
+  "revalidated_on_canonical": {
+    "what": "Кандидат пересобран от origin/main; факты перепроверены по каноническому коду",
+    "why": "первая редакция снималась на ветке dev, отпочковавшейся 2026-09-03 от 370b6ee8 и не содержащей 1613 файлов, добавленных в origin/main позже",
+    "citations_checked_word_for_word": 265,
+    "citations_remapped_to_canonical": 25,
+    "claims_rewritten_on_substance": 1,
+    "claim_rewritten": "J-07: вызов OpenRouter идёт через _post_openrouter_with_transient_retry, а не прямым client.post"
+  }
+}
