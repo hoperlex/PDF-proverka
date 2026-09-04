@@ -1194,6 +1194,7 @@ def worker_lock_instance(*, host: str, user: str, remote_root: str,
         явный стабильный идентификатор установки; здесь он не введён.
     """
     import hashlib
+    import ipaddress
     import socket
 
     canonical = _ssh_canonical_host(host.strip(), ssh_config).strip().lower()
@@ -1201,11 +1202,26 @@ def worker_lock_instance(*, host: str, user: str, remote_root: str,
         addresses = sorted({str(item[4][0]) for item in socket.getaddrinfo(canonical, None)})
     except OSError:
         addresses = []
-    identity = ",".join(addresses) if addresses else canonical
+    # Linux commonly resolves ``localhost`` to both 127.0.0.1 and ::1 while
+    # an explicit loopback address produces only one family.  They still
+    # identify the same machine, so letting the address-family spelling enter
+    # the fingerprint would create two independent deployment locks.
+    normalized_addresses: list[str] = []
+    for address in addresses:
+        try:
+            parsed = ipaddress.ip_address(address.split("%", 1)[0])
+        except ValueError:
+            normalized_addresses.append(address)
+        else:
+            normalized_addresses.append("loopback" if parsed.is_loopback else address)
+    normalized_addresses = sorted(set(normalized_addresses))
+    identity = ",".join(normalized_addresses) if normalized_addresses else canonical
     fingerprint = hashlib.sha256(
         f"{user.strip()}@{identity}:{PurePosixPath(remote_root.strip() or '/')}".encode("utf-8")
     ).hexdigest()[:12]
-    readable = "".join(ch for ch in (addresses[0] if addresses else canonical)
+    readable = "".join(ch for ch in (
+        normalized_addresses[0] if normalized_addresses else canonical
+    )
                        if ch.isalnum() or ch in "-_.")
     return f"{readable or 'worker'}-{fingerprint}"
 

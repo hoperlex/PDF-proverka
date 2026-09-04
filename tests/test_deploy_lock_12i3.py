@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import textwrap
@@ -264,6 +265,33 @@ def test_worker_lock_instance_is_one_installation_not_one_spelling():
     same_basename = worker_lock_instance(host="127.0.0.1", user="auditworker_11l",
                                          remote_root="/opt/other/audit-worker")
     assert by_ip != same_basename, "совпадение последнего сегмента пути — не совпадение"
+
+
+def test_worker_lock_instance_collapses_ipv4_and_ipv6_loopback(monkeypatch):
+    """Набор localhost из двух address families — всё ещё одна машина."""
+    from scripts.deploy_audit_worker import worker_lock_instance
+
+    def fake_getaddrinfo(host, _port):
+        addresses = {
+            "127.0.0.1": ["127.0.0.1"],
+            "localhost": ["::1", "127.0.0.1"],
+        }[host]
+        return [(socket.AF_UNSPEC, socket.SOCK_STREAM, 0, "", (address, 0))
+                for address in addresses]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(
+        "scripts.deploy_audit_worker._ssh_canonical_host",
+        lambda host, _ssh_config="": host,
+    )
+
+    common = {
+        "user": "auditworker_11l",
+        "remote_root": "/home/auditworker_11l/audit-worker",
+    }
+    assert worker_lock_instance(host="127.0.0.1", **common) == worker_lock_instance(
+        host="localhost", **common
+    )
 
 
 @pytest.mark.parametrize("command", ["build", "verify"])
