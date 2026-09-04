@@ -1,0 +1,116 @@
+{
+  "type": "release_receipt",
+  "schema_version": 1,
+  "version": "0.0.03",
+  "captured_at": "2026-09-04T08:03:15Z",
+  "status": "released",
+  "release_commit": "27a857da8dc6d32daa1b20d6ff5755be9fa20520",
+  "refs_at_version_fixation": {
+    "origin/main": "27a857da8dc6d32daa1b20d6ff5755be9fa20520",
+    "origin/review/0.0.03": "27a857da8dc6d32daa1b20d6ff5755be9fa20520",
+    "origin/version/0.0.03": "27a857da8dc6d32daa1b20d6ff5755be9fa20520"
+  },
+  "ancestry": {
+    "release_commit_reachable_from_origin_main": true,
+    "version_branch_created_after_main_publication": true,
+    "force_push_used": false
+  },
+  "ci": {
+    "review": {
+      "run_id": 33846451002,
+      "url": "https://github.com/hoperlex/PDF-proverka/actions/runs/33846451002",
+      "head_sha": "27a857da8dc6d32daa1b20d6ff5755be9fa20520",
+      "conclusion": "success",
+      "jobs_success": 7,
+      "jobs_total": 7
+    },
+    "post_merge_main": {
+      "run_id": 33847204705,
+      "url": "https://github.com/hoperlex/PDF-proverka/actions/runs/33847204705",
+      "head_sha": "27a857da8dc6d32daa1b20d6ff5755be9fa20520",
+      "conclusion": "success",
+      "jobs_success": 7,
+      "jobs_total": 7,
+      "jobs": [
+        "frontend",
+        "lane unit",
+        "lane contract",
+        "lane integration",
+        "lane network",
+        "chaos",
+        "regression-gate"
+      ]
+    }
+  },
+  "lane_receipts": {
+    "unit": {
+      "artifact_id": 9926995519,
+      "artifact_digest": "sha256:3c768c48a0f510e4c522ea391526ee6b4f696cfc472a1407eb04fd97479ae4b2",
+      "selected": 2924,
+      "passed": 2742,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 182
+    },
+    "contract": {
+      "artifact_id": 9926986441,
+      "artifact_digest": "sha256:b28ad7a031ec55ba45a5bbe9e3ef9b0816c8c51ae492048d2242d77611c24929",
+      "selected": 260,
+      "passed": 259,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    "integration": {
+      "artifact_id": 9927020405,
+      "artifact_digest": "sha256:aa730aaff2d6dee28c27cf35003e4efcbdc4da8974996a65b33fa26edb66dc22",
+      "selected": 3800,
+      "passed": 3752,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 48
+    },
+    "network": {
+      "artifact_id": 9927116541,
+      "artifact_digest": "sha256:27d0feff215d9ced5d4ed17fc5366c3ad1595dee269a9a0b5a60e23364c86319",
+      "selected": 916,
+      "passed": 911,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 5
+    },
+    "chaos": {
+      "artifact_id": 9927009420,
+      "artifact_digest": "sha256:93ef8ff0813a49a5a4e1d70040a9b3ac20aa465020ffade81106e9ce99bd608e",
+      "selected": 7,
+      "passed": 6,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    "common_contract": {
+      "source_commit": "27a857da8dc6d32daa1b20d6ff5755be9fa20520",
+      "probe_mode": "ci",
+      "probe_exit_code": 0,
+      "report_status": "ok",
+      "baseline_entries": 0,
+      "new_failures": [],
+      "runner_uid": 1001,
+      "junit_present": true
+    }
+  },
+  "release_gate": {
+    "phase_d_real_github_runner": "passed",
+    "phase_e_review_merge_and_version_fixation": "passed",
+    "version_slice_fixed": true
+  },
+  "known_limits": {
+    "gate_g0_passed": false,
+    "w1_authorized": false,
+    "probe_mode": "ci",
+    "enforce_enabled": false,
+    "norm_artifact": "OPTIONAL_NORM_CORPUS_ABSENT",
+    "note": "Фиксация version-среза 0.0.03 не является положительным вердиктом Gate G0. Корпус норм и --enforce остаются отдельным долгом согласно WAVE_0_0_03_PLAN.md §6 и §11."
+  },
+  "immutability": "refs/heads/version/0.0.03 зафиксирована на release_commit и не должна перемещаться"
+}
