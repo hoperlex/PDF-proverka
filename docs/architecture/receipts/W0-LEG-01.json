@@ -148,5 +148,15 @@
     "citations_remapped_to_canonical": 25,
     "claims_rewritten_on_substance": 1,
     "claim_rewritten": "J-07: вызов OpenRouter идёт через _post_openrouter_with_transient_retry, а не прямым client.post"
+  },
+  "task_completion": {
+    "closes_task_id": false,
+    "what_it_is": "честное измерение разрыва, а не закрытие задачи",
+    "criterion": "Gate G0 условие 13: предел 1 active capability slot соблюдён И human integration hours имеют denominator и еженедельный 20 % reporting target",
+    "first_half": "выполнено: активных capability slot ноль при пределе один, запас единица",
+    "second_half": "НЕ выполнено: denominator_hours = null, поимённого интегратора нет, недельных публикаций ноль",
+    "why_missing": "denominator — организационная величина: пока не назван человек и не начат журнал часов, знаменателя не существует и вычислить его нечем",
+    "blocked_on": "владелец программы: назначить интегратора поимённо и начать еженедельный журнал часов",
+    "status": "половина условия выполнена, половина не выполнена"
   }
 }

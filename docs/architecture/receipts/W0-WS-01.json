@@ -50,5 +50,13 @@
     "citations_remapped_to_canonical": 25,
     "claims_rewritten_on_substance": 1,
     "claim_rewritten": "J-07: вызов OpenRouter идёт через _post_openrouter_with_transient_retry, а не прямым client.post"
+  },
+  "task_completion": {
+    "closure_decision": "за владельцем программы",
+    "closes_task_id": true,
+    "criterion": "ADR-0016 §3: пилот на двух non-production задачах с непересекающимися allowed paths и шесть условий приёмки варианта C",
+    "result": "пилот проведён, все шесть условий проверены; пятое (нет скрытого изменения общего контракта) НЕ выполнено",
+    "what_remains": "вердикт по варианту C — решение владельца (W0-DEC-02); интегратор развилку передал, а не разрешил",
+    "status": "измерение выполнено полностью; решение за владельцем"
   }
 }

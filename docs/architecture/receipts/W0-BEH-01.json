@@ -38,14 +38,14 @@
     "evidence_rule": "Journey объявлен покрытым только при указании конкретного файла теста. Проверено чтением tests/ (328 файлов test_*.py), backend/tests/ (68), frontend/tests/ (32), backend/app/pipeline/**, backend/app/api/routers/** и contracts/http/v1/openapi.snapshot.json."
   },
   "result": {
-    "journeys_total": 31,
+    "journeys_total": 30,
     "by_priority": {
       "P0": 21,
-      "P1": 10
+      "P1": 9
     },
     "coverage": {
       "deterministic_end_to_end": 16,
-      "partial": 15,
+      "partial": 14,
       "uncovered": 0,
       "of_deterministic_with_synthetic_model": 2
     },
@@ -58,8 +58,7 @@
     "llm_journeys": {
       "whole": 7,
       "with_llm_substep": 2,
-      "passing_replay": 0,
-      "hybrid": 1
+      "passing_replay": 0
     },
     "honest_statement": "Из 30 критических journeys 16 имеют сквозной детерминированный тест, 14 — частичный, ни один не опирается на версионированный golden-корпус, и ни один LLM-journey не воспроизводится на записанных ответах.",
     "api_surface_on_canonical": {
@@ -68,13 +67,13 @@
       "delta_vs_first_edition": "265 → 270 операций; три новых пути, все в stage-comparison: graphic-comparison (GET+POST), high-level-project-changes (GET+POST), text-entities (GET)",
       "cross_check": "contracts/http/v1/openapi.snapshot.json на каноне даёт те же 246/270"
     },
-    "journey_added_on_canonical": {
-      "id": "J-31",
-      "name": "Верхнеуровневые изменения проекта П↔РД",
-      "priority": "P1",
-      "coverage": "Ч",
-      "why_only_one_of_three": "критерий §2 требует сценария, доводимого пользователем до конца; SPA вызывает только high-level-project-changes (frontend/static/js/app.js:13483)",
-      "tests": "24 в tests/test_stage_comparison_high_level_project_changes.py + 2 в tests/test_stage_comparison_high_level_store.py; ни один не идёт через HTTP-маршрут и ни один не подменяет транспорт модели"
+    "canonical_delta_classification": {
+      "verdict": "ни один из трёх новых путей не образует journey; каталог остаётся 30",
+      "high-level-project-changes": "шаг внутри J-25: SPA вызывает его в том же обработчике, что и project_change_summary (frontend/static/js/app.js:13483), под тем же флагом загрузки и с тем же каналом ошибки — отдельного пользовательского действия и отдельного наблюдаемого завершения нет",
+      "graphic-comparison": "из интерфейса не вызывается — функция без сценария (§7)",
+      "text-entities": "из интерфейса не вызывается — функция без сценария (§7)",
+      "step_coverage": "24 теста tests/test_stage_comparison_high_level_project_changes.py и 2 теста tests/test_stage_comparison_high_level_store.py; ни один не идёт через HTTP-маршрут и ни один не подменяет транспорт модели",
+      "withdrawn_claim": "черновик кандидата заводил отдельный journey J-31 и доводил каталог до 31, выходя за диапазон roadmap 20–30. Владелец отклонил; классификация исправлена по коду, а не подогнана под число"
     }
   },
   "g0_condition_5": {
@@ -132,9 +131,10 @@
     },
     "known_failure_baseline": "scripts/ci_known_failures.txt — 0 записей",
     "api_surface": {
-      "paths": 243,
-      "operations": 265,
-      "snapshot": "contracts/http/v1/openapi.snapshot.json"
+      "paths": 246,
+      "operations": 270,
+      "snapshot": "contracts/http/v1/openapi.snapshot.json",
+      "measured_on": "6dc3aadf; снимок контракта на каноне даёт те же 246/270"
     },
     "frontend_has_no_browser_e2e": "frontend/package.json — только vitest; playwright/puppeteer/cypress/jsdom отсутствуют; 32 теста читают index.html/app.js как текст, поэтому UI-journey сквозным тестом не покрывается в принципе",
     "fixture_files": "7 файлов (было 6): на каноне добавился tests/fixtures/g2_4_5_policy_cases_v2.json — корпус случаев политики графического сравнения, не journey"
@@ -156,7 +156,7 @@
     "vectograf_and_geometry": "шаг внутри J-05; большая часть тестов требует боевого корпуса и скипается"
   },
   "verification": {
-    "commands": "§9 документа; все пять журнальных чисел и четыре факта окружения воспроизведены на коммите 53d85e99",
+    "commands": "§9 документа; все пять журнальных чисел и четыре факта окружения воспроизведены на коммите 6dc3aadf",
     "results": {
       "catalog_rows": 30,
       "deterministic": 16,
@@ -165,7 +165,7 @@
       "p1": 9,
       "fixture_data_files": 6,
       "cassette_hits_in_py": 0,
-      "openapi": "243 пути, 265 операций",
+      "openapi": "246 путей, 270 операций",
       "projects_dir_entries": 0
     }
   },
@@ -203,5 +203,13 @@
     "citations_remapped_to_canonical": 25,
     "claims_rewritten_on_substance": 1,
     "claim_rewritten": "J-07: вызов OpenRouter идёт через _post_openrouter_with_transient_retry, а не прямым client.post"
+  },
+  "task_completion": {
+    "closure_decision": "за владельцем программы",
+    "closes_task_id": true,
+    "criterion": "выделить каталог критических journeys и измерить фактическое покрытие",
+    "result": "30 journeys, покрытие измерено по каждому чтением тестового файла",
+    "what_remains": "условие G0 №5 этим НЕ закрывается: нет ни одного golden-корпуса и ни одного LLM-journey с replay — это объём W0-BEH-02 и W0-LLM-02",
+    "status": "задача измерения выполнена; условие G0 №5 не выполнено"
   }
 }

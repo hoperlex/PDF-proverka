@@ -189,8 +189,8 @@
       "verdict": "ни одного платного вызова в составе завершённого аудита; B_cost — нет данных"
     },
     "api_surface_and_metric_cardinality": {
-      "openapi_paths": 243,
-      "openapi_operations": 265,
+      "openapi_paths": 246,
+      "openapi_operations": 270,
       "by_method": {
         "GET": 126,
         "POST": 112,
@@ -203,7 +203,7 @@
       "noise_filtered_get_share_percent": 24.6,
       "metric_series_after_434_requests": 14,
       "metric_series_ceiling": 500,
-      "cardinality_headroom_statuses_per_operation": 1.89,
+      "cardinality_headroom_statuses_per_operation": 1.85,
       "histogram_buckets_ms": [
         5,
         10,
@@ -227,7 +227,7 @@
   },
   "inventory_confirmed": {
     "claim_checked": "ADR-0011 §1.1: три реестра метрик без экспорта",
-    "verdict": "подтверждено на коммите 25a3c145",
+    "verdict": "подтверждено на коммите 6dc3aadf",
     "registries": [
       {
         "where": "backend/app/core/action_log.py:474-527",
@@ -270,7 +270,7 @@
     {
       "id": "OPS01-F1",
       "summary": "Шум-фильтр вырезает поллинговые GET и из журнала, и из метрик",
-      "evidence": "ранний return в action_log.py:719-729 стоит ДО log_event → _observe_metrics; измерено: 41 путь из 243 и 31 GET-операция из 126 (24.6 %)",
+      "evidence": "ранний return в action_log.py:719-729 стоит ДО log_event → _observe_metrics; измерено на каноне 6dc3aadf: 41 путь из 246 и 31 GET-операция из 129 (24.0 %)",
       "impact": "B_p95 «интерактивного чтения», снятый по действующему журналу, систематически не видит самые частые интерактивные чтения",
       "owner": "W1-OPS-01"
     },
@@ -290,8 +290,8 @@
     },
     {
       "id": "OPS01-F4",
-      "summary": "Потолок 500 серий против 265 операций API — 1.89 статуса на операцию",
-      "evidence": "измерено: 243 пути / 265 операций OpenAPI; _METRICS_MAX_SERIES = 500",
+      "summary": "Потолок 500 серий против 270 операций API — 1.85 статуса на операцию",
+      "evidence": "измерено: 246 путей / 270 операций OpenAPI; _METRICS_MAX_SERIES = 500",
       "impact": "потолок будет достигнут штатным трафиком, а не аварией; <over-cardinality> начнёт поглощать легитимные ряды",
       "owner": "W1-OPS-01"
     },
@@ -416,5 +416,15 @@
     "citations_remapped_to_canonical": 25,
     "claims_rewritten_on_substance": 1,
     "claim_rewritten": "J-07: вызов OpenRouter идёт через _post_openrouter_with_transient_retry, а не прямым client.post"
+  },
+  "task_completion": {
+    "closes_task_id": false,
+    "what_it_is": "честное измерение разрыва, а не закрытие задачи",
+    "criterion": "roadmap §5.1 требует baseline с P50/P95/MAX, error rate, RSS, disk и стоимостью; Gate G0 условие 7 — то же",
+    "measured": "17 величин из 24 заполнены локальным замером",
+    "missing": "пять переменных §5.1 (B_p50, B_p95, B_error, B_cost, B_runs_7d) — ноль из пяти",
+    "why_missing": "их нельзя получить на машине разработчика: нужен боевой трафик на развёрнутом контуре",
+    "blocked_on": "владелец программы: боевое развёртывание и снятие production baseline",
+    "status": "частично — форма готова, боевые величины отсутствуют"
   }
 }

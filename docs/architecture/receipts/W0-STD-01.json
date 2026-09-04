@@ -149,5 +149,14 @@
     "citations_remapped_to_canonical": 25,
     "claims_rewritten_on_substance": 1,
     "claim_rewritten": "J-07: вызов OpenRouter идёт через _post_openrouter_with_transient_retry, а не прямым client.post"
+  },
+  "task_completion": {
+    "closure_decision": "за владельцем программы",
+    "closes_task_id": false,
+    "criterion": "Gate G0 условие 10: матрица закрыта либо помечена истёкшим decision timeout; ни один ADR не считает неподтверждённое положение обязательным",
+    "result": "51 положение с решением; вторая половина условия ВЫПОЛНЕНА — прямого блокера в ADR нет",
+    "what_remains": "первая половина не выполнена: актуальность корпоративного стандарта v3.1 не подтверждена и decision timeout не запущен",
+    "blocked_on": "владелец программы: запрос владельцу стандарта и запуск таймаута",
+    "status": "половина условия выполнена, половина ждёт владельца"
   }
 }

@@ -43,7 +43,7 @@ mutable sources — сформулирован один и тот же вопр�
 которые фактически меняют ответ: рукописный нормативный справочник дисциплины,
 подмешиваемый в system-промпт целиком; таблица моделей, лежащая вне git;
 редактирование промпта из веб-интерфейса; кэш платных ответов; порядок
-разрешения модели, у которого четыре конкурирующих источника.
+разрешения модели, у которого пять конкурирующих источников.
 
 Вне границы: качество аудита (слой 3 по
 [behaviour freeze](../data_storage_modernization/00a_behaviour_freeze.md),
@@ -500,7 +500,7 @@ Gemini Direct в реестре маршрутизации отсутствуе�
 `openai/gpt-5.4` — совпадает с живым файлом и расходится с дефолтом кода
 (`ensemble/gpt-codex`).
 
-### 5.3. Четыре конкурирующих источника решения
+### 5.3. Пять конкурирующих источников решения
 
 `backend/app/core/config.py:642-672`:
 
@@ -517,7 +517,11 @@ def get_stage_model(stage: str) -> str:
     return STAGE_MODEL_CONFIG.get(stage_key, "openai/gpt-5.4")
 ```
 
-Приоритет: **замороженный план прогона** (11J,
+Пятый источник в этот код не заходит вовсе и разобран отдельно в §5.7: стадия
+может задать модель литералом и не спросить `get_stage_model` ни разу. Первая
+редакция считала источников четыре, потому что не знала о нём.
+
+Приоритет остальных четырёх: **замороженный план прогона** (11J,
 `services/audit_routing/`, 3029 строк — `plan`, `compiler`, `presets`,
 `registry`, `validator`, `budget`, `active_plan`) → **глобальный мутабельный
 словарь процесса** `STAGE_MODEL_CONFIG` (грузится один раз на импорте,
@@ -1128,7 +1132,7 @@ ADR-0013 §3 перечисляет состав `AnalysisProfile` и `ModelCall
 | --- | --- | --- |
 | `prompt_bundle_id` и SHA-256 каждого template | `prompt_bundle_id` объявлен в `contracts/domain/v1/identifiers.json:280-289` (`pmt_<ULID>`), реализации ноль (`grep prompt_bundle_id` по коду — пусто). `prompt_bundle_hash` есть, но исключает 126 файлов профилей и покрывает 0 из ~35 inline-промптов | **да** |
 | `norms_snapshot_id`, provenance, checksum | `norms_snapshot_id` объявлен в контракте, не реализован. Механизм checksum vault есть, но корпус в чекауте не выбран; `norms_reference.md` — главный вход промпта — не покрыт ничем | **да** |
-| routing по стадиям: provider, model identifier, model revision | provider и model разрешаются в четырёх конкурирующих источниках, таблица вне git, два молчаливых fallback. Revision провайдером не раскрывается (§5.6) | **да** для identifier; **нет** для revision — это ограничение, а не пробел |
+| routing по стадиям: provider, model identifier, model revision | provider и model разрешаются в пяти конкурирующих источниках, таблица вне git, два молчаливых fallback. Revision провайдером не раскрывается (§5.6) | **да** для identifier; **нет** для revision — это ограничение, а не пробел |
 | sampling/tool/timeout/retry параметры | значения жёсткие, но в запись прогона попадает только `reasoning_effort` | **да** |
 | версии parser/post-processing и feature flags | `feature_flags_hash` существует только для воркеров; версии парсеров не выделены | частично |
 | cost policy, currency, источник расчёта | `model_prices.json` в git, `paid_cost_events.jsonl` пишется — но **только для платного HTTP-пути**; подписочные CLI-вызовы в него не попадают | **да** |

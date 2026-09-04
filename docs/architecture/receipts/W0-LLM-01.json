@@ -64,7 +64,7 @@
         "of_them_inline": 23,
         "literals_over_250_chars": "около 36, ≈34 000 символов (первая редакция: около 35, ≈33 000)",
         "full_system_roles": 13,
-        "biggest": "gemma_findings_only.py:198 SYSTEM_PROMPT_BASE, 3562 симв."
+        "biggest": "gemma_findings_only.py:349 SYSTEM_PROMPT_BASE, 3562 симв."
       },
       "prompt_files_outside_prompts_dir": [
         "backend/app/pipeline/stages/findings_review/critic_v2/prompts/llm_gate_human_taxonomy.ru.md",
@@ -100,7 +100,7 @@
         "run_cli_call_sites": 15,
         "call_sites_passing_clean_cwd": 1,
         "loaded_into_model_context": [
-          "CLAUDE.md (27548 Б)",
+          "CLAUDE.md (29108 Б на каноне; 27548 на срезе первой редакции)",
           "AGENTS.md (895 Б)",
           ".claude/settings.json + SessionStart hook load_context.py",
           ".claude/settings.local.json (gitignored)",
@@ -162,7 +162,7 @@
         "diverges_from_code_defaults_on_stages": 11,
         "gitignore_comment_quoted": "любой checkout тихо уводил конвейер на другие модели при следующем рестарте"
       },
-      "decision_sources": 4,
+      "decision_sources": 5,
       "decision_order": "замороженный план 11J → STAGE_MODEL_CONFIG в памяти → stage_models.json → литерал openai/gpt-5.4",
       "frozen_plan_cannot_carry_exact_model": "registry.py:325-340 _EXACT_MODEL_PATTERNS запрещает идентификаторы моделей в плане машинно; модель разрешает исполнитель",
       "fallbacks": 12,
@@ -184,7 +184,8 @@
         "claude": "reported_model = эхо запрошенного алиаса",
         "codex": "reported_model пустое",
         "verdict": "ревизия модели не раскрывается ни одним провайдером"
-      }
+      },
+      "decision_sources_note": "первая редакция называла четыре: stage_models.json, дефолты кода, политика воркера и активный план. Delta-аудит нашёл пятый — не спрашивать никого: Stage 5.3 задаёт модель литералом project_change_summary.py:21, тот же приём в text_ai_reviewer.py:25 (§5.3 и §5.7 документа)"
     },
     "transports": {
       "total": 35,
@@ -355,7 +356,7 @@
     "items": [
       "prompt_bundle_id не реализован; prompt_bundle_hash исключает 126 файлов профилей и не покрывает ~35 inline-промптов",
       "norms_snapshot_id не реализован; norms_reference.md — главный вход промпта — не покрыт ничем",
-      "routing: четыре конкурирующих источника, таблица моделей вне git, два молчаливых fallback",
+      "routing: пять конкурирующих источников, таблица моделей вне git, два молчаливых fallback",
       "sampling/tool/timeout/retry параметры в запись прогона не попадают (кроме reasoning_effort)",
       "cost policy: подписочные CLI-вызовы не попадают в денежный журнал",
       "ModelCallRecord как единый объект не существует; поля собраны порознь и на разных путях",
@@ -465,5 +466,13 @@
     "citations_remapped_to_canonical": 25,
     "claims_rewritten_on_substance": 1,
     "claim_rewritten": "J-07: вызов OpenRouter идёт через _post_openrouter_with_transient_retry, а не прямым client.post"
+  },
+  "task_completion": {
+    "closure_decision": "за владельцем программы",
+    "closes_task_id": true,
+    "criterion": "инвентарь LLM-контура как frozen input для ADR-0013 и W0-LLM-02",
+    "result": "58 позиций реестра, 15 непреодолимых разнесены на четыре класса, девять блокеров ADR-0013 названы",
+    "what_remains": "ADR-0013 не принят; кассеты и replay (W0-LLM-02) не начаты",
+    "status": "инвентарь полон; принятие ADR-0013 за владельцем"
   }
 }
