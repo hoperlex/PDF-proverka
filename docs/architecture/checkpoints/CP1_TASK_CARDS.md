@@ -1,6 +1,8 @@
 # CP1 task cards — L / S / O / E
 
-**BASE_SHA:** `c8475ed72a13a98566ddd9c7e6297ff232d40f62`<br>
+**P0_SOURCE_SHA:** `c8475ed72a13a98566ddd9c7e6297ff232d40f62`<br>
+**P0_PLANNING_SHA:** `7d9ddc65dbd2ef64a8e472299d7748254e2b566e`<br>
+**CP1_BASE_SHA:** не определён до публикации P0<br>
 **Форма:** [acceptance-rework/v1](../ACCEPTANCE_REWORK_POLICY_V1.md) §7<br>
 **Матрица состояний:** [CP1_STATE_MATRIX.md](CP1_STATE_MATRIX.md)<br>
 **Интегратор:** единственный владелец `backend/app/main.py`,
@@ -9,7 +11,7 @@
 `checkpoints/CP1.json` и этих двух файлов.
 
 Общее для всех карточек: `candidate_frozen` выставляется **после** зелёного
-preflight, не раньше. Полный гейт (`python scripts/ci_regression_gate.py`,
+preflight, не раньше; до этого он явно `false`. Полный гейт (`python scripts/ci_regression_gate.py`,
 исполняется в CI — `ci.yml:270`) — максимум 2 запуска на окно, 1 remediation
 между ними, 0 автоповторов, 1800 с на прогон. Любой старт считается попыткой,
 включая timeout и отменённый прогон.
@@ -29,6 +31,10 @@ export QR_PY=<venv>/bin/python
 
 Материализованный venv не обязан лежать в рабочем дереве и в worktree-чекаутах
 там его нет — путь берётся из переменной, а не собирается относительно корня.
+
+Правило параллельности из плана §3: **каждый поток сдаёт один reviewable commit
+и собственную первичку.** Серия мелких коммитов внутри окна формой сдачи не
+является; единственное допустимое добавление — один remediation commit по §4.
 
 ---
 
@@ -56,13 +62,31 @@ frozen_scope:
                   docs/architecture/WAVE_0_0_04_PLAN.md,
                   docs/architecture/checkpoints/README.md,
                   docs/architecture/policies/acceptance-rework-v1.json,
-                  tests/test_acceptance_rework_policy.py]
+                  tests/test_acceptance_rework_policy.py,
+                  docs/architecture/checkpoints/CP1_STATE_MATRIX.md,
+                  docs/architecture/checkpoints/CP1_TASK_CARDS.md]
   non_goals: [перенос W0-SEC-03 на новую базу, сведение EXC-0003,
-              любые правки redaction/auth/watchdog]
+              любые правки redaction/auth/watchdog,
+              снятие устаревшей записи redaction из CP0.json,
+              правка пути чекаута и противоречия про worktrees в AGENTS.md,
+              создание CP1.json в любом виде]
+  contracts: [policies/acceptance-rework-v1.json (frozen, enforced 2026-09-07),
+              checkpoints/README.md — обязательный минимум полей квитанции]
+  fixtures: не затронуты
+candidate_frozen: false
 preflight:
-  - $QR_PY -m pytest tests/test_acceptance_rework_policy.py -q
-  - $QR_PY -m pytest tests/ -k "document_contract or receipt" -q
+  - command: $QR_PY -m pytest tests/test_acceptance_rework_policy.py -q
+    result: pass на 7d9ddc65 — перепроверить на tip перед заморозкой
+    evidence: сверка текста политики с policies/acceptance-rework-v1.json
+  - command: $QR_PY -m pytest tests/test_architecture_docs_integrity.py -q
+    result: pass на 7d9ddc65 — перепроверить на tip перед заморозкой
+    evidence: валидность JSON в docs/architecture/** и разрешимость локальных
+      md-ссылок; единственное автоматическое покрытие обоих CP1-файлов
+  - command: $QR_PY scripts/ci_runtime_probe.py --profile unit
+    result: pass на 7d9ddc65, exit 0 — перепроверить на tip перед заморозкой
+    evidence: обязательный capability probe §2 п.3, тот же шаг, что ci.yml:252
 attempts: []
+findings: []
 remediation_commit: null
 terminal_status: null
 next_task_ids: [CP1-L-01, CP1-S-01, CP1-O-01, CP1-E-01]
@@ -70,8 +94,19 @@ next_task_ids: [CP1-L-01, CP1-S-01, CP1-O-01, CP1-E-01]
 
 **Важно:** `c8475ed7` изменил `.github/workflows/ci.yml` и добавил
 исполняемый тест — по §6 политики это **не** receipt-only, поэтому полный гейт
-перед merge обязателен. Гейт в этой сессии не запускался: бюджет окна нетронут
-(0 из 2).
+перед merge обязателен. Planning-docs поверх него гейта не требуют, но и не
+освобождают от него: исключение §6 действует только **после** зелёного source
+candidate, а его ещё не было. Окно одно, гейт один, покрывает весь диапазон.
+Гейт не запускался: бюджет нетронут (0 из 2).
+
+**Почему preflight не использует селектор.** `-k "document_contract or receipt"`
+собирает 26 тестов из шести файлов (`test_ci_evidence_bundle`,
+`test_ci_runtime_probe`, `test_ci_test_lane`, `test_ci_timeout_plugin`,
+`test_permission_boundary_12f`, `test_stage01_evidence_context`) и **не
+включает** `test_architecture_docs_integrity.py` — единственную автоматическую
+проверку изменённых архитектурных документов, обоих CP1-файлов и нового
+`policies/acceptance-rework-v1.json`. По §2 п.1 и п.4 preflight обязан покрывать
+изменённые файлы, ссылки и JSON, поэтому тесты названы путями.
 
 Последовательность (план §3, P0): опубликовать review-кандидат → зелёный
 GitHub CI → сверить source SHA → merge только проверенного SHA в актуальный
@@ -109,11 +144,20 @@ frozen_scope:
               изменение ретеншна, правка EXC-0002,
               startup-проверка флага в config.py — заявка интегратору]
   contracts: [DATA_INVENTORY_V1.md D-17..D-24]
+  fixtures: не затронуты; негативные проверки строят данные внутри теста
+candidate_frozen: false
 preflight:
-  - $QR_PY -m pytest backend/tests/test_action_log.py tests/test_action_log_api.py tests/test_ci_redaction.py -q
-  - $QR_PY -m pytest tests/ -k document_contract -q
+  - command: $QR_PY -m pytest backend/tests/test_action_log.py tests/test_action_log_api.py tests/test_ci_redaction.py -q
+    result: не запускался
+    evidence: —
+  - command: $QR_PY -m pytest tests/test_architecture_docs_integrity.py -q
+    result: не запускался
+    evidence: REDACTION_CONTRACT_V1.md — новый файл в docs/architecture/**
 attempts: []
+findings: []
+remediation_commit: null
 terminal_status: null
+next_task_ids: [CP1-E-01]
 ```
 
 **Outcome L1:** контракт redaction вынесен из комментариев кода в документ;
@@ -148,15 +192,27 @@ frozen_scope:
   non_goals: [включение auth на production (это S2),
               object-level AuthZ (ADR-0010, Gate G2),
               миграция watchdog (поток O),
+              изменение EXEMPT_PATHS в одиночку,
               любые секреты в репозитории или журналах]
+  contracts: [QUALITY_RUNTIME_CONTRACT_V1.md — правится только интегратором,
+              EXC-0001 в EXCEPTIONS.md]
+  fixtures: не затронуты
   shared_files_by_request: [backend/app/main.py, backend/app/core/config.py,
                             conftest.py, .github/workflows/ci.yml,
                             docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md]
+candidate_frozen: false
 preflight:
-  - $QR_PY -m pytest tests/test_portal_auth.py tests/test_portal_startup_policy.py -q
-  - $QR_PY -m pytest tests/ -k "startup or config" -q
+  - command: $QR_PY -m pytest tests/test_portal_auth.py tests/test_portal_startup_policy.py -q
+    result: не запускался
+    evidence: —
+  - command: $QR_PY -m pytest tests/ -k "startup or config" -q
+    result: не запускался
+    evidence: —
 attempts: []
+findings: []
+remediation_commit: null
 terminal_status: null
+next_task_ids: [CP1-E-01]
 ```
 
 **Первый шаг — не код, а перенос.** `2d624433` стоит на базе behind 16;
@@ -169,9 +225,13 @@ terminal_status: null
 проведённая rollback rehearsal. Общий пароль или передача секрета через git /
 task tracker исключение не закрывают.
 
-**Блокирующая связка:** `/api/info` открыт без auth ради cron-watchdog
+**Блокирующая связка.** `/api/info` открыт без auth ради cron-watchdog
 (`portal_auth.py:40,48`). Изменение этого allowlist согласуется с потоком O;
-в одиночку S его не трогает.
+в одиночку S его не трогает. Оговорка о первичке: связку подтверждают
+комментарий `portal_auth.py:40` и наблюдавшиеся инциденты, но **не**
+версионированный `staged/webapp-watchdog.sh` — он `/api/info` не запрашивает.
+Связка принимается как действующая по fail-closed; снять её может только
+идентификация рабочей ревизии watchdog (поток O, шаг 1).
 
 **Rollback:** репозиторный — BASE. `PORTAL_AUTH_ENABLED=false` восстанавливает
 EXC-0001 — только аварийно и с записью. Production rollback target отсутствует.
@@ -194,12 +254,24 @@ frozen_scope:
                   deploy/watchdog/webapp-watchdog.sh]
   non_goals: [шаг 4 — атомарное переключение watchdog (это O2),
               закрытие /api/info,
-              включение auth]
+              включение auth,
+              правка комментариев о kill-семантике в backend/app/** до
+                идентификации рабочей ревизии watchdog]
+  contracts: [ADR-0010 §7 — календарное разведение S2 и шага 4]
+  fixtures: не затронуты
+candidate_frozen: false
 preflight:
-  - $QR_PY -m pytest tests/test_health_probes.py -q
-  - $QR_PY -m pytest tests/ -k "action_log_api or info" -q
+  - command: $QR_PY -m pytest tests/test_health_probes.py -q
+    result: не запускался
+    evidence: —
+  - command: $QR_PY -m pytest tests/ -k "action_log_api or info" -q
+    result: не запускался
+    evidence: —
 attempts: []
+findings: []
+remediation_commit: null
 terminal_status: null
+next_task_ids: [CP1-E-01]
 ```
 
 **Шаг 1 — идентификация, а не написание.** Обязательный первый результат:
@@ -208,8 +280,16 @@ terminal_status: null
 `docs/distributed_audit_workers/12f1_phaseb/staged/webapp-watchdog.sh`. Без
 этого у O2 нет проверяемого отката и он не может стартовать.
 
+**Что шаг 1 обязан разрешить в первую очередь.** Комментарии шести модулей
+описывают watchdog, убивающий бэкенд при неответе `/api/info` > 5 с, и двое
+ссылаются на наблюдавшиеся инциденты (`audit.py:252` — «инциденты 03.07»;
+`main.py:117`). Версионированная staged-копия не делает ни того, ни другого:
+`API_URL` присвоен и не использован, `curl` отсутствует, живость меряется
+`ss -ltn` по порту 8081, бэкенд не убивается вовсе. Значит staged-копия — не
+рабочая ревизия, и контракт пишется по скрипту, снятому с хоста, а не по ней.
+
 **Outcome O1:** kill-семантика вынесена в документ (сейчас источник истины —
-комментарии в пяти модулях); liveness/readiness endpoint'ы добавлены (на BASE
+комментарии шести модулей, противоречащие версионированному скрипту); liveness/readiness endpoint'ы добавлены (на BASE
 их нет); shadow-прогон выполнен, расхождения измерены, shadow receipt выпущен.
 Старый watchdog остаётся активен.
 
@@ -232,16 +312,29 @@ candidate_sha: <коммит CP1.json; отдельный и следующий 
 frozen_scope:
   allowed_paths: [docs/architecture/checkpoints/CP1.json,
                   docs/architecture/checkpoints/CP1_STATE_MATRIX.md,
-                  docs/architecture/checkpoints/CP1_TASK_CARDS.md,
-                  docs/architecture/EXCEPTIONS.md]
+                  docs/architecture/checkpoints/CP1_TASK_CARDS.md]
   non_goals: [преждевременный verdict,
               authorizes_next_cutover=true без отдельного gate,
-              заполнение production-полей догадкой]
+              заполнение production-полей догадкой,
+              правка EXCEPTIONS.md — отдельный долг интегратора вне окна,
+              удаление rollback-копий, старых blob'ов, JSON-проекций и
+                compatibility-флагов до observation (правило 5 README, P-11)]
+  contracts: [checkpoints/README.md — обязательный минимум полей квитанции,
+              acceptance-rework/v1 §7]
+  fixtures: не затронуты
+candidate_frozen: false
 preflight:
-  - $QR_PY -m pytest tests/ -k "document_contract or receipt or checkpoint" -q
-  - проверка разрешимости относительных ссылок и валидности JSON
+  - command: $QR_PY -m pytest tests/test_architecture_docs_integrity.py -q
+    result: не запускался
+    evidence: валидность CP1.json и разрешимость ссылок обоих CP1-файлов
+  - command: $QR_PY -m pytest tests/ -k "document_contract or receipt or checkpoint" -q
+    result: не запускался
+    evidence: —
 attempts: []
+findings: []
+remediation_commit: null
 terminal_status: null
+next_task_ids: []
 ```
 
 **Выполнено в этом окне:** матрица состояний, границы allowed_paths, shared
