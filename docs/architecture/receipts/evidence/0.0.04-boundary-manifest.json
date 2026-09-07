@@ -1,0 +1,139 @@
+{
+  "tool": "ci_evidence_bundle",
+  "manifest_version": "1",
+  "label": "0.0.04: полный evidence-комплект на source commit 53c50e60 (граница кандидата и провенанс фикстур)",
+  "generated_at": "2026-09-07T08:20:58Z",
+  "run_dir": "/tmp/cr04-evidence",
+  "file_count": 25,
+  "total_bytes": 2444718,
+  "tree_digest_rule": "ci_runtime_probe._norm_artifact_digest (путь + содержимое, детерминированный порядок)",
+  "tree_sha256": "60c3e1c8680251eec22b6200bb2e6d388c2f459c7201d9ab2205aaa46cff2fa3",
+  "lanes": {},
+  "files": [
+    {
+      "path": "frontend-docs/doc-contract.log",
+      "bytes": 99,
+      "sha256": "4b525f84b541f9f9ac7f6ea7ec8bd545b5b93cc972009f14220cc67fc0ebecac"
+    },
+    {
+      "path": "frontend-docs/doc-contract.xml",
+      "bytes": 6985,
+      "sha256": "9811ffc9f403743f4e85ca63388f7103902435709244accb98671207f026b90f"
+    },
+    {
+      "path": "frontend-docs/frontend.log",
+      "bytes": 4942,
+      "sha256": "7d1dba1c4fbc41936c00ee4b568363868104c6a70f3c220f49428409da9de19e"
+    },
+    {
+      "path": "frontend-docs/linkcheck-negative-control.log",
+      "bytes": 2139,
+      "sha256": "fa36f321d978c45f696fa70b738bb859c123f3923ac97099d357cb79946b51ec"
+    },
+    {
+      "path": "frontend-docs/linkcheck-prev-b84dd52d.log",
+      "bytes": 102,
+      "sha256": "e76fc9544df439eef844b8f3264b1bb0a62865626758919db8ceeead8db9f25d"
+    },
+    {
+      "path": "frontend-docs/linkcheck.log",
+      "bytes": 102,
+      "sha256": "7ae23878ed0867ffaa9eed887777564cf06fb5a45b858db7ac464c617aac8119"
+    },
+    {
+      "path": "frontend-docs/linkcheck.py",
+      "bytes": 7161,
+      "sha256": "5ce9a8ddcc92e35fcf70bd56ce04b8b0b704d3bc51a9ae477b5a5bd2615d7816"
+    },
+    {
+      "path": "suite-gate-probes/full-suite.log",
+      "bytes": 10290,
+      "sha256": "5fd119c1327d79790764a0bbf3da917b7eddfcb6eb340d7b538086659eb9d8a7"
+    },
+    {
+      "path": "suite-gate-probes/full-suite.rc",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "suite-gate-probes/full-suite.wall",
+      "bytes": 4,
+      "sha256": "4b8d29b54798f8d1f1b7c74fd2f76104fd933a6139b3a878702901f10e0e1921"
+    },
+    {
+      "path": "suite-gate-probes/full-suite.xml",
+      "bytes": 1167864,
+      "sha256": "5a4d839f4fa6b9b245f8abbaa4964a088994483828cf11503598ee8f76df5495"
+    },
+    {
+      "path": "suite-gate-probes/gate-junit.xml",
+      "bytes": 1167864,
+      "sha256": "e4fcfc10233d79c9eb76c84f451f7b2decbfac5e8410bf529527f9c1fc0e9c3e"
+    },
+    {
+      "path": "suite-gate-probes/gate.log",
+      "bytes": 10540,
+      "sha256": "02c40b255e763c5c0b186a2e9b74b957ffe2777de4662ee9d01d1ca6d8c42d65"
+    },
+    {
+      "path": "suite-gate-probes/gate.rc",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "suite-gate-probes/gate.wall",
+      "bytes": 4,
+      "sha256": "d09aa8346d420f76dfd2a63d40d19e352d11668352401d5ce43e1e70c333f681"
+    },
+    {
+      "path": "suite-gate-probes/probe-chaos.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "suite-gate-probes/probe-chaos.json",
+      "bytes": 13373,
+      "sha256": "8cfa58b6181aa41fe8dcc935ec06376ab20d0c49883733a388e208366d678b96"
+    },
+    {
+      "path": "suite-gate-probes/probe-contract.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "suite-gate-probes/probe-contract.json",
+      "bytes": 13245,
+      "sha256": "a6bdb02ef7e287936f46700d4d7914fc6700118c2418d606a2dd5352e2b1ab41"
+    },
+    {
+      "path": "suite-gate-probes/probe-integration.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "suite-gate-probes/probe-integration.json",
+      "bytes": 13401,
+      "sha256": "d8c52a2972fb9473375dd7aeed3e608b7d0c6179fa5cf0a2230d7960df1ad2d4"
+    },
+    {
+      "path": "suite-gate-probes/probe-network.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "suite-gate-probes/probe-network.json",
+      "bytes": 13349,
+      "sha256": "cb044529509df5b6c28c86cb553f296a8224c3d701fc0c535c560c2cafe57921"
+    },
+    {
+      "path": "suite-gate-probes/probe-unit.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "suite-gate-probes/probe-unit.json",
+      "bytes": 13250,
+      "sha256": "5594687663e3c72227b9a7383da910c8425622a8c73a34b86c7e5a3b532e59a7"
+    }
+  ]
+}

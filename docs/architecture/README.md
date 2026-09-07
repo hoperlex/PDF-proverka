@@ -69,6 +69,8 @@
    подготовки redaction, auth и watchdog с последовательным production rollout;
    фактическая граница опубликованного кандидата и провенанс перенесённых
    эталонов — [расписка границы](receipts/0.0.04-candidate-boundary.json),
+   её первичка — [расписка evidence](receipts/0.0.04-boundary-evidence.json)
+   с [манифестом контрольных сумм](receipts/evidence/0.0.04-boundary-manifest.json),
    публикация — [release receipt](receipts/0.0.04-release.json).
 
 Целостность комплекта проверяется машинно:

@@ -1,0 +1,186 @@
+{
+  "type": "version_slice_receipt",
+  "schema_version": 1,
+  "version": "0.0.04",
+  "scope": "candidate_boundary_and_fixture_provenance",
+  "captured_at": "2026-09-07T08:22:00Z",
+  "status": "locally_verified_publication_pending",
+  "source_commit": "53c50e6097a5d000ca75121e49a9710c5ad3bf92",
+  "source_branch": "review/0.0.04-scope-truth",
+  "base": {
+    "origin_main_at_branch_point": "b84dd52da4abf1cd9f2afe88952941735d42f220",
+    "source_is_descendant_of_tracking_ref": true,
+    "commits_ahead": 1
+  },
+  "what_this_receipt_is_for": "Расписка 0.0.04-phase1.json снята на 790d1ca1 и не содержит frontend-гейта, проверки JSON/ссылок и стража происхождения. Release receipt 0.0.04-release.json объявляет local_clean_room: passed, но первички для этого утверждения в репозитории нет: все её дайджесты встречаются только внутри неё самой. Здесь снят полный комплект на новом source commit, и первичка сделана перепроверяемой манифестом контрольных сумм.",
+  "evidence_manifest": {
+    "path": "docs/architecture/receipts/evidence/0.0.04-boundary-manifest.json",
+    "tool": "scripts/ci_evidence_bundle.py",
+    "tree_sha256": "60c3e1c8680251eec22b6200bb2e6d388c2f459c7201d9ab2205aaa46cff2fa3",
+    "file_count": 25,
+    "total_bytes": 2444718,
+    "verify_command": "python scripts/ci_evidence_bundle.py --verify docs/architecture/receipts/evidence/0.0.04-boundary-manifest.json --run-dir <каталог прогона>",
+    "verified_roundtrip": true,
+    "limit": "манифест доказывает тождество артефактов, а не их сохранность: сами прогонные каталоги лежали под /tmp и в git не кладутся"
+  },
+  "verification": {
+    "full_suite": {
+      "command": "python -m pytest tests backend/tests -q -p no:cacheprovider --junitxml=<reports>/full-suite.xml",
+      "exit_code": 0,
+      "passed": 7677,
+      "skipped": 233,
+      "deselected": 6,
+      "failed": 0,
+      "errors": 0,
+      "warnings": 9,
+      "tests_in_junit": 7910,
+      "pytest_duration_s": 382.8,
+      "wall_s": 435,
+      "junit_sha256": "5a4d839f4fa6b9b245f8abbaa4964a088994483828cf11503598ee8f76df5495",
+      "junit_bytes": 1167864,
+      "deselected_note": "шесть узлов сняты маркером -m \"not chaos\" из addopts pytest.ini; они закрываются отдельной полосой chaos"
+    },
+    "regression_gate": {
+      "command": "CI_GATE_WALL_BUDGET_SEC=1800 python scripts/ci_regression_gate.py",
+      "exit_code": 0,
+      "verdict": "новых падений сверх известного baseline нет",
+      "failures_now": 0,
+      "baseline_entries": 0,
+      "new_failures": 0,
+      "turned_green": 0,
+      "went_to_skip": 0,
+      "vanished": 0,
+      "pytest_passed": 7677,
+      "pytest_skipped": 233,
+      "pytest_deselected": 6,
+      "pytest_duration_s": 371.87,
+      "wall_s": 423,
+      "junit_sha256": "e4fcfc10233d79c9eb76c84f451f7b2decbfac5e8410bf529527f9c1fc0e9c3e",
+      "baseline_file": "scripts/ci_known_failures.txt",
+      "baseline_file_sha256": "e0305efb2517799497cbe0fb0989fc27e5ae63c1007a69ab36ec494f9908bea5",
+      "honest_limit": "baseline пуст — 69 строк файла суть комментарии, записей ноль. Поэтому «новых падений нет» означает здесь «набор полностью зелёный», а не «долг не вырос»: гейт и полный прогон дают одно и то же утверждение, а не два независимых.",
+      "record_not_used": true
+    },
+    "capability_probes": {
+      "mode": "ci",
+      "enforce_not_used": "в --enforce norm corpus становится обязательным (§3.3, §6 правило 4), а norms/vault на машине отсутствует и источник владельцем не назван",
+      "source_commit_origin": "QR_SOURCE_COMMIT",
+      "contract_id": "quality-runtime/v1",
+      "contract_version": "1.1.0",
+      "profiles": {
+        "unit": {"exit_code": 0, "result": "ok", "duration_s": 0.251, "required_failed": 0, "report_sha256": "5594687663e3c72227b9a7383da910c8425622a8c73a34b86c7e5a3b532e59a7"},
+        "contract": {"exit_code": 0, "result": "ok", "duration_s": 0.259, "required_failed": 0, "report_sha256": "a6bdb02ef7e287936f46700d4d7914fc6700118c2418d606a2dd5352e2b1ab41"},
+        "integration": {"exit_code": 0, "result": "ok", "duration_s": 0.343, "required_failed": 0, "report_sha256": "d8c52a2972fb9473375dd7aeed3e608b7d0c6179fa5cf0a2230d7960df1ad2d4"},
+        "network": {"exit_code": 0, "result": "ok", "duration_s": 0.373, "required_failed": 0, "report_sha256": "cb044529509df5b6c28c86cb553f296a8224c3d701fc0c535c560c2cafe57921"},
+        "chaos": {"exit_code": 0, "result": "ok", "duration_s": 0.723, "required_failed": 0, "report_sha256": "8cfa58b6181aa41fe8dcc935ec06376ab20d0c49883733a388e208366d678b96"}
+      },
+      "required_failures": 0,
+      "advisory": "OPTIONAL_NORM_CORPUS_ABSENT — одинаков во всех пяти полосах; в режиме --ci проверка advisory, в --enforce стала бы блокирующей"
+    },
+    "frontend": {
+      "note": "локального frontend-гейта в расписке 0.0.04-phase1.json не было — он закрывался только job'ом GitHub CI; здесь снят локально по §10 контракта",
+      "node_version": "22.23.1",
+      "npm_version": "10.9.8",
+      "lock_sha256": "c679604b25329bdbcf89f80017011a0c51c07e770e326865b093f63633097040",
+      "lock_unchanged_by_npm_ci": true,
+      "steps": {
+        "npm_ci": {"exit_code": 0, "packages_added": 167},
+        "npm_test": {"exit_code": 0, "runner": "vitest 1.6.1", "test_files_passed": 32, "test_files_total": 32, "tests_passed": 408, "tests_total": 408, "duration_s": 2.26},
+        "npm_run_lint": {"exit_code": 0, "tool": "eslint 8.57.1", "problems": 0},
+        "npm_run_typecheck": {"exit_code": 0, "tool": "tsc -p tsconfig.distributed.json --noEmit", "errors": 0},
+        "npm_run_build": {"exit_code": 0, "tool": "vite 5.4.21", "output": "dist/js/app.js", "output_kb": 291.55}
+      },
+      "npm_audit_informational": {"critical": 1, "high": 3, "moderate": 2, "gating": false, "note": "уязвимости в devDependencies (vitest UI-сервер, vite, postcss, nanoid); на exit-коды шагов не влияют и по §10 гейтом не являются"},
+      "log_sha256": "7d1dba1c4fbc41936c00ee4b568363868104c6a70f3c220f49428409da9de19e"
+    },
+    "document_contract": {
+      "command": "python -m pytest -q -p no:cacheprovider tests/test_architecture_docs_integrity.py tests/test_adr_index_consistency.py",
+      "exit_code": 0,
+      "passed": 39,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "duration_s": 0.708,
+      "junit_sha256": "9811ffc9f403743f4e85ca63388f7103902435709244accb98671207f026b90f"
+    },
+    "json_and_links": {
+      "why_beyond_document_contract": "штатный тест целостности проверяет только docs/architecture/** и не проверяет якоря; здесь дополнительно охвачены contracts/** и #fragment",
+      "exit_code": 0,
+      "json_scope": ["docs/architecture/**", "contracts/**"],
+      "json_checked": 39,
+      "json_breakdown": {"docs_architecture": 33, "contracts": 6},
+      "markdown_files": 46,
+      "links_checked": 377,
+      "links_external_skipped": 4,
+      "links_with_anchor": 0,
+      "problems": 0,
+      "checker_sha256": "5ce9a8ddcc92e35fcf70bd56ce04b8b0b704d3bc51a9ae477b5a5bd2615d7816",
+      "independent_cross_check": {"inline_links_total": 381, "images": 0, "external": 4, "internal": 377, "agrees": true},
+      "negative_control": {
+        "why": "«ноль проблем» ничего не доказывает, пока не показано, что чекер умеет находить проблемы",
+        "seeded_defects": 5,
+        "detected": 5,
+        "must_ignore_seeded": {"fenced_backtick": 1, "fenced_tilde": 1, "inline_code_span": 1, "all_ignored": true},
+        "delta_proof": "расфенсенная та же битая ссылка поднимает links_checked 8→9 и problems 5→6, значит подавление давал именно фенс, а не сбой разбора",
+        "log_sha256": "fa36f321d978c45f696fa70b738bb859c123f3923ac97099d357cb79946b51ec"
+      },
+      "anchor_check_exercised_on_repo": false,
+      "anchor_check_limit": "в docs/architecture/** нет ни одной ссылки с #fragment (подтверждено независимым grep) и нет reference-style ссылок; код проверки якорей подтверждён только негативным контролем",
+      "baseline_b84dd52d": {"json_checked": 38, "links_checked": 370, "problems": 0, "matches_prior_measurement": true},
+      "delta_fully_attributed_to_commit_diff": true
+    },
+    "production_source_guard": {
+      "command": "python scripts/production_source_guard.py --commit <SHA> --json",
+      "runs": [
+        {"commit": "772f8523c1b99be18eab02668b9c56fecc7ed6ae", "exit_code": 0, "reachable_from_canonical_remote": true, "meaning": "release commit среза 0.0.04 опубликован и воспроизводим из origin/main"},
+        {"commit": "b84dd52da4abf1cd9f2afe88952941735d42f220", "exit_code": 0, "reachable_from_canonical_remote": true, "meaning": "коммит release receipt опубликован"},
+        {"commit": "53c50e6097a5d000ca75121e49a9710c5ad3bf92", "exit_code": 4, "reason_code": "commit_not_published", "meaning": "ожидаемый отказ: на момент снятия комплекта этот source commit ещё не сведён в origin/main. Закрывающий прогон с exit 0 выполняется ПОСЛЕ merge и фиксируется распиской публикации"}
+      ],
+      "clean_tree_at_capture": {"untracked_total": 0, "untracked_blocking": 0, "checked": true},
+      "note": "страж проверяет происхождение, а не код: exit 4 здесь — правильный ответ на неопубликованный коммит, а не красный результат комплекта"
+    }
+  },
+  "clean_room": {
+    "contract": "quality-runtime/v1",
+    "source_commit": "53c50e6097a5d000ca75121e49a9710c5ad3bf92",
+    "source_archive_sha256": "f85839547883bd0c2531cd0ec7045a77862f466003bff35bfa7b74c40b9de7c0",
+    "source_archive_bytes": 107376640,
+    "excluded": ["experiments/**", ".git (в git archive не попадает по построению)"],
+    "uid": 1001,
+    "python": "3.12.3",
+    "node": "22.23.1",
+    "npm": "10.9.8",
+    "architecture": "x86_64",
+    "os_image": "Linux-6.8.0-139-generic-x86_64-with-glibc2.39",
+    "timezone": "UTC",
+    "locale": "C.UTF-8",
+    "pythonhashseed": "0",
+    "dotenv_disabled": true,
+    "paid_api_enabled": false,
+    "portal_auth_enabled": false,
+    "runtime_paths_isolated": true,
+    "tmpdir_len": 12,
+    "tmpdir_len_note": "путь копии держится коротким намеренно: при длинном TMPDIR четыре socket-теста упираются в предел длины пути AF_UNIX и краснеют по вине запуска, а не ветки",
+    "python_lock_sha256": "e701df30ffc0a942e08c77fc4458442d7f4fb3b4379560e47c437d4d4ab2dcbe",
+    "pip_freeze_sha256": "557e95885700a44013febcc6559fa8ee278923507b71df8adba761e1e247f99c",
+    "frontend_lock_sha256": "c679604b25329bdbcf89f80017011a0c51c07e770e326865b093f63633097040",
+    "honest_limit": "Это эмуляция раннера, а не раннер: прогон снят на машине разработчика и ничего не говорит о поведении образа ubuntu-24.04. Утверждение о раннере даёт только GitHub CI на опубликованном commit."
+  },
+  "publication": {
+    "snapshot": "состояние ДО публикации на момент captured_at",
+    "review_branch_pushed": false,
+    "github_ci": "not_run_for_this_commit",
+    "merged_to_origin_main": false,
+    "superseded_by": "docs/architecture/receipts/0.0.04-boundary-publication.json — фактический статус публикации читать там"
+  },
+  "known_limits": {
+    "version_ref_not_moved": "refs/heads/version/0.0.04 остаётся на 772f8523; эта работа — публикуемая поправка к записи после выпуска, а не новый срез",
+    "release_not_reissued": "release receipt 0.0.04-release.json не переписывается и остаётся действительным",
+    "gate_g0_passed": false,
+    "w1_authorized": false,
+    "checkpoint_cp1_reached": false,
+    "enforce_enabled": false,
+    "norm_artifact": "OPTIONAL_NORM_CORPUS_ABSENT",
+    "fixture_policy_debt": "перенос необезличенных производных данных заказчика в tests/fixtures/** объявлен явным долгом в receipts/0.0.04-candidate-boundary.json и требует решения владельца данных"
+  }
+}
