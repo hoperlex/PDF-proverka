@@ -1,0 +1,144 @@
+{
+  "type": "version_slice_receipt",
+  "schema_version": 1,
+  "version": "0.0.04",
+  "scope": "evidence_phase_1",
+  "captured_at": "2026-09-07T07:05:02Z",
+  "status": "locally_fixed_publication_pending",
+  "source_commit": "790d1ca1c3c78e17965698c36102b8c8662d507b",
+  "source_branch": "review/g0-phase1",
+  "base": {
+    "origin_main_tracking_ref": "6dc3aadfe3d5477ab74480cd153c62779dd9e221",
+    "source_is_descendant_of_tracking_ref": true,
+    "commits_ahead": 11
+  },
+  "local_fixation": {
+    "receipt_path": "docs/architecture/receipts/0.0.04-phase1.json",
+    "version_ref": "refs/heads/version/0.0.04",
+    "version_ref_target": "commit containing this receipt",
+    "version_ref_must_not_move": true
+  },
+  "verification": {
+    "document_contract": {
+      "command": "python -m pytest -q -p no:cacheprovider tests/test_architecture_docs_integrity.py tests/test_adr_index_consistency.py",
+      "passed": 39,
+      "failed": 0,
+      "duration_s": 0.39
+    },
+    "regression_gate": {
+      "command": "python scripts/ci_regression_gate.py",
+      "exit_code": 0,
+      "passed": 7677,
+      "skipped": 234,
+      "deselected": 6,
+      "failed": 0,
+      "errors": 0,
+      "warnings": 9,
+      "pytest_duration_s": 377.67,
+      "baseline_entries": 0,
+      "new_failures": 0,
+      "turned_green": 0,
+      "went_to_skip": 0,
+      "vanished": 0,
+      "junit_sha256": "aff67e3917878c123fa5be179d15a3339d416449f16f9ce29daa7b72940bda24"
+    },
+    "capability_probes": {
+      "mode": "ci",
+      "source_commit_origin": "QR_SOURCE_COMMIT",
+      "profiles": {
+        "unit": {
+          "exit_code": 0,
+          "result": "ok",
+          "duration_s": 0.26,
+          "report_sha256": "abdeea3279c6239a177ab182ae8af1165f675d4f5abe12351e213e6164c99f75"
+        },
+        "contract": {
+          "exit_code": 0,
+          "result": "ok",
+          "duration_s": 0.254,
+          "report_sha256": "fb48e0b989451381085c1f5dcb3dc53cc25671ad506ad2f5c593225f694da2cc"
+        },
+        "integration": {
+          "exit_code": 0,
+          "result": "ok",
+          "duration_s": 0.328,
+          "report_sha256": "628677e0639a1782f4f0537424cd4d4d75bbeac1946eabaded68b64c95a40731"
+        },
+        "network": {
+          "exit_code": 0,
+          "result": "ok",
+          "duration_s": 0.352,
+          "report_sha256": "dae2bfc236ca9676e638776fefb7fa3bfbf012fa5302d8eb7cf3f03b21d54b21"
+        },
+        "chaos": {
+          "exit_code": 0,
+          "result": "ok",
+          "duration_s": 0.691,
+          "report_sha256": "11a3fb72d903464c08565fcf1dfdd3b1bf5b869a851235edffd03aed357d07e9"
+        }
+      },
+      "required_failures": 0,
+      "advisory": "OPTIONAL_NORM_CORPUS_ABSENT"
+    }
+  },
+  "clean_room": {
+    "contract": "quality-runtime/v1",
+    "source_archive_sha256": "7f72641251f7fdc9f3e80e5d1c4f9693492ac6c7fcb9cdc08b6b114806589700",
+    "source_archive_bytes": 107345920,
+    "excluded": [
+      ".git/**",
+      ".ci/**",
+      "experiments/**"
+    ],
+    "os": "Ubuntu 24.04.4 LTS",
+    "architecture": "x86_64",
+    "uid": 1001,
+    "python": "3.12.3",
+    "node": "22.23.1",
+    "npm": "10.9.8",
+    "timezone": "UTC",
+    "locale": "C.UTF-8",
+    "pythonhashseed": "0",
+    "dotenv_disabled": true,
+    "paid_api_enabled": false,
+    "portal_auth_enabled": false,
+    "runtime_paths_isolated": true,
+    "provider_secrets_present": false,
+    "dependency_receipt": "PASS",
+    "python_lock": "PASS",
+    "frontend_receipt": "PASS"
+  },
+  "acceptance_history": [
+    {
+      "source_commit": "953eae67606eb4338b2679409e5121e3321c0bb6",
+      "result": "failed",
+      "passed": 7647,
+      "skipped": 244,
+      "deselected": 6,
+      "failed": 9,
+      "errors": 11,
+      "new_failures": 20,
+      "pytest_duration_s": 356.64,
+      "diagnosis": "16 результатов зависели от исключённого experiments/**; ещё 4 socket-теста превысили предел AF_UNIX из-за длинного пути временного каталога"
+    },
+    {
+      "source_commit": "790d1ca1c3c78e17965698c36102b8c8662d507b",
+      "result": "passed",
+      "remediation": "обязательные stage-comparison эталоны перенесены в tests/fixtures; clean-room повторён в коротком временном пути"
+    }
+  ],
+  "publication": {
+    "review_branch_pushed": false,
+    "github_ci": "not_run_for_this_commit",
+    "merged_to_origin_main": false,
+    "remote_version_ref_created": false
+  },
+  "known_limits": {
+    "gate_g0_passed": false,
+    "w1_authorized": false,
+    "checkpoint_cp1_reached": false,
+    "enforce_enabled": false,
+    "norm_artifact": "OPTIONAL_NORM_CORPUS_ABSENT",
+    "note": "Срез фиксирует доставку evidence-фазы 1 и не является положительным вердиктом Gate G0, разрешением W1 или опубликованным release."
+  }
+}
