@@ -26,6 +26,7 @@ from backend.app.services.stage_comparison.unified_evidence_contract import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
+STAGE_COMPARISON_FIXTURES = ROOT / "tests/fixtures/stage_comparison"
 
 
 def _text_evidence(
@@ -168,17 +169,22 @@ def test_old_ledger_v2_still_opens(grsh_mode2_ledger: dict):
 @pytest.fixture(scope="module")
 def grsh_mode2_ledger() -> dict:
     left = json.loads(
-        (ROOT / "experiments/g2_dense_sectioned_board/left_system_graph.json").read_text(
-            encoding="utf-8"
-        )
+        (
+            STAGE_COMPARISON_FIXTURES
+            / "dense_sectioned_board/left_system_graph.json"
+        ).read_text(encoding="utf-8")
     )
     right = json.loads(
-        (ROOT / "experiments/g2_dense_sectioned_board/right_system_graph.json").read_text(
-            encoding="utf-8"
-        )
+        (
+            STAGE_COMPARISON_FIXTURES
+            / "dense_sectioned_board/right_system_graph.json"
+        ).read_text(encoding="utf-8")
     )
     comparison = json.loads(
-        (ROOT / "experiments/g2_system_graph_comparator/comparison_result.json").read_text(
+        (
+            STAGE_COMPARISON_FIXTURES
+            / "system_graph_comparator/comparison_result.json"
+        ).read_text(
             encoding="utf-8"
         )
     )

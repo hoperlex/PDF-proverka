@@ -2,7 +2,7 @@
   "schema_version": "g2.4.5-policy-cases-v2",
   "policy_contract": "unified-change-policy-v1",
   "corpus_path": "docs/research/g2_4_5_policy_corpus_v2.md",
-  "graphic_truth_root": "experiments/g2_4_4_3_correct_sides/ios",
+  "graphic_truth_root": "tests/fixtures/stage_comparison/correct_sides_ios",
   "expected_verdict_distribution": {
     "SINGLE_SOURCE": 8,
     "REVIEW_REQUIRED": 5,
@@ -18,7 +18,7 @@
           "ids": ["ev_e49035bd602be7cb"]
         },
         {
-          "path": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json",
+          "path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json",
           "ids": ["chg_6edbdea8fb72"]
         }
       ],
@@ -41,7 +41,7 @@
       "title": "GRAPHIC node type change without TEXT evidence",
       "source_references": [
         {
-          "path": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json",
+          "path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json",
           "ids": ["chg_1b601fa171f2"]
         }
       ],
@@ -142,7 +142,7 @@
       "title": "Coverage is dimension-specific for one GRAPHIC subject",
       "source_references": [
         {
-          "path": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json",
+          "path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json",
           "ids": ["blk_2d72a6705eaf4d8c9ee1d6ff459b15a6", "blk_039909ec039649a1b8209f059c95167b"]
         }
       ],
@@ -220,7 +220,7 @@
       "title": "Retired GRAPHIC detail-level case",
       "source_references": [
         {
-          "path": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json",
+          "path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json",
           "ids": []
         }
       ],
@@ -239,7 +239,7 @@
           "ids": ["ev_f9464ad3b067a5ba"]
         },
         {
-          "path": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json",
+          "path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json",
           "ids": ["chg_6edbdea8fb72"]
         }
       ],
@@ -258,7 +258,7 @@
           "ids": ["ev_8bd289a59355afae"]
         },
         {
-          "path": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json",
+          "path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json",
           "ids": ["chg_1b601fa171f2"]
         }
       ],
@@ -294,7 +294,7 @@
       "title": "Uncertain reserve-count GRAPHIC observation",
       "source_references": [
         {
-          "path": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json",
+          "path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json",
           "ids": ["chg_1d5f0b80d8a1"]
         }
       ],
@@ -322,7 +322,7 @@
       "title": "Unresolved GRAPHIC correspondence",
       "source_references": [
         {
-          "path": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json",
+          "path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json",
           "ids": ["chg_a7346590ab6f"]
         }
       ],
@@ -350,7 +350,7 @@
       "title": "Checked unchanged GRAPHIC subject",
       "source_references": [
         {
-          "path": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json",
+          "path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json",
           "ids": ["blk_2d72a6705eaf4d8c9ee1d6ff459b15a6", "blk_039909ec039649a1b8209f059c95167b"]
         }
       ],
@@ -376,7 +376,7 @@
       "title": "Repeated-group quantity versus individual entity",
       "source_references": [
         {
-          "path": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json",
+          "path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json",
           "ids": ["chg_6edbdea8fb72"]
         }
       ],
@@ -395,7 +395,7 @@
           "ids": ["ev_6b149f847c6443f7", "ev_af2f35ca1df8b79a", "ev_6ff5660f5421faad"]
         },
         {
-          "path": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json",
+          "path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json",
           "ids": ["chg_1d5f0b80d8a1", "chg_6edbdea8fb72", "chg_1b601fa171f2", "chg_a7346590ab6f"]
         }
       ],
@@ -409,7 +409,7 @@
       "case_id": "A16",
       "title": "Negative control: real contradiction",
       "source_references": [
-        {"path": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json", "ids": []}
+        {"path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json", "ids": []}
       ],
       "observed_facts": {"real_candidate_count": 0},
       "policy_calls": [],
@@ -421,7 +421,7 @@
       "case_id": "A17",
       "title": "Negative control: automatic merge",
       "source_references": [
-        {"path": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json", "ids": []}
+        {"path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json", "ids": []}
       ],
       "observed_facts": {"real_candidate_count": 0, "merge_executor_present": false},
       "policy_calls": [],
@@ -438,7 +438,7 @@
           "ids": ["hlc_d3913c0ab7b930d2"]
         },
         {
-          "path": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json",
+          "path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json",
           "ids": ["chg_1d5f0b80d8a1", "chg_6edbdea8fb72", "chg_1b601fa171f2", "chg_a7346590ab6f"]
         }
       ],
@@ -459,7 +459,7 @@
       "title": "GRAPHIC by GRAPHIC association",
       "source_references": [
         {
-          "path": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json",
+          "path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json",
           "ids": ["chg_1d5f0b80d8a1", "chg_a7346590ab6f"]
         }
       ],

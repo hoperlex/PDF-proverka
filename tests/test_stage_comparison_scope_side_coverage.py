@@ -57,7 +57,7 @@ from backend.app.services.stage_comparison.unified_entity_bridge.text_entity_pro
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CORRECT_SIDES_IOS = ROOT / "experiments/g2_4_4_3_correct_sides/ios"
+CORRECT_SIDES_IOS = ROOT / "tests/fixtures/stage_comparison/correct_sides_ios"
 LEFT_GRAPH_PATH = CORRECT_SIDES_IOS / "left_system_graph.json"
 RIGHT_GRAPH_PATH = CORRECT_SIDES_IOS / "right_system_graph.json"
 COMPARISON_PATH = CORRECT_SIDES_IOS / "comparison_result.json"

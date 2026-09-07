@@ -43,7 +43,7 @@ from backend.app.services.stage_comparison.unified_entity_bridge.parent_page_rel
 
 ROOT = Path(__file__).resolve().parents[1]
 SESSION = ROOT / "comparison/sessions/121d764109184c13/pairs"
-IOS = ROOT / "experiments/g2_4_4_3_correct_sides/ios"
+IOS = ROOT / "tests/fixtures/stage_comparison/correct_sides_ios"
 STORE = ROOT / (
     "projects_v2/objects/272_Sadovnicheskaya_76_Balchug_Esteyt/comparison"
 )

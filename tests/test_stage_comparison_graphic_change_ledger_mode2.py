@@ -31,8 +31,9 @@ adapt_system_graph_comparison_to_ledger = (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-GRAPH_DIR = ROOT / "experiments/g2_dense_sectioned_board"
-COMPARISON_PATH = ROOT / "experiments/g2_system_graph_comparator/comparison_result.json"
+FIXTURE_ROOT = ROOT / "tests/fixtures/stage_comparison"
+GRAPH_DIR = FIXTURE_ROOT / "dense_sectioned_board"
+COMPARISON_PATH = FIXTURE_ROOT / "system_graph_comparator/comparison_result.json"
 
 
 @pytest.fixture(scope="module")

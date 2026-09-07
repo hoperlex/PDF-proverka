@@ -38,7 +38,10 @@ from backend.app.services.stage_comparison.unified_entity_bridge.text_entity_pro
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RIGHT_GRAPH_PATH = ROOT / "experiments/g2_dense_sectioned_board/right_system_graph.json"
+RIGHT_GRAPH_PATH = (
+    ROOT
+    / "tests/fixtures/stage_comparison/dense_sectioned_board/right_system_graph.json"
+)
 IOS_STAGE53_PATH = (
     ROOT
     / "comparison/sessions/121d764109184c13/pairs/p26c08b83a6"
