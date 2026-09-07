@@ -1,0 +1,153 @@
+{
+  "type": "publication_receipt",
+  "schema_version": 1,
+  "version": "0.0.04",
+  "scope": "candidate_boundary_and_fixture_provenance",
+  "captured_at": "2026-09-07T08:45:00Z",
+  "status": "published",
+  "this_receipt_is_post_factum": true,
+  "what_was_published": "Поправка к записи о срезе 0.0.04: настоящая граница кандидата, провенанс перенесённых эталонов и полный evidence-комплект с манифестом первички. Новый version-срез не выпускается.",
+  "source_commit": "53c50e6097a5d000ca75121e49a9710c5ad3bf92",
+  "published_commit": "d96b355dddf884aff32768cf52761d72d162a9df",
+  "merge_shape": {
+    "kind": "fast_forward",
+    "merge_commit_created": false,
+    "merged_sha_equals_verified_sha": true,
+    "note": "origin/main перемотан с b84dd52d на d96b355d без merge-коммита, поэтому merge SHA буквально совпадает с проверенным SHA: расхождения между «что проверяли» и «что слили» нет по построению"
+  },
+  "refs": {
+    "origin/main": "d96b355dddf884aff32768cf52761d72d162a9df",
+    "origin/main_before": "b84dd52da4abf1cd9f2afe88952941735d42f220",
+    "origin/review/0.0.04-scope-truth": "d96b355dddf884aff32768cf52761d72d162a9df",
+    "origin/version/0.0.04": "772f8523c1b99be18eab02668b9c56fecc7ed6ae"
+  },
+  "ancestry": {
+    "published_commit_reachable_from_origin_main": true,
+    "previous_main_is_ancestor": true,
+    "force_push_used": false,
+    "version_ref_moved": false,
+    "version_ref_note": "refs/heads/version/0.0.04 и origin/version/0.0.04 остаются на release commit 772f8523; объявленная неизменяемость не нарушена"
+  },
+  "ci": {
+    "review": {
+      "run_id": 34100321762,
+      "url": "https://github.com/hoperlex/PDF-proverka/actions/runs/34100321762",
+      "head_branch": "review/0.0.04-scope-truth",
+      "head_sha": "d96b355dddf884aff32768cf52761d72d162a9df",
+      "conclusion": "success",
+      "jobs_success": 7,
+      "jobs_total": 7
+    },
+    "post_merge_main": {
+      "run_id": 34101254104,
+      "url": "https://github.com/hoperlex/PDF-proverka/actions/runs/34101254104",
+      "head_branch": "main",
+      "head_sha": "d96b355dddf884aff32768cf52761d72d162a9df",
+      "conclusion": "success",
+      "jobs_success": 7,
+      "jobs_total": 7,
+      "jobs": [
+        "frontend",
+        "lane unit",
+        "lane contract",
+        "lane integration",
+        "lane network",
+        "chaos",
+        "regression-gate"
+      ]
+    },
+    "both_runs_relate_to_the_published_sha": true
+  },
+  "post_merge_lane_artifacts": {
+    "unit": {
+      "artifact_id": 10010601199,
+      "artifact_digest": "sha256:3b04efbd5b2bbfde778e9aa79626c27e8f6209860c2705d49abc0b1e96d37e58",
+      "size_bytes": 173522,
+      "selected": 2938,
+      "passed": 2756,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 182
+    },
+    "contract": {
+      "artifact_id": 10010592805,
+      "artifact_digest": "sha256:fbaae601bec352c296066be2e78a988777bc65a64a2b18af7860f82f4b3763bc",
+      "size_bytes": 16367,
+      "selected": 260,
+      "passed": 259,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    "integration": {
+      "artifact_id": 10010669704,
+      "artifact_digest": "sha256:6329c58b7e416aea8fc47ba3a91833c756e9ebd662bc33b7d1ce39f1233f283f",
+      "size_bytes": 229336,
+      "selected": 3800,
+      "passed": 3752,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 48
+    },
+    "network": {
+      "artifact_id": 10010735571,
+      "artifact_digest": "sha256:ec282d9c0283248a4536e51c3966f1f6d980222cec2e33ba9485c3ef5d4f419d",
+      "size_bytes": 59313,
+      "selected": 916,
+      "passed": 911,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 5
+    },
+    "chaos": {
+      "artifact_id": 10010614965,
+      "artifact_digest": "sha256:9043f1d65913ae6272c7a536520222aaeb666d7d5696b213a3ad7a709b511e60",
+      "size_bytes": 2560,
+      "selected": 7,
+      "passed": 6,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    "common_contract": {
+      "source_commit_in_every_lane_receipt": "d96b355dddf884aff32768cf52761d72d162a9df",
+      "source_commit_origin": "git",
+      "probe_mode": "ci",
+      "baseline_entries": 0,
+      "new_failures": 0,
+      "selected_total": 7921,
+      "note": "поимённые счётчики полос взяты из JUnit внутри самих артефактов прогона, а не пересказаны из логов; вместе с digest'ами они позволяют позже ответить, те же это артефакты или уже другие"
+    }
+  },
+  "production_source_guard": {
+    "command": "python scripts/production_source_guard.py --commit d96b355d… --json",
+    "exit_code": 0,
+    "reachable_from_canonical_remote": true,
+    "canonical_remote_head": "d96b355dddf884aff32768cf52761d72d162a9df",
+    "remote_freshly_fetched": true,
+    "clean_tree": {"untracked_total": 0, "untracked_blocking": 0, "checked": true},
+    "before_publication": {
+      "exit_code": 4,
+      "reason_code": "commit_not_published",
+      "note": "порядок COMMIT → TEST → PUSH → страж соблюдён: до публикации страж отказывал именно по непубликованности, после публикации даёт ноль"
+    }
+  },
+  "evidence_chain": {
+    "local_receipt": "docs/architecture/receipts/0.0.04-boundary-evidence.json",
+    "manifest": "docs/architecture/receipts/evidence/0.0.04-boundary-manifest.json",
+    "manifest_tree_sha256": "60c3e1c8680251eec22b6200bb2e6d388c2f459c7201d9ab2205aaa46cff2fa3",
+    "closes_gap": "release receipt 0.0.04-release.json объявляет local_clean_room: passed, но все дайджесты того прогона существуют только внутри самой расписки и пересчитать их нечем. Здесь первичка описана манифестом контрольных сумм, и ci_evidence_bundle.py --verify пересчитывает её одной командой.",
+    "manifest_limit": "манифест доказывает тождество артефактов, а не их сохранность: прогонные каталоги лежали под /tmp и в git не кладутся"
+  },
+  "known_limits": {
+    "not_a_new_version_slice": "срез 0.0.04 выпущен раньше коммитом 772f8523; эта публикация исправляет описание границы и добавляет первичку, но не переиздаёт release",
+    "release_receipt_not_reissued": "docs/architecture/receipts/0.0.04-release.json остаётся действительным и не переписывается",
+    "gate_g0_passed": false,
+    "w1_authorized": false,
+    "checkpoint_cp1_reached": false,
+    "enforce_enabled": false,
+    "norm_artifact": "OPTIONAL_NORM_CORPUS_ABSENT",
+    "open_decision": "перенос необезличенных производных данных заказчика в tests/fixtures/** объявлен явным долгом (receipts/0.0.04-candidate-boundary.json → fixture_provenance.policy_exception) и ждёт решения владельца данных",
+    "unpublished_neighbour": "в локальной ветке main оставался неопубликованный коммит другого сеанса (docs(process): ограничить циклы приемки и правок). Он не публиковался этой работой и требует перебазирования на новый origin/main. Его блок concurrency с cancel-in-progress: true на ветке main способен отменить ещё идущий post-merge прогон при пуше следующего коммита — то есть ровно тот прогон, на который ссылается release receipt."
+  }
+}

@@ -71,7 +71,8 @@
    эталонов — [расписка границы](receipts/0.0.04-candidate-boundary.json),
    её первичка — [расписка evidence](receipts/0.0.04-boundary-evidence.json)
    с [манифестом контрольных сумм](receipts/evidence/0.0.04-boundary-manifest.json),
-   публикация — [release receipt](receipts/0.0.04-release.json).
+   публикация — [release receipt](receipts/0.0.04-release.json) и
+   [расписка публикации поправки](receipts/0.0.04-boundary-publication.json).
 
 Целостность комплекта проверяется машинно:
 `tests/test_architecture_docs_integrity.py` разбирает все JSON в
