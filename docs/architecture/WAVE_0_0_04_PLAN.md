@@ -103,7 +103,7 @@ JUnit или несовпадающий source SHA запрещают merge. П�
 | L — `W0-LOG-01` | OPS/logging | инвентарь трёх каналов → redaction contract → deny-by-default тесты → runbook/rollback | кандидат L1 без production-переключения |
 | S — `W0-SEC-03` | OPS/API + владелец доступа | review fail-closed кода → список 3–4 сотрудников → уникальные hashes → защищённая выдача → rotation/revocation и rollback rehearsal | код + provisioning receipt; секретов в git/logs нет |
 | O — `W0-OPS-02`, шаги 1–3 | OPS | зафиксировать kill-семантику watchdog → добавить liveness/readiness → прогнать shadow и измерить расхождения | shadow receipt; старый watchdog пока активен |
-| E — интеграция | интегратор | заготовить матрицу CP1, команды проверки, rollback targets и сбор provenance | готовая форма `CP1.json`, без преждевременного verdict |
+| E — интеграция | интегратор | заготовить матрицу CP1, команды проверки, rollback targets и сбор provenance | [матрица состояний](checkpoints/CP1_STATE_MATRIX.md) и [task cards](checkpoints/CP1_TASK_CARDS.md) L/S/O/E. Сам `CP1.json` заранее **не** выпускается даже как форма: по [checkpoints/README](checkpoints/README.md) квитанция коммитится отдельно и следующей за проверенным source commit, иначе возникает самоссылка |
 
 Правила параллельности:
 
