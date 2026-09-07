@@ -3,7 +3,16 @@
 **Статус:** evidence-фаза 1 принята; фиксация version-среза выполняется отдельной
 распиской после контрольного прогона. Это не Gate G0 и не разрешение W1-cutover.<br>
 **Дата:** 2026-09-04<br>
-**База кандидата:** `origin/main@6dc3aadf`<br>
+**P0_SOURCE_SHA:** `c8475ed72a13a98566ddd9c7e6297ff232d40f62` — source
+candidate P0 (ci.yml плюс исполняемый тест; по §6 политики **не** receipt-only,
+полный гейт обязателен)<br>
+**P0_PLANNING_SHA:** `7d9ddc65dbd2ef64a8e472299d7748254e2b566e` и последующие
+planning-docs коммиты CP1 — `non_executable_documentation_only`; своего гейта не
+требуют и от гейта source candidate не освобождают<br>
+**CP1_BASE_SHA:** не определён — присваивается опубликованному `origin/main`
+после завершения P0; именно на него встают потоки L, S и O<br>
+**База среза `0.0.04`:** историческая граница `6dc3aadf..772f8523`, см. §2 —
+срез закрыт, ветка `version/0.0.04` неизменяема<br>
 **Следующая контрольная точка:** `CP1` — safe legacy: redaction, auth и watchdog
 захвачены в репозиторий.<br>
 **Источник критериев:** [roadmap](HYBRID_REWRITE_ROADMAP.md), разделы «Порядок

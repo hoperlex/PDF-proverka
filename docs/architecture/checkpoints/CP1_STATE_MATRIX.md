@@ -58,7 +58,7 @@ production-части, а `authorizes_next_cutover` остаётся `false`.
 | **dependency** | P0 (публикация BASE). Внутри потока: contract → deny-by-default тесты → runbook/rollback. L2 идёт **первым** в production-очереди (`L2 → S2 → отдельная неделя → O2 → E2`). Не зависит от S и O. |
 | **allowed_paths** | `backend/app/core/action_log.py`, `backend/tests/test_action_log.py`, `tests/test_action_log_api.py`, `tests/test_ci_redaction.py`, `docs/action_log.md`, новый `docs/architecture/REDACTION_CONTRACT_V1.md`, новый runbook в `docs/ops/`. |
 | **shared_files** | `backend/app/core/config.py` (флаг + будущая startup-проверка) — **интегратор**; `docs/architecture/EXCEPTIONS.md` (EXC-0002) — **интегратор**. Изменения запрашиваются заявкой, поток их не коммитит. |
-| **rollback_target** | *Репозиторный:* `c8475ed7` (BASE). *Runtime kill-switch:* `ACTION_LOG_REDACTION=0` — но это **EXC-0002**, постоянный аварийный режим с четырьмя компенсирующими контролями, а не штатный откат. *Production rollback target:* **не определён** — release-манифест недоступен; поставщик — legacy production operator. Пустое поле не заполняется нулём. |
+| **rollback_target** | *Репозиторный:* `CP1_BASE_SHA` — **не определён до публикации P0** (см. шапку). До публикации репозиторного отката у потока нет: `P0_SOURCE_SHA` не опубликован и точкой возврата для потоков не служит. *Runtime kill-switch:* `ACTION_LOG_REDACTION=0` — но это **EXC-0002**, постоянный аварийный режим с четырьмя компенсирующими контролями, а не штатный откат. *Production rollback target:* **не определён** — release-манифест недоступен; поставщик — legacy production operator. Пустое поле не заполняется нулём. |
 
 ### S — auth (`W0-SEC-03`)
 
@@ -72,7 +72,7 @@ production-части, а `authorizes_next_cutover` остаётся `false`.
 | **dependency** | P0 → перенос кандидата на BASE → provisioning → S2. S2 идёт **вторым**, строго после наблюдения L2. Шаг 4 `W0-OPS-02` (O2) **не в одну календарную неделю** с S2 (`ADR-0010:419`, план §3). Контракт `/api/info` — согласование с O обязательно. |
 | **allowed_paths** | `backend/app/core/portal_auth.py`, `tests/test_portal_auth.py`, `tests/test_portal_startup_policy.py`, `docs/portal_auth.md`, `.env.example`. |
 | **shared_files** | `backend/app/main.py` (+19 в кандидате), `backend/app/core/config.py` (+10), `.github/workflows/ci.yml` (+7), `conftest.py` (+32), `docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md` (+17), `docs/architecture/EXCEPTIONS.md` (EXC-0001) — **все интегратора**. Перенос кандидата на BASE выполняет интегратор либо поток по явной заявке с пофайловым diff. |
-| **rollback_target** | *Репозиторный:* `c8475ed7` (BASE). *Runtime:* `PORTAL_AUTH_ENABLED=false` — но откат в `false` **восстанавливает EXC-0001**, поэтому допустим только как аварийная мера с записью, а не как штатное состояние после S2. *Production rollback target:* **не определён**; поставщик — legacy production operator. Требование `EXC-0001`: rollback проверяется runbook'ом до включения, а не после. |
+| **rollback_target** | *Репозиторный:* `CP1_BASE_SHA` — **не определён до публикации P0** (см. шапку). До публикации репозиторного отката у потока нет: `P0_SOURCE_SHA` не опубликован и точкой возврата для потоков не служит. *Runtime:* `PORTAL_AUTH_ENABLED=false` — но откат в `false` **восстанавливает EXC-0001**, поэтому допустим только как аварийная мера с записью, а не как штатное состояние после S2. *Production rollback target:* **не определён**; поставщик — legacy production operator. Требование `EXC-0001`: rollback проверяется runbook'ом до включения, а не после. |
 
 ### O — watchdog (`W0-OPS-02`, шаги 1–3)
 
@@ -86,7 +86,70 @@ production-части, а `authorizes_next_cutover` остаётся `false`.
 | **dependency** | P0 → шаги 1–3 параллельно L и S (production не трогают). O2 (шаг 4: атомарное переключение + закрытие `/api/info`) идёт **последним** и **не в одну неделю с S2**. Жёсткая связка с S: `/api/info` останется неаутентифицированным, пока watchdog не переведён на новые зонды. Связку поддерживают комментарии и инциденты, но **не** версионированный скрипт (gap 1), поэтому она держится по fail-closed: allowlist не трогают в одиночку ни S, ни O — до идентификации рабочей ревизии (gap 5). |
 | **allowed_paths** | новый `docs/ops/WATCHDOG_CONTRACT_V1.md`, новый модуль зондов `backend/app/api/routers/health.py`, `tests/test_health_probes.py`, `docs/supervision_oom.md`, версионируемая копия watchdog в `deploy/` или `scripts/server/`. |
 | **shared_files** | `backend/app/main.py` (регистрация роутера зондов) и `backend/app/core/portal_auth.py:48` (allowlist маршрутов) — **интегратора**; пересекается с S. `docs/architecture/EXCEPTIONS.md` — интегратора. |
-| **rollback_target** | *Репозиторный:* `c8475ed7` (BASE). *Runtime:* старый watchdog остаётся активен до шага 4 — это и есть откат для шагов 1–3. Для O2 откат — обратное переключение cron/юнита на прежнюю ревизию скрипта, **но её идентификатор неизвестен** (см. gap 4): до идентификации O2 не имеет проверяемого отката и стартовать не может. *Production rollback target:* **не определён**; поставщик — legacy production operator. |
+| **rollback_target** | *Репозиторный:* `CP1_BASE_SHA` — **не определён до публикации P0** (см. шапку). До публикации репозиторного отката у потока нет: `P0_SOURCE_SHA` не опубликован и точкой возврата для потоков не служит. *Runtime:* старый watchdog остаётся активен до шага 4 — это и есть откат для шагов 1–3. Для O2 откат — обратное переключение cron/юнита на прежнюю ревизию скрипта, **но её идентификатор неизвестен** (см. gap 4): до идентификации O2 не имеет проверяемого отката и стартовать не может. *Production rollback target:* **не определён**; поставщик — legacy production operator. |
+
+### Решения владельца по потоку O (O-DEC-01…04)
+
+Приняты 2026-09-07 и зафиксированы здесь как **вход** для окон потока O.
+Реализация и переразбиение scope выполняются отдельными окнами, не этой
+записью.
+
+**O-DEC-01 — safe stop до probes.** Дефект `scripts/server/stop_server.sh`
+против I-17 исправляется отдельным safety-window **до** реализации probes. Это
+security/production bugfix, product-capability slot он **не расходует**.
+Минимальный контракт safe stop: `pgrep -f` как источник сигнала удаляется;
+`kill -0` означает только существование PID, а не принадлежность; start path
+атомарно сохраняет PID, `/proc` start tick и command fingerprint; stop path
+перед каждым TERM/KILL заново сверяет все признаки; отсутствие, недоступность
+или несовпадение identity — fail-closed, сигнал не отправляется, команда
+завершается диагностируемым отказом; `SIGTERM → bounded wait → SIGKILL`
+допускается только для всё ещё доказанного процесса или группы; metadata
+удаляется только после доказанной остановки либо отдельной процедурой очистки
+stale record; PID reuse, foreign port owner, command mismatch и missing metadata
+покрыты негативными тестами. Механика `process_start_time`, `pid_exists`,
+`is_alive`, `live_command_fingerprint` уже существует в
+`audit_worker/process_registry.py` — переиспользуется этот контракт либо общий
+извлечённый helper; третья несовместимая проверка не создаётся.
+
+**O-DEC-02 — bounded operational probes не расходуют capability slot.** Новые
+probe endpoints разрешены как **ограниченная операционная поверхность без
+бизнес-семантики**. Они **не являются product/business endpoints** и legacy
+product-capability slot **не расходуют**. Границы исключения: только
+loopback/private operational listener; fixed minimal response без путей,
+конфигурации, customer data и секретов; ни writer, ни storage format, ни
+domain/business response; endpoint не включается в публичный API/OpenAPI;
+`/api/info` не закрывается до production shadow/cutover; любое расширение
+ответа или публичной доступности требует **нового** решения о capability slot.
+
+*Противоречие, которое обязано быть снято до freeze.* Roadmap относит
+`W0-OPS-02` к классу задач, которые «не создают endpoint, writer или storage
+format» ([HYBRID_REWRITE_ROADMAP.md](../HYBRID_REWRITE_ROADMAP.md), правила
+capability slot). Формулировка обязана быть заменена на «не создают
+product/business endpoint; могут добавить bounded operational probes в рамках
+`W0-OPS-02`». Правка roadmap выполняется отдельным окном, не этой записью.
+
+**O-DEC-03 — liveness вне event loop.** Liveness обязан обслуживаться вне
+основного asyncio event loop. FastAPI-router внутри той же петли сам по себе
+неприемлем: под насыщением он молчит вместе с `/api/info` и повторяет исходный
+дефект. Целевая семантика: out-of-loop listener отвечает на liveness, пока жив
+сам процесс и probe runtime; readiness вычисляется по heartbeat основного event
+loop и возвращает not-ready при его устаревании; **readiness failure не является
+разрешением убить процесс**; restart разрешается только отдельным контрактом
+после shadow, безопасной process identity и подтверждённой production-ревизии
+watchdog.
+
+*Следствие для scope, которое здесь не исправляется.* Строка `allowed_paths`
+потока O в [task cards](CP1_TASK_CARDS.md) называет
+`backend/app/api/routers/health.py` — то есть ровно FastAPI-router внутри петли.
+Этому решению она не удовлетворяет и подлежит переразбиению отдельными окнами
+(`O-SAFE-STOP` / `O-PROBES`); scope потока этой записью не переписывается.
+
+**O-DEC-04 — chaos только non-root.** Шесть signal/process chaos tests
+выполняются отдельным job с non-root uid. Запуск под uid 0 не является evidence
+и **не расходует acceptance attempt**, если был остановлен preflight-проверкой
+окружения до старта полного гейта. Текущий локальный uid — 0, `ci_runtime_probe`
+даёт `USER_IS_ROOT`, поэтому приёмка этих шести проверок в данном окружении
+невозможна.
 
 ## 2. Пересечения, которые закреплены за интегратором
 

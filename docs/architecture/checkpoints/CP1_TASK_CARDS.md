@@ -65,11 +65,16 @@ frozen_scope:
                   tests/test_acceptance_rework_policy.py,
                   docs/architecture/checkpoints/CP1_STATE_MATRIX.md,
                   docs/architecture/checkpoints/CP1_TASK_CARDS.md]
-  non_goals: [перенос W0-SEC-03 на новую базу, сведение EXC-0003,
+  non_goals: [перенос W0-SEC-03 на новую базу,
               любые правки redaction/auth/watchdog,
+              создание CP1.json в любом виде,
+              реализация или переразбиение scope по O-DEC-01..04,
+              правка формулировки capability slot в roadmap,
+              # четыре долга интегратора — остаются вне окна P0:
+              сведение EXC-0003 с review/0.0.04-debts@b0b79211,
               снятие устаревшей записи redaction из CP0.json,
-              правка пути чекаута и противоречия про worktrees в AGENTS.md,
-              создание CP1.json в любом виде]
+              исправление пути чекаута в AGENTS.md,
+              вынесение противоречия про worktrees владельцу W0-DEC-02]
   contracts: [policies/acceptance-rework-v1.json (frozen, enforced 2026-09-07),
               checkpoints/README.md — обязательный минимум полей квитанции]
   fixtures: не затронуты
@@ -295,6 +300,12 @@ next_task_ids: [CP1-E-01]
 
 **Календарное ограничение:** шаг 4 не выполняется в одну неделю с S2
 (`ADR-0010:419`, план §3).
+
+**Решения владельца:** O-DEC-01…04 в [матрице](CP1_STATE_MATRIX.md) — safe stop
+до probes; bounded operational probes не расходуют capability slot; liveness
+обслуживается вне event loop; шесть chaos tests требуют отдельного non-root job.
+`allowed_paths` выше решению O-DEC-03 ещё не удовлетворяет и переразбивается
+отдельными окнами.
 
 **Rollback:** для шагов 1–3 откат — сохранённый активный старый watchdog.
 Для O2 — обратное переключение на прежнюю ревизию, идентификатор которой пока
