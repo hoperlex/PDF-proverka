@@ -120,6 +120,10 @@ budget:
    отсутствие скрытых TODO на соседнюю задачу.
 10. Новый WIP стартует только при свободной ownership zone и понятном integration
     slot; количество агентов само по себе не является причиной начать задачу.
+11. Формальная приёмка ограничена политикой
+    [acceptance-rework/v1](ACCEPTANCE_REWORK_POLICY_V1.md): один исходный полный
+    гейт, максимум один remediation commit и один финальный полный гейт. После
+    второго неуспешного запуска срез обязательно останавливается.
 
 ### Шаблон task card
 
@@ -138,6 +142,11 @@ verification:
 telemetry:
 feature_mode_or_rollback:
 integration_task:
+acceptance_window_id:
+acceptance_owner:
+candidate_sha:
+acceptance_attempt: 0/1/2
+terminal_status:
 ```
 
 ## 5. Граф зависимостей программы
@@ -1059,6 +1068,12 @@ Planning range: 15–34 календарных месяца до калибро�
   метрики 20% само по себе до появления baseline не является stop condition;
 - contract меняется быстрее, чем независимые tasks успевают интегрироваться.
 
+Каждый сработавший stop condition завершает текущую попытку приёмки. Для одной
+`acceptance_window_id` действуют максимум два полных гейта и один remediation
+round по [acceptance-rework/v1](ACCEPTANCE_REWORK_POLICY_V1.md). Повтор после
+исчерпания лимита без явного решения человека-владельца и нового уменьшенного
+окна запрещён.
+
 ## 16. Ближайшие следующие решения
 
 До W1 implementation соответствующей области закрываются ADR-0006–0013,
@@ -1077,6 +1092,7 @@ migrations.
 - [Разбор архитектурного ревью](REVIEW_DISPOSITION_2026-08-27.md)
 - [Разбор архитектурного ревью R2](REVIEW_DISPOSITION_2026-08-27_R2.md)
 - [Разбор архитектурного ревью R3](REVIEW_DISPOSITION_2026-08-27_R3.md)
+- [Ограниченная приёмка и rework v1](ACCEPTANCE_REWORK_POLICY_V1.md)
 - [План развития хранения](../data_storage_modernization/00_global_plan.md)
 - [Кодовый план identity](../data_storage_modernization/01_storage_and_identity_code_plan.md)
 - [Потоковый ingest](../data_storage_modernization/02_01_streaming_ingest.md)

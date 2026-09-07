@@ -16,3 +16,31 @@ This checkout is also the deployment source, so keep it releasable:
 - before a release, the commit must be reachable from `origin/main`; that is
   still enforced by `scripts/production_source_guard.py` (see
   `docs/production_source_guard.md`).
+
+## Bounded acceptance and rework
+
+The mandatory project policy is
+`docs/architecture/ACCEPTANCE_REWORK_POLICY_V1.md` (`acceptance-rework/v1`).
+For every task, slice, checkpoint, gate, or release candidate entering formal
+acceptance:
+
+- freeze the candidate SHA, allowed paths, non-goals, and verification command
+  before the first full regression gate;
+- run targeted checks and capability probes first; a known-red preflight must
+  never be promoted into a full gate;
+- allow at most **two full-gate attempts total**: the initial attempt and one
+  final attempt after at most one in-scope remediation commit;
+- count every started full gate, including timeout, cancellation, invalid
+  JUnit, and environment failure; there are no automatic retries;
+- after the first failure, classify findings before editing. Only a
+  candidate-caused regression inside the frozen scope may be fixed in the same
+  acceptance window. Pre-existing/flaky, environment/evidence, and unrelated
+  findings are recorded separately and do not expand the candidate;
+- after the second unsuccessful attempt, stop. Split or reject the candidate,
+  or mark the window externally blocked. A third attempt requires an explicit
+  human-owner decision starting a new documented acceptance window;
+- do not rerun the full regression gate for receipt/publication-only or other
+  non-executable documentation changes after a source candidate is green.
+
+Do not keep checking and patching until green. Reaching the attempt limit is a
+required terminal outcome, not permission to continue autonomously.

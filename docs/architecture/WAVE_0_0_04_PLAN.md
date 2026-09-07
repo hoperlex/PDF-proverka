@@ -87,7 +87,12 @@ production-порядок: L2 → S2 → отдельная неделя → O2 
    отдельное review; наличие кода не выдавать за выполненный production rollout.
 
 Stop condition: divergence с `origin/main`, красный/отменённый CI, неполный
-JUnit или несовпадающий source SHA возвращают работу в review; merge запрещён.
+JUnit или несовпадающий source SHA запрещают merge. По обязательной политике
+[acceptance-rework/v1](ACCEPTANCE_REWORK_POLICY_V1.md) после первой
+неуспешной попытки разрешён только один классифицированный remediation commit
+внутри frozen scope и один финальный прогон. Второй неуспешный прогон завершает
+окно статусом `split`, `rejected` или `blocked_external`; третий прогон и
+неограниченный возврат в review запрещены.
 
 ### Параллельный пакет подготовки
 

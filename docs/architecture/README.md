@@ -73,6 +73,9 @@
    с [манифестом контрольных сумм](receipts/evidence/0.0.04-boundary-manifest.json),
    публикация — [release receipt](receipts/0.0.04-release.json) и
    [расписка публикации поправки](receipts/0.0.04-boundary-publication.json).
+22. [Ограниченная приёмка и rework v1](ACCEPTANCE_REWORK_POLICY_V1.md) —
+   обязательный предел: два полных гейта на окно, один remediation round,
+   классификация находок и терминальная остановка вместо бесконечного review.
 
 Целостность комплекта проверяется машинно:
 `tests/test_architecture_docs_integrity.py` разбирает все JSON в

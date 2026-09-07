@@ -46,6 +46,12 @@ on:
   push:
   pull_request:
 
+# Новый commit делает проверку старого SHA непригодной для приёмки. Не держим
+# два дорогих regression gate одной ветки/PR параллельно и не ждём устаревший.
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 # §3.1: значения профиля задаются один раз и наследуются всеми job'ами.
 # Раньше их приходилось повторять в каждом шаге, и они успели разойтись.
 env:

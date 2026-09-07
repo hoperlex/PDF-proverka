@@ -1,0 +1,63 @@
+{
+  "type": "process_policy",
+  "schema_version": 1,
+  "policy_id": "acceptance-rework/v1",
+  "status": "enforced",
+  "effective_from": "2026-09-07",
+  "applies_to": [
+    "task_acceptance",
+    "integration_slice",
+    "checkpoint",
+    "gate",
+    "release_candidate",
+    "production_cutover"
+  ],
+  "budgets": {
+    "max_full_gate_attempts_per_window": 2,
+    "max_remediation_rounds_per_window": 1,
+    "max_full_gate_wall_seconds": 1800,
+    "max_failure_triage_minutes": 15,
+    "automatic_retries": 0
+  },
+  "preflight_required_before_first_full_gate": true,
+  "every_started_full_gate_counts": true,
+  "finding_classes": [
+    "candidate_regression",
+    "pre_existing_or_flaky",
+    "environment_or_evidence",
+    "out_of_scope_improvement",
+    "security_or_data_blocker"
+  ],
+  "same_window_remediation_classes": [
+    "candidate_regression"
+  ],
+  "terminal_statuses": [
+    "accepted",
+    "split",
+    "rejected",
+    "blocked_external"
+  ],
+  "terminal_after_second_unsuccessful_attempt": true,
+  "new_window_after_limit_requires_human_owner": true,
+  "obsolete_ci_runs_cancelled": true,
+  "full_gate_rerun_triggers": [
+    "executable_code",
+    "test_fixtures",
+    "dependencies",
+    "ci_or_runtime_configuration",
+    "behavioral_contract"
+  ],
+  "full_gate_rerun_exemptions_after_green_source": [
+    "receipt_only",
+    "publication_state_only",
+    "non_executable_documentation_only"
+  ],
+  "forbidden_same_window_actions": [
+    "scope_expansion",
+    "unrelated_refactoring",
+    "dependency_or_contract_change_unrelated_to_candidate_regression",
+    "baseline_or_skip_or_xfail_to_hide_finding",
+    "speculative_fix_without_classification",
+    "third_full_gate_attempt"
+  ]
+}
