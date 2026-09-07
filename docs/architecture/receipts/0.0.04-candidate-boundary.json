@@ -1,0 +1,129 @@
+{
+  "type": "candidate_boundary_receipt",
+  "schema_version": 1,
+  "version": "0.0.04",
+  "captured_at": "2026-09-07T07:55:00Z",
+  "why_this_document_exists": "Расписка среза 0.0.04-phase1.json и первичка evidence/phase1-candidate-ci.json объявляли кандидата docs-only. После снятия этих документов в кандидата вошли тестовый код и тестовые фикстуры, и утверждение стало ложным. Обе те записи — снимки на своих коммитах, их измерения не переписываются; эта расписка объявляет фактическую границу и провенанс перенесённого материала.",
+  "release_commit": "772f8523c1b99be18eab02668b9c56fecc7ed6ae",
+  "base": "6dc3aadfe3d5477ab74480cd153c62779dd9e221",
+  "supersedes_claims": [
+    {
+      "document": "docs/architecture/receipts/evidence/phase1-candidate-ci.json",
+      "field": "code_changes",
+      "was": "нет — кандидат меняет только docs/architecture/**",
+      "true_at": "7b112b4231c2b61aaf7215c11ff14b1a52863d1e",
+      "false_from": "953eae67606eb4338b2679409e5121e3321c0bb6"
+    }
+  ],
+  "candidate_scope": {
+    "range": "6dc3aadf..772f8523",
+    "commits": 12,
+    "files_changed": 47,
+    "insertions": 112343,
+    "deletions": 69,
+    "groups": {
+      "docs": {
+        "files": 31,
+        "insertions": 10006,
+        "deletions": 40,
+        "binary_files": 4,
+        "binary_bytes": 406815,
+        "note": "всё внутри docs/architecture/**; из 27 текстовых файлов изменены только два существующих (G0_READINESS_DELTA.md, README.md), остальные 25 — новые. Markdown-файлов в docs/architecture/: 31 на базе, 46 на release_commit. ADR-файлов: 12 на базе, 18 на origin/main."
+      },
+      "tests": {
+        "files": 16,
+        "insertions": 102337,
+        "deletions": 29,
+        "binary_files": 0,
+        "added": [
+          "tests/test_architecture_docs_integrity.py",
+          "tests/fixtures/stage_comparison/** (7 JSON-эталонов и README.md)"
+        ],
+        "modified": "tests/fixtures/g2_4_5_policy_cases_v2.json и шесть tests/test_stage_comparison_*.py — только перепривязка путей experiments/** → tests/fixtures/stage_comparison/**; ни один assert не ослаблен",
+        "reason": "clean-room исключает experiments/** по §3.2 quality/runtime contract; до переноса та же копия давала 9 failed и 11 errors, из них 16 результатов зависели от исключённого каталога"
+      }
+    },
+    "production_code_changes": "нет: ноль файлов в backend/**, frontend/**, scripts/**, norms/**, prompts/**, contracts/**, deploy/**, audit_worker/**, tools/**, .github/** и в корне репозитория",
+    "verification_commands": [
+      "git rev-list --count 6dc3aadf..772f8523",
+      "git diff --shortstat 6dc3aadf..772f8523",
+      "git diff --name-only 6dc3aadf..772f8523 -- backend frontend scripts norms prompts contracts deploy audit_worker tools .github | wc -l"
+    ]
+  },
+  "fixture_provenance": {
+    "commit": "790d1ca1c3c78e17965698c36102b8c8662d507b",
+    "target_root": "tests/fixtures/stage_comparison",
+    "operation": "copy_not_move",
+    "sources_retained_in_tree": true,
+    "sources_retained_note": "формулировки «перенесены»/«отвязать» в сообщении коммита, README фикстур и поле remediation расписки среза описывают перенос; фактически выполнено копирование, каталоги experiments/g2_* не удалены",
+    "copy_fidelity": "byte_identical",
+    "verified_by": ["git_blob_oid", "git_cat_file_size"],
+    "files": [
+      {"path": "tests/fixtures/stage_comparison/correct_sides_ios/comparison_result.json", "source": "experiments/g2_4_4_3_correct_sides/ios/comparison_result.json", "blob": "8e14ce25", "bytes": 457543},
+      {"path": "tests/fixtures/stage_comparison/correct_sides_ios/graphic_change_ledger.json", "source": "experiments/g2_4_4_3_correct_sides/ios/graphic_change_ledger.json", "blob": "bd67691c", "bytes": 437966},
+      {"path": "tests/fixtures/stage_comparison/correct_sides_ios/left_system_graph.json", "source": "experiments/g2_4_4_3_correct_sides/ios/left_system_graph.json", "blob": "f0d20344", "bytes": 247645},
+      {"path": "tests/fixtures/stage_comparison/correct_sides_ios/right_system_graph.json", "source": "experiments/g2_4_4_3_correct_sides/ios/right_system_graph.json", "blob": "6a52df74", "bytes": 319020},
+      {"path": "tests/fixtures/stage_comparison/dense_sectioned_board/left_system_graph.json", "source": "experiments/g2_dense_sectioned_board/left_system_graph.json", "blob": "6a52df74", "bytes": 319020},
+      {"path": "tests/fixtures/stage_comparison/dense_sectioned_board/right_system_graph.json", "source": "experiments/g2_dense_sectioned_board/right_system_graph.json", "blob": "f0d20344", "bytes": 247645},
+      {"path": "tests/fixtures/stage_comparison/system_graph_comparator/comparison_result.json", "source": "experiments/g2_system_graph_comparator/comparison_result.json", "blob": "49c1a489", "bytes": 471521}
+    ],
+    "internal_duplication": "correct_sides_ios/left_system_graph.json ≡ dense_sectioned_board/right_system_graph.json и correct_sides_ios/right_system_graph.json ≡ dense_sectioned_board/left_system_graph.json — те же блобы под разными путями; README фикстур это утверждает, проверка совпадением OID подтверждает",
+    "bytes_added_to_worktree": 2501502,
+    "unique_blob_bytes": 1934837,
+    "bytes_added_to_history": 0,
+    "history_note": "все семь блобов присутствуют в базе кандидата 6dc3aadf по путям experiments/**; git дедуплицирует по OID, поэтому коммит добавил только tree-объекты",
+    "exposure_delta": "нулевой — те же байты уже были достижимы из origin/main до этого коммита; изменилась роль данных, а не их раскрытие",
+    "gitignored": false,
+    "forced_add": false,
+    "repo_size_gate": "в репозитории отсутствует: нет .gitattributes, .pre-commit-config.yaml, git-lfs и проверок размера в .github/workflows/ci.yml",
+    "sanitization": "none",
+    "data_class": {
+      "class": "проектные обозначения заказчика",
+      "inventory_row": "DATA_INVENTORY_V1.md D-55",
+      "examples": ["ВРУ1…ВРУ4", "ВРУ-ИТП", "ВРУ-АПТ", "ГРЩ1-РП1-1", "АУКРМ-1", "ЩНО"],
+      "discipline": "ЭОМ",
+      "note": "имени объекта и имени документа внутри JSON нет; привязка к объекту устанавливается путями в tests/test_stage_comparison_document_binding.py, а не содержимым фикстур"
+    },
+    "scan": {
+      "patterns_checked": 11,
+      "aws_keys": 0,
+      "presigned_signatures": 0,
+      "bearer_tokens": 0,
+      "urls": 0,
+      "developer_fs_paths": 0,
+      "emails": 0,
+      "ip_addresses": 0,
+      "credential_field_names": 0,
+      "source_document_filenames": 0,
+      "pdf_sha256": 0,
+      "address_hints_total": 7,
+      "address_hints_with_text": 0,
+      "address_hints_kinds": {"SYSTEM_GRAPH_LOCATION": 7},
+      "d53_risk": "не подтверждён: DATA_INVENTORY_V1 D-53 предупреждает о тексте из PDF заказчика в address_hints[].text; в перенесённом ledger поля text нет ни в одной подсказке",
+      "token_matches_note": "слово token встречается многократно как доменное поле source_tokens и значение kind=token (токенизация текстового слоя чертежа), учётных данных не обозначает"
+    },
+    "policy_exception": {
+      "conflicts_with": [
+        "ADR_BIBLE.md §5.7 строки 393-395 — «Кассеты в репозитории содержат только синтетические или обезличенные данные … не копируется в fixtures»",
+        "adr/ADR-0006-target-repository-layout.md R-12 строка 442 — «только синтетические или обезличенные»",
+        "adr/ADR-0013-llm-reproducibility-and-cost.md §4 строка 74 — «production payload нельзя автоматически превращать в git fixture» (статус ADR proposed, норма не связывающая)"
+      ],
+      "procedure_not_performed": "CRITICAL_JOURNEYS_V1.md §5.3 п.7 требует отдельной проверки владельцем, прежде чем материал experiments/** станет основой кассет; такой проверки не проводилось",
+      "preempts": "W0-BEH-02 назначает формат golden-корпуса; задача не сдана, расписки нет",
+      "mitigation": "exposure_delta нулевой, секретов и ПДн не найдено, риск D-53 проверен и не подтверждён",
+      "accepted_as": "явный долг, объявленный этой распиской",
+      "owners": ["владелец данных (W0-DEC-02)", "ARC"],
+      "review_at": "сдача W0-BEH-02 либо Gate G0",
+      "decision_required": "владелец данных подтверждает допустимость необезличенных производных данных заказчика в tests/fixtures/** либо назначает санитизацию"
+    },
+    "residual_debt": [
+      "источники в experiments/g2_* не удалены — те же 2,4 МБ существуют в рабочем дереве по двум наборам путей",
+      "correct_sides_ios/graphic_change_ledger.json читается только tests/test_stage_comparison_document_binding.py, который в clean-room скипается: боевого корпуса comparison/sessions/** и projects_v2/objects/** в дереве нет",
+      "скипы по отсутствию боевого корпуса не несут reason code, чего требует §6 quality/runtime contract"
+    ]
+  },
+  "known_limits": {
+    "changes_no_verdicts": "Эта расписка исправляет описание границы и объявляет провенанс. Она не меняет вердиктов Gate G0, не двигает refs/heads/version/0.0.04 и не переписывает измерений ранее снятых расписок.",
+    "version_ref_unchanged": "refs/heads/version/0.0.04 остаётся на 772f8523"
+  }
+}

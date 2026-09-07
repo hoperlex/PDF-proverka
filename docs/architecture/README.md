@@ -66,7 +66,15 @@
    ([расписка](receipts/W0-LLM-01.json)).
 21. [План version-среза 0.0.04 и пути к CP1](WAVE_0_0_04_PLAN.md) — граница
    приёмки evidence-фазы 1, честно оставшиеся условия G0 и порядок параллельной
-   подготовки redaction, auth и watchdog с последовательным production rollout.
+   подготовки redaction, auth и watchdog с последовательным production rollout;
+   фактическая граница опубликованного кандидата и провенанс перенесённых
+   эталонов — [расписка границы](receipts/0.0.04-candidate-boundary.json),
+   публикация — [release receipt](receipts/0.0.04-release.json).
+
+Целостность комплекта проверяется машинно:
+`tests/test_architecture_docs_integrity.py` разбирает все JSON в
+`docs/architecture/**` и разрешает все локальные Markdown-ссылки. Ссылка на
+файл, которого нет в git, роняет полосу `unit`.
 
 ## Презентации
 

@@ -18,7 +18,7 @@
     "base_ref": "origin/main"
   },
   "why_rebuilt": "первая редакция снималась на ветке dev, отпочковавшейся 2026-09-03 от 370b6ee8; origin/main после этого получил 1613 файлов, которых в dev нет",
-  "code_changes": "нет — кандидат меняет только docs/architecture/**",
+  "code_changes": "на снятом коммите 7b112b42 — нет, кандидат менял только docs/architecture/**; для ветки в целом утверждение неверно с 953eae67, фактическая граница объявлена в receipts/0.0.04-candidate-boundary.json",
   "full_suite": {
     "command": "python -m pytest tests backend/tests -q -p no:randomly",
     "passed": 7664,
