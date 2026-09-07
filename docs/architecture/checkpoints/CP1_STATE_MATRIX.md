@@ -4,9 +4,15 @@
 квитанция `CP1.json` и **не** verdict.<br>
 **Составлена:** 2026-09-07<br>
 **Составитель:** интегратор программы (единственный владелец этого файла)<br>
-**BASE_SHA:** `c8475ed72a13a98566ddd9c7e6297ff232d40f62`<br>
-**Отношение к origin:** `origin/main@16414088` + 1 коммит, fast-forward, без
-divergence. BASE ещё **не опубликован**.<br>
+**P0_SOURCE_SHA** (на нём измерено состояние; ниже по тексту — «BASE»):
+`c8475ed72a13a98566ddd9c7e6297ff232d40f62`<br>
+**P0_PLANNING_SHA** (planning-docs: этот файл и task cards):
+`7d9ddc65dbd2ef64a8e472299d7748254e2b566e`<br>
+**CP1_BASE_SHA:** не определён — присваивается опубликованному `origin/main`
+после завершения P0; именно на него встают потоки L, S и O.<br>
+**Отношение к origin:** `origin/main@16414088`; ни `P0_SOURCE_SHA`, ни
+`P0_PLANNING_SHA` в него не входят — fast-forward, divergence нет, **ничего из
+этого не опубликовано**.<br>
 **Политика окна:** [acceptance-rework/v1](../ACCEPTANCE_REWORK_POLICY_V1.md),
 `enforced` с 2026-09-07.
 

@@ -9,9 +9,26 @@
 `checkpoints/CP1.json` и этих двух файлов.
 
 Общее для всех карточек: `candidate_frozen` выставляется **после** зелёного
-preflight, не раньше. Полный гейт (`python scripts/ci_regression_gate.py`) —
-максимум 2 запуска на окно, 1 remediation между ними, 0 автоповторов, 1800 с на
-прогон. Любой старт считается попыткой, включая timeout и отменённый прогон.
+preflight, не раньше. Полный гейт (`python scripts/ci_regression_gate.py`,
+исполняется в CI — `ci.yml:270`) — максимум 2 запуска на окно, 1 remediation
+между ними, 0 автоповторов, 1800 с на прогон. Любой старт считается попыткой,
+включая timeout и отменённый прогон.
+
+**Окружение preflight.** Команды ниже записаны через `$QR_PY` — интерпретатор
+**материализованного** профиля `qr-v1`. Голого `python` предполагать нельзя: на
+чистом PATH такой команды нет (`command -v python` → 127), а `python3`
+разрешается в системный интерпретатор без набора зависимостей профиля.
+Материализация — той же командой, что в CI (`ci.yml:102-105`):
+
+```bash
+python3 -m venv <venv>
+<venv>/bin/python -m pip install --upgrade pip
+<venv>/bin/python -m pip install -c constraints-qr-v1.txt -r requirements-dev.txt
+export QR_PY=<venv>/bin/python
+```
+
+Материализованный venv не обязан лежать в рабочем дереве и в worktree-чекаутах
+там его нет — путь берётся из переменной, а не собирается относительно корня.
 
 ---
 
@@ -21,7 +38,16 @@ preflight, не раньше. Полный гейт (`python scripts/ci_regressi
 policy_id: acceptance-rework/v1
 acceptance_window_id: CP1-P0-01
 owner: интегратор
-candidate_sha: c8475ed72a13a98566ddd9c7e6297ff232d40f62
+P0_SOURCE_SHA:   c8475ed72a13a98566ddd9c7e6297ff232d40f62
+  # source candidate: ci.yml + исполняемый тест; по §6 не receipt-only,
+  # именно его проверяет полный гейт
+P0_PLANNING_SHA: 7d9ddc65dbd2ef64a8e472299d7748254e2b566e
+  # planning-docs CP1; non_executable_documentation_only. Отдельного гейта не
+  # требует и от гейта source candidate не освобождает: исключение §6 работает
+  # только ПОСЛЕ зелёного source candidate, а его ещё не было
+CP1_BASE_SHA:    <не определён — присваивается после публикации P0>
+  # опубликованный origin/main, на который встают L/S/O. Пустое поле не
+  # выдаётся за ноль (правило 4 checkpoints/README)
 frozen_scope:
   allowed_paths: [AGENTS.md, .github/workflows/ci.yml,
                   docs/architecture/ACCEPTANCE_REWORK_POLICY_V1.md,
@@ -34,8 +60,8 @@ frozen_scope:
   non_goals: [перенос W0-SEC-03 на новую базу, сведение EXC-0003,
               любые правки redaction/auth/watchdog]
 preflight:
-  - python -m pytest tests/test_acceptance_rework_policy.py -q
-  - python -m pytest tests/ -k "document_contract or receipt" -q
+  - $QR_PY -m pytest tests/test_acceptance_rework_policy.py -q
+  - $QR_PY -m pytest tests/ -k "document_contract or receipt" -q
 attempts: []
 remediation_commit: null
 terminal_status: null
@@ -49,9 +75,16 @@ next_task_ids: [CP1-L-01, CP1-S-01, CP1-O-01, CP1-E-01]
 
 Последовательность (план §3, P0): опубликовать review-кандидат → зелёный
 GitHub CI → сверить source SHA → merge только проверенного SHA в актуальный
-`origin/main` → повторный CI на merge commit → release receipt → remote
-`version/0.0.04`. Stop condition: divergence, красный/отменённый CI, неполный
-JUnit, несовпадение SHA.
+`origin/main` → повторный CI на merge commit. Stop condition: divergence,
+красный/отменённый CI, неполный JUnit, несовпадение SHA.
+
+**Вне маршрута P0:** повторная release receipt и создание либо перемещение
+ветки `version/0.0.04`. Срез `0.0.04` уже закрыт: расписка выпущена
+(`receipts/0.0.04-release.json`), ветка `version/0.0.04` существует и на
+`origin`, и локально на одном и том же `772f8523`, а план §2 п.4 объявляет её
+**неизменяемой**. Выпускать вторую расписку на тот же срез и двигать
+неизменяемое имя маршрут CP1 не должен — P0 публикует planning-документы и
+source candidate, а не переоформляет уже закрытый срез.
 
 ---
 
@@ -61,7 +94,9 @@ JUnit, несовпадение SHA.
 policy_id: acceptance-rework/v1
 acceptance_window_id: CP1-L-01
 owner: OPS/logging
-candidate_sha: <после P0; базируется на опубликованном origin/main>
+candidate_sha: <CP1_BASE_SHA + коммит потока L>
+  # база — актуальный опубликованный origin/main ПОСЛЕ публикации planning-docs,
+  # а не P0_SOURCE_SHA и не P0_PLANNING_SHA
 frozen_scope:
   allowed_paths: [backend/app/core/action_log.py,
                   backend/tests/test_action_log.py,
@@ -75,8 +110,8 @@ frozen_scope:
               startup-проверка флага в config.py — заявка интегратору]
   contracts: [DATA_INVENTORY_V1.md D-17..D-24]
 preflight:
-  - python -m pytest backend/tests/test_action_log.py tests/test_action_log_api.py tests/test_ci_redaction.py -q
-  - python -m pytest tests/ -k document_contract -q
+  - $QR_PY -m pytest backend/tests/test_action_log.py tests/test_action_log_api.py tests/test_ci_redaction.py -q
+  - $QR_PY -m pytest tests/ -k document_contract -q
 attempts: []
 terminal_status: null
 ```
@@ -102,7 +137,8 @@ traceback не попадают **ни в один** канал по умолч�
 policy_id: acceptance-rework/v1
 acceptance_window_id: CP1-S-01
 owner: OPS/API + владелец доступа
-candidate_sha: <перенос review/g0-sec03-code@2d624433 на BASE — новый SHA>
+candidate_sha: <перенос review/g0-sec03-code@2d624433 на CP1_BASE_SHA — новый SHA>
+  # база — актуальный опубликованный origin/main ПОСЛЕ публикации planning-docs
 frozen_scope:
   allowed_paths: [backend/app/core/portal_auth.py,
                   tests/test_portal_auth.py,
@@ -117,8 +153,8 @@ frozen_scope:
                             conftest.py, .github/workflows/ci.yml,
                             docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md]
 preflight:
-  - python -m pytest tests/test_portal_auth.py tests/test_portal_startup_policy.py -q
-  - python -m pytest tests/ -k "startup or config" -q
+  - $QR_PY -m pytest tests/test_portal_auth.py tests/test_portal_startup_policy.py -q
+  - $QR_PY -m pytest tests/ -k "startup or config" -q
 attempts: []
 terminal_status: null
 ```
@@ -148,7 +184,8 @@ EXC-0001 — только аварийно и с записью. Production roll
 policy_id: acceptance-rework/v1
 acceptance_window_id: CP1-O-01
 owner: OPS
-candidate_sha: <после P0>
+candidate_sha: <CP1_BASE_SHA + коммит потока O>
+  # база — актуальный опубликованный origin/main ПОСЛЕ публикации planning-docs
 frozen_scope:
   allowed_paths: [docs/ops/WATCHDOG_CONTRACT_V1.md,
                   backend/app/api/routers/health.py,
@@ -159,8 +196,8 @@ frozen_scope:
               закрытие /api/info,
               включение auth]
 preflight:
-  - python -m pytest tests/test_health_probes.py -q
-  - python -m pytest tests/ -k "action_log_api or info" -q
+  - $QR_PY -m pytest tests/test_health_probes.py -q
+  - $QR_PY -m pytest tests/ -k "action_log_api or info" -q
 attempts: []
 terminal_status: null
 ```
@@ -201,7 +238,7 @@ frozen_scope:
               authorizes_next_cutover=true без отдельного gate,
               заполнение production-полей догадкой]
 preflight:
-  - python -m pytest tests/ -k "document_contract or receipt or checkpoint" -q
+  - $QR_PY -m pytest tests/ -k "document_contract or receipt or checkpoint" -q
   - проверка разрешимости относительных ссылок и валидности JSON
 attempts: []
 terminal_status: null
