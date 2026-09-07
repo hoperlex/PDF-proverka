@@ -1,0 +1,107 @@
+{
+  "type": "release_receipt",
+  "schema_version": 1,
+  "version": "0.0.04",
+  "captured_at": "2026-09-07T07:27:54Z",
+  "status": "released",
+  "release_commit": "772f8523c1b99be18eab02668b9c56fecc7ed6ae",
+  "local_acceptance_receipt": "docs/architecture/receipts/0.0.04-phase1.json",
+  "refs_at_version_fixation": {
+    "origin/main": "772f8523c1b99be18eab02668b9c56fecc7ed6ae",
+    "origin/review/g0-phase1": "772f8523c1b99be18eab02668b9c56fecc7ed6ae",
+    "origin/version/0.0.04": "772f8523c1b99be18eab02668b9c56fecc7ed6ae"
+  },
+  "ancestry": {
+    "release_commit_reachable_from_origin_main": true,
+    "version_branch_created_after_main_publication": true,
+    "force_push_used": false
+  },
+  "ci": {
+    "review": {
+      "run_id": 34093870500,
+      "url": "https://github.com/hoperlex/PDF-proverka/actions/runs/34093870500",
+      "head_sha": "772f8523c1b99be18eab02668b9c56fecc7ed6ae",
+      "conclusion": "success",
+      "jobs_success": 7,
+      "jobs_total": 7
+    },
+    "post_merge_main": {
+      "run_id": 34094671744,
+      "url": "https://github.com/hoperlex/PDF-proverka/actions/runs/34094671744",
+      "head_sha": "772f8523c1b99be18eab02668b9c56fecc7ed6ae",
+      "conclusion": "success",
+      "jobs_success": 7,
+      "jobs_total": 7,
+      "jobs": [
+        "frontend",
+        "lane unit",
+        "lane contract",
+        "lane integration",
+        "lane network",
+        "chaos",
+        "regression-gate"
+      ]
+    }
+  },
+  "post_merge_lane_artifacts": {
+    "unit": {
+      "artifact_id": 10008154357,
+      "artifact_digest": "sha256:a717d4ff58fd3cfe346fab2f77b20373b1b7f7afa064ce17a0ff1b9e8527ffb0",
+      "size_bytes": 174471,
+      "expired_at_capture": false
+    },
+    "contract": {
+      "artifact_id": 10008141472,
+      "artifact_digest": "sha256:24448f12dad155c901b8839434e428d1f9d5415c2ed5c8836cbda4877d7de8e8",
+      "size_bytes": 16341,
+      "expired_at_capture": false
+    },
+    "integration": {
+      "artifact_id": 10008209752,
+      "artifact_digest": "sha256:2741b912b00e981fe389ef2bf2c64f7a0fdebaaefb58d90d4ded821539ed0568",
+      "size_bytes": 228698,
+      "expired_at_capture": false
+    },
+    "network": {
+      "artifact_id": 10008272889,
+      "artifact_digest": "sha256:409f3a22d2b47d8703dc8ee1922f4be119008c348e4296acbdfc219de8d0f87f",
+      "size_bytes": 59133,
+      "expired_at_capture": false
+    },
+    "chaos": {
+      "artifact_id": 10008165100,
+      "artifact_digest": "sha256:713b8ce6e02c1e2abfd4301334f60eb592b391eb354a9cd61bf7185db3c23916",
+      "size_bytes": 2558,
+      "expired_at_capture": false
+    },
+    "common_contract": {
+      "source_commit": "772f8523c1b99be18eab02668b9c56fecc7ed6ae",
+      "probe_mode": "ci",
+      "jobs_success": 7,
+      "jobs_total": 7,
+      "baseline_entries": 0,
+      "new_failures": 0
+    }
+  },
+  "release_gate": {
+    "local_clean_room": "passed",
+    "review_real_github_runner": "passed",
+    "post_merge_main_real_github_runner": "passed",
+    "version_slice_fixed": true
+  },
+  "receipt_semantics": {
+    "phase1_receipt_publication_fields": "pre-publication snapshot; superseded for publication status by this release receipt",
+    "this_receipt_is_post_factum": true,
+    "release_commit_contains_phase1_receipt": true
+  },
+  "known_limits": {
+    "gate_g0_passed": false,
+    "w1_authorized": false,
+    "checkpoint_cp1_reached": false,
+    "probe_mode": "ci",
+    "enforce_enabled": false,
+    "norm_artifact": "OPTIONAL_NORM_CORPUS_ABSENT",
+    "note": "Фиксация version-среза 0.0.04 подтверждает доставку evidence-фазы 1, но не является положительным вердиктом Gate G0, разрешением W1 или достижением CP1."
+  },
+  "immutability": "refs/heads/version/0.0.04 зафиксирована на release_commit и не должна перемещаться"
+}
