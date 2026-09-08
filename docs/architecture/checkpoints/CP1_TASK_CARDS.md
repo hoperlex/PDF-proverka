@@ -58,6 +58,7 @@ frozen_scope:
   allowed_paths: [AGENTS.md, .github/workflows/ci.yml,
                   docs/architecture/ACCEPTANCE_REWORK_POLICY_V1.md,
                   docs/architecture/HYBRID_REWRITE_ROADMAP.md,
+                  docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md,
                   docs/architecture/README.md,
                   docs/architecture/WAVE_0_0_04_PLAN.md,
                   docs/architecture/checkpoints/README.md,
@@ -89,6 +90,13 @@ preflight:
   - command: $QR_PY scripts/ci_runtime_probe.py --profile unit
     result: pass на 7d9ddc65, exit 0 — перепроверить на tip перед заморозкой
     evidence: обязательный capability probe §2 п.3, тот же шаг, что ci.yml:252
+  - command: $QR_PY -m pytest
+      tests/test_ci_runtime_probe.py::test_frozen_receipt_matches_document -q
+    result: red на 933bce78 (§2 отставала от ci.yml с c8475ed7) — зелёный после
+      переиздания пина
+    evidence: единственная проверка, сверяющая §2 QUALITY_RUNTIME_CONTRACT_V1.md
+      и с worktree, и с константами probe; окно P0 изменяет ci.yml через
+      c8475ed7, поэтому без неё receipt устаревает молча
 attempts: []
 findings: []
 remediation_commit: null
@@ -111,6 +119,15 @@ candidate, а его ещё не было. Окно одно, гейт один,
 проверку изменённых архитектурных документов, обоих CP1-файлов и нового
 `policies/acceptance-rework-v1.json`. По §2 п.1 и п.4 preflight обязан покрывать
 изменённые файлы, ссылки и JSON, поэтому тесты названы путями.
+
+**Цена этого выбора, обнаруженная 2026-09-08.** Отказ от селектора стоил одной
+проверки: `test_frozen_receipt_matches_document` содержит «receipt» в имени и
+`-k` его бы собрал, а перечисление путями — нет. Окно P0 при этом меняет
+`ci.yml` (через `c8475ed7`), то есть ровно тот вход, который этот тест и
+сторожит, и §2 контракта молча отставала от worktree. Узел добавлен в preflight
+явным путём — четвёртым пунктом выше; из этого не следует возврат к селектору,
+следует лишь правило: если окно трогает зафиксированный §2 вход, проверка
+receipt обязана быть в preflight поимённо.
 
 Последовательность (план §3, P0): опубликовать review-кандидат → зелёный
 GitHub CI → сверить source SHA → merge только проверенного SHA в актуальный

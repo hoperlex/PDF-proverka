@@ -135,6 +135,27 @@ setup фикстуры. Правило §3.3 «прогон без выбран�
  Переиздание оформлено здесь, потому что §2 требует нового receipt на
 любое изменение зафиксированного входа до интеграции.
 
+**Переиздание пина `.github/workflows/ci.yml` от 2026-09-08.** Коммит
+`c8475ed72a13a98566ddd9c7e6297ff232d40f62` («ограничить циклы приемки и
+правок») добавил в `ci.yml` блок `concurrency` с `cancel-in-progress: true`
+(+6 строк): новый commit обязан отменять устаревший regression gate той же
+ветки, иначе приёмка сверяет уже неактуальный SHA. Сам вход изменился, а §2
+осталась с пином, снятым на `origin/main@16414088`, — receipt устарел ровно на
+`c8475ed7` и оставался таким на всех последующих planning-коммитах
+(`7d9ddc65`, `9ce138d2`, `dd35c86b`, `e478cb7e`, `bbc31bd3`, `933bce78`),
+потому что ни один из них `ci.yml` не трогал.
+
+Это тот же класс дефекта, на котором окно debt-ветки потеряло попытку `1/2`
+(«изменён `ci.yml`, но не переиздан frozen-input receipt»): изменение
+зафиксированного входа без переиздания receipt делает утверждение «receipt
+сошёлся» бессодержательным.
+
+Переиздан **только** этот вход: `2c2f532b32fb…` → `c89bea9d70a4…`. Остальные
+двенадцать строк таблицы сверены с worktree на `933bce78` и не изменились,
+поэтому не переиздаются. `ci.yml` не входит в `DEPENDENCY_RECEIPT` и
+`FRONTEND_RECEIPT` `scripts/ci_runtime_probe.py`, поэтому дублирующая константа
+в коде отсутствует и правки не требует.
+
 | Вход | SHA-256 |
 | --- | --- |
 | `requirements.txt` | `e517f305175010e974f5dcdb288135dd3ad59f5a8fd7b16f069f898ee9262df4` |
@@ -145,7 +166,7 @@ setup фикстуры. Правило §3.3 «прогон без выбран�
 | `frontend/package-lock.json` | `c679604b25329bdbcf89f80017011a0c51c07e770e326865b093f63633097040` |
 | `frontend/package.json` | `65749f5180ea6fd1e2d99f35c103365f9188f7e2cabaef3db53e8f051eef2075` |
 | `frontend/tsconfig.distributed.json` | `a3d3fb949642421af5563073f04658160534b04e78c3ebad895d4454eb487863` |
-| `.github/workflows/ci.yml` | `2c2f532b32fba1a3999943326092fe42cdb57dd59d8601b8d3e1a47fc7f54506` |
+| `.github/workflows/ci.yml` | `c89bea9d70a49913b55d5080f7a6c24578974ff56c7242a86e1aff1312a46cd7` |
 | `scripts/ci_regression_gate.py` | `673644985e4e075adb5688acd6c05d5e9b8adecbdad001842dd91b5f8285bab4` |
 | `scripts/ci_known_failures.txt` | `e0305efb2517799497cbe0fb0989fc27e5ae63c1007a69ab36ec494f9908bea5` |
 | `tests/conftest.py` | `395646bd3f738f1da345bb75f2627844f8e27d447991c04ce305b97d13594706` |
