@@ -952,23 +952,29 @@ class PipelineManager:
         self._rate_limit_deadline = _deadline
         stagger = self._rate_limit_waiters * RATE_LIMIT_STAGGER_SEC
         self._rate_limit_waiters += 1
-        # Выходить по таймеру имеем право, только если время сброса ИЗВЕСТНО:
-        # своё (parsed_wait от CLI) или унаследованное от соседа. Без него
-        # остаётся прежний путь — опрашивать scanner до can_proceed, иначе
-        # можно проснуться раньше реального сброса и снова словить лимит.
-        if parsed_wait or _inherited:
-            effective_wait = max(0, int(_deadline - _now)) + stagger
-        else:
-            effective_wait = 0
-        if stagger:
-            await self._log(
-                job,
-                f"Ожидание rate limit согласовано с другими проектами: "
-                f"старт через ~{effective_wait // 60} мин (разбежка {stagger} с)",
-                "info",
-            )
-
+        # Регистрация waiter и защищённая область неразделимы. Раньше между
+        # ними оставался await — лог разбежки, — и отмена или исключение именно
+        # там навсегда завышали счётчик: лишний ждущий не уходил, последний
+        # реальный waiter уже не мог снять общий дедлайн, и следующий эпизод
+        # наследовал протухшее время сброса. Вычисление effective_wait тоже
+        # внутри: синхронный отказ после регистрации не должен оставлять след.
         try:
+            # Выходить по таймеру имеем право, только если время сброса ИЗВЕСТНО:
+            # своё (parsed_wait от CLI) или унаследованное от соседа. Без него
+            # остаётся прежний путь — опрашивать scanner до can_proceed, иначе
+            # можно проснуться раньше реального сброса и снова словить лимит.
+            if parsed_wait or _inherited:
+                effective_wait = max(0, int(_deadline - _now)) + stagger
+            else:
+                effective_wait = 0
+            if stagger:
+                await self._log(
+                    job,
+                    f"Ожидание rate limit согласовано с другими проектами: "
+                    f"старт через ~{effective_wait // 60} мин (разбежка {stagger} с)",
+                    "info",
+                )
+
             while total_waited < RATE_LIMIT_MAX_WAIT:
                 if job.status == JobStatus.CANCELLED:
                     return False

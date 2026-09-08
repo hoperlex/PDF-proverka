@@ -188,14 +188,136 @@ preflight:
     evidence: обязательный capability probe §2 п.3, тот же шаг, что ci.yml:252
   - command: git diff --check
     evidence: пробелы и конфликтные маркеры в изменённых файлах
+attempts:
+  - n: 1
+    run_id: 34220971371
+    head_sha: eb3429845a7aaf288961d8f5efd5ef6a8c967396
+    stage: review
+    full_gate: success
+    workflow: success
+    artifacts: 6/6
+    result: successful_review
+  - n: 2
+    run_id: 34221844259
+    head_sha: eb3429845a7aaf288961d8f5efd5ef6a8c967396
+    stage: post_merge_main
+    full_gate: success
+    workflow: failure
+    artifacts: 6/6
+    failed_node: tests/test_parallel_hardening.py::test_rate_limit_deadline_cleared_by_last_waiter
+    result: unsuccessful_post_merge_ci
+findings:
+  - id: P0-02-F1
+    class: pre_existing_or_flaky
+    evidence:
+      - review того же SHA: pass
+      - post-merge unit lane: fail
+      - regression-gate того же post-merge run: pass
+      - 374 diagnostic_only повторов: 0 failures
+      - диапазон P0-02 не менял test или manager
+    disposition: отдельное уменьшенное окно CP1-P0-03
+remediation_commit: null
+terminal_status: split
+next_task_ids: [CP1-P0-03]
+```
+
+**Окно `CP1-P0-02` закрыто терминально со статусом `split`, бюджет `2/2`.**
+Попытка 1 — review-прогон на `eb342984`: полный гейт зелёный, workflow
+`success`, artifacts `6/6`; она подтвердила, что починка evidence-инфраструктуры
+работает. Попытка 2 — post-merge main CI на том же SHA: полный гейт снова
+зелёный и artifacts снова `6/6`, но workflow `failure` из-за одного узла в
+полосе `unit`. Обе попытки израсходованы, ремедиация не использовалась.
+
+`CP1_BASE_SHA` **не ратифицирован**: регламент требует зелёного post-merge main
+CI. При этом `origin/main` фактически опубликован на `eb342984` — это состояние
+зафиксировано как есть и не выдаётся за ратификацию.
+
+Находка `P0-02-F1` отнесена к классу `pre_existing_or_flaky` (класса `flaky` в
+реестре нет и он не используется): дефект существовал до окна, диапазон
+`16414088..eb342984` не менял ни `tests/test_parallel_hardening.py`, ни
+`backend/app/pipeline/manager.py`. Чинить его внутри закрытого окна нельзя —
+отсюда `disposition: отдельное уменьшенное окно CP1-P0-03`.
+
+---
+
+## P0-03 — cancellation-safe waiter accounting (владелец: интегратор)
+
+```text
+policy_id: acceptance-rework/v1
+acceptance_window_id: CP1-P0-03
+owner: интегратор
+predecessor: CP1-P0-02 (terminal_status: split, бюджет 2/2)
+base_sha: eb3429845a7aaf288961d8f5efd5ef6a8c967396
+outcome: cancellation-safe accounting rate-limit waiters и детерминированное
+  доказательство shared-deadline contract
+frozen_scope:
+  allowed_paths: [backend/app/pipeline/manager.py,
+                  tests/test_parallel_hardening.py,
+                  docs/architecture/checkpoints/CP1_TASK_CARDS.md]
+  non_goals: [изменение бизнес-семантики rate-limit,
+              retry/skip/xfail/baseline,
+              sleep для стабилизации теста,
+              правка ci.yml или любого §2 frozen input,
+              общий refactoring PipelineManager,
+              self._sleep или другой production seam только ради теста,
+              rerun run 34221844259,
+              долги / L / S / O / production]
+  contracts: [policies/acceptance-rework-v1.json (frozen, enforced 2026-09-07)]
+  fixtures: не затронуты
+candidate_frozen: false
 attempts: []
 findings: []
 remediation_commit: null
 terminal_status: null
+review_ref_after_freeze: refs/heads/review/cp1-p0-03
+preflight:
+  - command: $QR_PY -m pytest tests/test_parallel_hardening.py -q
+  - command: $QR_PY -m pytest tests/test_paid_api_reservation.py
+      tests/test_parallel_hardening.py -m unit -q
+  - command: $QR_PY -m pytest -m unit -q
+  - command: $QR_PY -m pytest tests/test_acceptance_rework_policy.py -q
+  - command: $QR_PY -m pytest tests/test_architecture_docs_integrity.py -q
+  - command: $QR_PY -m pytest
+      tests/test_ci_runtime_probe.py::test_frozen_receipt_matches_document -q
+  - command: git diff --check
 next_task_ids: [CP1-L-01, CP1-S-01, CP1-O-01, CP1-E-01]
 ```
 
-**Что чинит это окно.** Шаг «Выгрузить отчёт гейта» получает
+**Продуктовый инвариант.** После `self._rate_limit_waiters += 1` любой выход —
+`return`, исключение или `CancelledError` — проходит через один `finally`,
+который возвращает счётчик и снимает общий дедлайн, только когда ушёл
+последний ждущий. `try` открывается непосредственно после регистрации, до
+первого следующего `await`; вычисление `effective_wait` тоже внутри
+защищённой области, чтобы синхронный отказ после регистрации не оставлял
+состояние. Happy-path, разбежка, `RATE_LIMIT_MAX_WAIT`, scanner fallback и
+формат логов не менялись.
+
+**Достижимость дефекта.** Между регистрацией и прежней границей `try` стоял
+единственный `await` — лог разбежки. Он выполняется при `stagger > 0`, то есть
+ровно когда в ожидании уже есть сосед. Отмена там навсегда оставляла лишнего
+ждущего: счётчик не возвращался к нулю, последний реальный waiter не мог снять
+общий дедлайн, и следующий эпизод наследовал протухшее время сброса.
+
+**Оракул теста.** Прежний узел утверждал только «вернулось `True`» и потому был
+зелёным на двух разных ветках сразу — по известному времени сброса и через
+scanner fallback. Новый контракт наблюдает число пробуждений и опубликованный
+дедлайн, поэтому ветка фиксируется, а не угадывается: `I2` — пока `W>0`,
+дедлайн не снимается; `I3` — последний вышедший даёт `W=0` и `D=0.0`; `I4` —
+следующий непересекающийся эпизод не наследует дальний дедлайн; `I5` — после
+отмены `W` возвращается к значению до входа.
+
+**Изоляция.** Подмены ставятся на ССЫЛКИ в namespace менеджера
+(`manager.asyncio`, `manager.claude_runner`, `manager.global_scanner`,
+`manager.ws_manager`), а не на методы процессных singleton'ов и не на общий
+модуль `asyncio`. `RATE_LIMIT_CHECK_INTERVAL` и `RATE_LIMIT_STAGGER_SEC`
+пинятся явно. Настоящий `asyncio.sleep` захватывается до подмены и
+используется как `sleep(0)`: точка уступки циклу сохраняется, ожидания по
+стенным часам нет.
+
+Бюджет окна `CP1-P0-03`: попыток `0/2`, ремедиаций `0/1`; полный гейт не
+запускался. `ci.yml` не затронут, §2 pin не менялся.
+
+**Что чинит окно CP1-P0-02.** Шаг «Выгрузить отчёт гейта» получает
 `include-hidden-files: true` (отчёт — дотфайл) и `if-no-files-found: error`
 (пропажа обязательного evidence обязана красить прогон). Путь
 `.ci_last_report.xml` сохранён точно: он совпадает с `JUNIT` в

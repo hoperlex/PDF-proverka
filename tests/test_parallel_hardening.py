@@ -17,7 +17,9 @@ Run: python -m pytest tests/test_parallel_hardening.py -v
 """
 from __future__ import annotations
 
+import asyncio
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -88,6 +90,93 @@ def test_norm_stage_count_is_derived_not_counted():
 
 # ─── 2. Согласованное ожидание rate limit ────────────────────────────────────
 
+# Настоящий sleep захвачен ДО любой подмены: fake-sleep уступает через него
+# управление циклу, не завися от того, что подменено дальше.
+_REAL_SLEEP = asyncio.sleep
+
+
+class _AsyncioShim:
+    """Прокси настоящего asyncio, подменяющий ровно один атрибут — `sleep`.
+
+    Патчить `asyncio.sleep` на самом модуле нельзя: модуль общий на процесс, и
+    подмена видна каждой чужой корутине того же прогона. Здесь подменяется
+    только ССЫЛКА `manager.asyncio`; всё остальное проксируется в настоящий
+    модуль, поэтому конструктор менеджера и прочий код работают как обычно.
+    """
+
+    def __init__(self, sleep):
+        self.sleep = sleep
+
+    def __getattr__(self, name):
+        return getattr(asyncio, name)
+
+
+class _FakeRunner:
+    def __init__(self, reset_sec):
+        self._reset_sec = reset_sec
+
+    def parse_rate_limit_reset(self, _text):
+        return self._reset_sec
+
+
+class _FakeScanner:
+    def __init__(self, result):
+        self._result = result
+
+    def check_rate_limit(self, _pct):
+        return dict(self._result)
+
+    def invalidate_cache(self):
+        return None
+
+
+class _FakeWs:
+    async def broadcast_to_project(self, *a, **k):
+        return None
+
+
+# Сканер сообщает «лимит уже свободен»: ветка точного времени сброса не должна
+# от него зависеть, и тест обязан это доказывать, а не маскировать.
+_SCANNER_FREE = {"can_proceed": True, "wait_seconds": 1,
+                 "resets_in_text": "1 мин", "usage_pct": 10, "reason": ""}
+
+
+async def _anoop_log(*a, **k):
+    return None
+
+
+def _isolate_rate_limit(monkeypatch, mgr_mod, mgr, *, reset_sec,
+                        stagger_sec=30, check_interval=60):
+    """Изолировать эпизод rate limit, не трогая процессные singleton'ы.
+
+    Заменяются ЦЕЛИКОМ ссылки в namespace менеджера, а не методы на общих
+    объектах: подмена метода на `global_scanner`/`claude_runner` переживает
+    границу теста ровно настолько, насколько успевает отработать undo, и
+    именно это делало прежний тест недоказательным.
+
+    Возвращает список снимков опубликованного дедлайна — по одному на каждую
+    итерацию ожидания. Длина списка = число пробуждений, и это наблюдаемое
+    позволяет отличить возврат по дедлайну от возврата через scanner fallback.
+    """
+    monkeypatch.setattr(mgr_mod, "claude_runner", _FakeRunner(reset_sec))
+    monkeypatch.setattr(mgr_mod, "global_scanner", _FakeScanner(_SCANNER_FREE))
+    monkeypatch.setattr(mgr_mod, "ws_manager", _FakeWs())
+    monkeypatch.setattr(mgr_mod, "RATE_LIMIT_STAGGER_SEC", stagger_sec)
+    monkeypatch.setattr(mgr_mod, "RATE_LIMIT_CHECK_INTERVAL", check_interval)
+
+    seen: list[float] = []
+
+    async def _sleep(_sec):
+        seen.append(mgr._rate_limit_deadline)
+        # Уступаем циклу настоящим sleep(0): точка доставки отмены сохраняется,
+        # но ожидания по стенным часам нет.
+        await _REAL_SLEEP(0)
+        return None
+
+    monkeypatch.setattr(mgr_mod, "asyncio", _AsyncioShim(_sleep))
+    return seen
+
+
 
 def test_rate_limit_state_starts_clean():
     from backend.app.pipeline.manager import PipelineManager
@@ -109,13 +198,12 @@ async def test_rate_limit_waiters_share_deadline_and_stagger(monkeypatch):
         return None
 
     mgr._log = _anoop
-    monkeypatch.setattr(mgr_mod.ws_manager, "broadcast_to_project", _anoop)
-    monkeypatch.setattr(mgr_mod.claude_runner, "parse_rate_limit_reset", lambda _o: 600)
-    monkeypatch.setattr(
-        mgr_mod.global_scanner, "check_rate_limit",
-        lambda _pct: {"can_proceed": False, "wait_seconds": 600,
-                      "resets_in_text": "10 мин", "usage_pct": 95, "reason": "лимит"},
-    )
+    monkeypatch.setattr(mgr_mod, "ws_manager", _FakeWs())
+    monkeypatch.setattr(mgr_mod, "claude_runner", _FakeRunner(600))
+    monkeypatch.setattr(mgr_mod, "global_scanner", _FakeScanner(
+        {"can_proceed": False, "wait_seconds": 600,
+         "resets_in_text": "10 мин", "usage_pct": 95, "reason": "лимит"},
+    ))
     monkeypatch.setattr(mgr_mod, "RATE_LIMIT_STAGGER_SEC", 30)
 
     class _Done(Exception):
@@ -125,7 +213,8 @@ async def test_rate_limit_waiters_share_deadline_and_stagger(monkeypatch):
         # Обрываем ожидание сразу — реально спать в тесте незачем.
         raise _Done()
 
-    monkeypatch.setattr(mgr_mod.asyncio, "sleep", _fake_sleep)
+    # Подменяется ССЫЛКА manager.asyncio, а не общий модуль процесса.
+    monkeypatch.setattr(mgr_mod, "asyncio", _AsyncioShim(_fake_sleep))
 
     logged: list[str] = []
 
@@ -157,35 +246,115 @@ async def test_rate_limit_waiters_share_deadline_and_stagger(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_deadline_cleared_by_last_waiter(monkeypatch):
-    """Протухший общий дедлайн не должен наследоваться следующим лимитом."""
+async def test_rate_limit_waiter_released_when_cancelled_before_wait(monkeypatch):
+    """Отмена сразу после регистрации waiter не оставляет лишнего ждущего.
+
+    I5. Между `_rate_limit_waiters += 1` и защищённой областью есть await —
+    лог разбежки. Отмена именно там навсегда завышала счётчик: лишний ждущий
+    никогда не уходит, поэтому последний реальный waiter не может снять общий
+    дедлайн, и следующий эпизод наследует протухшее время сброса. Регистрация
+    и `finally` обязаны быть неразделимы.
+    """
     import backend.app.pipeline.manager as mgr_mod
     from backend.app.pipeline.manager import PipelineManager
 
     mgr = PipelineManager()
+    _isolate_rate_limit(monkeypatch, mgr_mod, mgr, reset_sec=600, stagger_sec=30)
 
-    async def _anoop(*a, **k):
+    async def _log_cancel(_job, msg, level="info"):
+        # Отменяем ровно на сообщении о разбежке: это единственный await
+        # между регистрацией waiter и входом в защищённую область.
+        if "разбежка" in str(msg):
+            raise asyncio.CancelledError()
         return None
 
-    mgr._log = _anoop
-    monkeypatch.setattr(mgr_mod.ws_manager, "broadcast_to_project", _anoop)
-    monkeypatch.setattr(mgr_mod.claude_runner, "parse_rate_limit_reset", lambda _o: 1)
-    monkeypatch.setattr(
-        mgr_mod.global_scanner, "check_rate_limit",
-        lambda _pct: {"can_proceed": True, "wait_seconds": 1,
-                      "resets_in_text": "1 мин", "usage_pct": 10, "reason": ""},
+    mgr._log = _log_cancel
+
+    # Сосед уже ждёт и знает своё время сброса; наш waiter — второй.
+    far_deadline = time.monotonic() + 600
+    mgr._rate_limit_deadline = far_deadline
+    mgr._rate_limit_waiters = 1
+    waiters_before = mgr._rate_limit_waiters
+
+    with pytest.raises(asyncio.CancelledError):
+        await mgr._wait_for_rate_limit(
+            _job("B", AuditStage.NORM_VERIFY), reason="лимит", cli_output="reset"
+        )
+
+    assert mgr._rate_limit_waiters == waiters_before, (
+        "отменённый waiter не разрегистрирован: счётчик "
+        f"{mgr._rate_limit_waiters} вместо {waiters_before}"
+    )
+    # Сосед всё ещё ждёт, поэтому общий дедлайн снимать нельзя.
+    assert mgr._rate_limit_deadline >= far_deadline, "дедлайн живого соседа снят"
+
+
+@pytest.mark.asyncio
+async def test_shared_deadline_contract_across_waiters_and_episodes(monkeypatch):
+    """Исполняемый контракт общего дедлайна: I2, I3, I4.
+
+    Прежний тест на этом месте утверждал только «вернулось True» и потому был
+    зелёным на двух разных ветках сразу — по известному времени сброса и через
+    scanner fallback. Отличить их он не мог, а подмены ставил на процессные
+    singleton'ы, поэтому переставал доказывать заявленное, стоило любой из них
+    не подействовать. Здесь наблюдаемое — число пробуждений и опубликованный
+    дедлайн: ветка проверяется явно, ожидание по стенным часам не нужно.
+    """
+    import backend.app.pipeline.manager as mgr_mod
+    from backend.app.pipeline.manager import PipelineManager
+
+    # ── I2: пока есть другие ждущие, общий дедлайн не снимается ──
+    mgr = PipelineManager()
+    mgr._log = _anoop_log
+    far_deadline = time.monotonic() + 600
+    mgr._rate_limit_deadline = far_deadline
+    mgr._rate_limit_waiters = 1
+
+    seen = _isolate_rate_limit(monkeypatch, mgr_mod, mgr, reset_sec=600, stagger_sec=30)
+    ok = await mgr._wait_for_rate_limit(
+        _job("B", AuditStage.NORM_VERIFY), reason="лимит", cli_output="reset"
+    )
+    assert ok is True
+    assert seen, "ожидание не выполнялось ни одной итерации"
+    assert mgr._rate_limit_waiters == 1, "счётчик не вернулся к живому соседу"
+    assert mgr._rate_limit_deadline >= far_deadline, (
+        "общий дедлайн снят, пока сосед ещё ждёт"
     )
 
-    async def _instant_sleep(_sec):
-        return None
-
-    monkeypatch.setattr(mgr_mod.asyncio, "sleep", _instant_sleep)
-
-    ok = await mgr._wait_for_rate_limit(_job("A", AuditStage.NORM_VERIFY),
-                                        reason="лимит", cli_output="reset")
+    # ── I3: последний вышедший снимает и счётчик, и дедлайн ──
+    mgr = PipelineManager()
+    mgr._log = _anoop_log
+    seen = _isolate_rate_limit(monkeypatch, mgr_mod, mgr, reset_sec=1, stagger_sec=30)
+    ok = await mgr._wait_for_rate_limit(
+        _job("A", AuditStage.NORM_VERIFY), reason="лимит", cli_output="reset"
+    )
     assert ok is True
+    # Ровно одно пробуждение = возврат по известному времени сброса, а не через
+    # scanner fallback. Ветка зафиксирована, а не угадана.
+    assert len(seen) == 1, f"ожидалось одно пробуждение, было {len(seen)}"
     assert mgr._rate_limit_waiters == 0
     assert mgr._rate_limit_deadline == 0.0, "последний ждавший не снял дедлайн"
+
+    # ── I4: следующий непересекающийся эпизод не наследует протухший дедлайн ──
+    seen_far = _isolate_rate_limit(monkeypatch, mgr_mod, mgr, reset_sec=600, stagger_sec=30)
+    ok = await mgr._wait_for_rate_limit(
+        _job("A", AuditStage.NORM_VERIFY), reason="лимит", cli_output="reset"
+    )
+    assert ok is True
+    far_published = seen_far[0]
+    assert mgr._rate_limit_waiters == 0
+    assert mgr._rate_limit_deadline == 0.0
+
+    seen_next = _isolate_rate_limit(monkeypatch, mgr_mod, mgr, reset_sec=1, stagger_sec=30)
+    ok = await mgr._wait_for_rate_limit(
+        _job("A", AuditStage.NORM_VERIFY), reason="лимит", cli_output="reset"
+    )
+    assert ok is True
+    # Унаследуй эпизод чужой дальний дедлайн — пробуждений было бы много.
+    assert len(seen_next) == 1, "эпизод унаследовал протухший дальний дедлайн"
+    assert seen_next[0] < far_published, (
+        "опубликован прежний дальний дедлайн вместо собственного короткого"
+    )
 
 
 # ─── 3. Пул потоков ──────────────────────────────────────────────────────────
