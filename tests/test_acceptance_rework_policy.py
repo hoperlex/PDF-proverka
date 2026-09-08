@@ -93,3 +93,47 @@ def test_full_gate_wall_budget_matches_policy() -> None:
     )
     assert match, "ci_regression_gate.py не объявляет DEFAULT_WALL_BUDGET_SEC"
     assert float(match.group(1)) == _policy()["budgets"]["max_full_gate_wall_seconds"]
+
+
+def test_gate_report_upload_preserves_evidence() -> None:
+    """Квитанция гейта — дотфайл; выгрузка обязана брать её и падать без неё.
+
+    `upload-artifact@v4` по умолчанию исключает скрытые файлы, а
+    `if-no-files-found: warn` превращает пропажу обязательного evidence в
+    зелёный шаг. Ровно так окно `CP1-P0-01` получило `conclusion=success` при
+    пяти артефактах из шести (run 34216177648): гейт отработал, а его JUnit не
+    выгрузился и никто не покраснел. Оба параметра проверяются вместе — по
+    отдельности ни один дефект не закрывает. Таблица §2 контракта ловит факт
+    изменения `ci.yml`, но не сказала бы, что именно изменилось.
+    """
+    lines = CI_WORKFLOW.read_text(encoding="utf-8").splitlines()
+    found = [i for i, l in enumerate(lines) if l.strip() == "name: regression-gate-report"]
+    assert len(found) == 1, "шаг выгрузки отчёта гейта отсутствует или не один"
+
+    start = found[0]
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    params: dict[str, str] = {}
+    for line in lines[start:]:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            break
+        if len(line) - len(line.lstrip()) < indent or ":" not in stripped:
+            break
+        key, _, value = stripped.partition(":")
+        params[key.strip()] = value.strip()
+
+    assert params.get("include-hidden-files") == "true", (
+        "отчёт гейта — дотфайл: без include-hidden-files он молча не выгрузится"
+    )
+    assert params.get("if-no-files-found") == "error", (
+        "пропажа обязательного evidence обязана красить прогон, а не warn'ить"
+    )
+
+    # Путь выгрузки обязан совпадать с тем, куда гейт реально пишет отчёт:
+    # разошедшись, они дали бы ту же тихую потерю уже по другой причине.
+    junit = re.search(
+        r'(?m)^JUNIT\s*=\s*ROOT\s*/\s*"([^"]+)"\s*$',
+        REGRESSION_GATE.read_text(encoding="utf-8"),
+    )
+    assert junit, "ci_regression_gate.py не объявляет JUNIT"
+    assert params.get("path") == junit.group(1) == ".ci_last_report.xml"

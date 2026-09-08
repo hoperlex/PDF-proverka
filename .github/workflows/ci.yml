@@ -269,13 +269,23 @@ jobs:
           AUDITMANAGER_DEPLOY_LOCK_DIR: ${{ runner.temp }}/run-root/locks
         run: python scripts/ci_regression_gate.py
 
+      # `include-hidden-files: true` ОБЯЗАТЕЛЕН: отчёт гейта — дотфайл, а
+      # upload-artifact@v4 по умолчанию исключает скрытые файлы. В окне
+      # CP1-P0-01 (run 34216177648) это уронило квитанцию гейта молча: шаг
+      # остался зелёным, прогон получил conclusion=success, а artifacts
+      # оказалось 5 из 6. Полосы уцелели случайно — они грузят каталог
+      # `.ci/reports/`, где скрытый сегмент становится корнем поиска.
+      # `if-no-files-found: error` закрывает вторую половину дефекта: пропажа
+      # обязательного evidence обязана красить прогон, а не предупреждать.
+      # Путь менять нельзя — он совпадает с JUNIT в ci_regression_gate.py.
       - name: Выгрузить отчёт гейта
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: regression-gate-report
           path: .ci_last_report.xml
-          if-no-files-found: warn
+          include-hidden-files: true
+          if-no-files-found: error
 
   # ───────────────────────────────────────────────────────────────────────────
   # Frontend gate §10. Node пинится явно: полагаться на PATH раннера нельзя —

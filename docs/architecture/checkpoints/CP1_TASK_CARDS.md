@@ -97,6 +97,97 @@ preflight:
     evidence: единственная проверка, сверяющая §2 QUALITY_RUNTIME_CONTRACT_V1.md
       и с worktree, и с константами probe; окно P0 изменяет ci.yml через
       c8475ed7, поэтому без неё receipt устаревает молча
+attempts:
+  - n: 1
+    run_id: 34216177648
+    run_attempt: 1
+    head_sha: f228c08f68b10c81db4d88b48e171c1da3cdba3b   # == candidate
+    review_ref: refs/heads/review/cp1-p0-01
+    url: https://github.com/hoperlex/PDF-proverka/actions/runs/34216177648
+    ci_conclusion: success        # прогон зелёный, но evidence неполон
+    jobs: 7/7 success (lanes unit/contract/integration/network,
+      regression-gate, frontend, chaos)
+    gate: 7682 passed, 233 skipped, 6 deselected; все шесть счётчиков 0
+    artifacts: 5/6 — отсутствует regression-gate-report
+    result: unsuccessful_incomplete_evidence
+findings:
+  - id: P0-01-F1
+    class: pre_existing_or_flaky
+    summary: шаг «Выгрузить отчёт гейта» терял JUnit молча — .ci_last_report.xml
+      это дотфайл, а upload-artifact@v4 по умолчанию исключает скрытые файлы;
+      if-no-files-found=warn оставлял шаг зелёным
+    evidence: дефект присутствует на origin/main@16414088 и НЕ внесён
+      диапазоном кандидата 16414088..f228c08f; в логе job'а —
+      "No files were found with the provided path: .ci_last_report.xml"
+    disposition: отдельное окно (CP1-P0-02); в этом окне не чинится
+remediation_commit: null           # ремедиация в этом окне НЕ использовалась
+                                   # и НЕ переносится: окно закрыто
+terminal_status: split             # окно закрыто терминально; работа
+                                   # продолжается в CP1-P0-02
+next_task_ids: [CP1-P0-02]
+```
+
+**Окно `CP1-P0-01` закрыто терминально со статусом `split`.** Попытка `1/2`
+израсходована и неуспешна: прогон был зелёным, но комплект JUnit/artifacts
+неполон, а по правилу окна это неуспех. Оставшаяся попытка `2/2` и неиспользо‑
+ванная ремедиация **не считаются доступными**: они принадлежали закрытому
+окну и на новое не переносятся. `CP1_BASE_SHA` этим окном не получен,
+`origin/main` не двигался, merge не создавался.
+
+Находка `P0-01-F1` отнесена к классу `pre_existing_or_flaky`: тот же
+`if-no-files-found: warn` и то же умолчание `include-hidden-files: false`
+стоят на `origin/main@16414088`, поэтому диапазон кандидата дефект не вносил —
+он лишь впервые его проявил. Чинить его внутри закрытого окна нельзя, отсюда
+`disposition: отдельное окно`.
+
+---
+
+## P0-02 — публикация BASE с починкой evidence (владелец: интегратор)
+
+```text
+policy_id: acceptance-rework/v1
+acceptance_window_id: CP1-P0-02
+owner: интегратор
+predecessor: CP1-P0-01 (terminal_status: split)
+outcome: публикация исходного P0-кандидата вместе с исправлением
+  обязательной evidence-инфраструктуры
+P0_SOURCE_SHA:   c8475ed72a13a98566ddd9c7e6297ff232d40f62
+  # неизменен: источник тот же, окно новое
+P0_PLANNING_SHA: 7d9ddc65dbd2ef64a8e472299d7748254e2b566e
+CP1_BASE_SHA:    <не определён — присваивается после публикации P0-02>
+frozen_scope:
+  allowed_paths: [.github/workflows/ci.yml,
+                  docs/architecture/QUALITY_RUNTIME_CONTRACT_V1.md,
+                  docs/architecture/checkpoints/CP1_TASK_CARDS.md,
+                  tests/test_acceptance_rework_policy.py]
+  non_goals: [публикация в main без санкции freeze,
+              полный regression gate до заморозки кандидата,
+              правка шагов выгрузки полос и chaos,
+              смена пути .ci_last_report.xml,
+              перенос попыток или ремедиации из CP1-P0-01,
+              # долги интегратора — по-прежнему вне окна P0:
+              сведение EXC-0003 с review/0.0.04-debts@b0b79211,
+              снятие устаревшей записи redaction из CP0.json,
+              исправление пути чекаута в AGENTS.md,
+              вынесение противоречия про worktrees владельцу W0-DEC-02]
+  contracts: [policies/acceptance-rework-v1.json (frozen, enforced 2026-09-07),
+              checkpoints/README.md — обязательный минимум полей квитанции]
+  fixtures: не затронуты
+candidate_frozen: false
+review_ref_after_freeze: refs/heads/review/cp1-p0-02
+preflight:
+  - command: $QR_PY -m pytest tests/test_acceptance_rework_policy.py -q
+    evidence: политика окна плюс новый сторож шага выгрузки отчёта гейта
+  - command: $QR_PY -m pytest
+      tests/test_ci_runtime_probe.py::test_frozen_receipt_matches_document -q
+    evidence: окно снова меняет ci.yml — §2 обязана быть переиздана в том же
+      коммите, иначе receipt отстаёт от worktree
+  - command: $QR_PY -m pytest tests/test_architecture_docs_integrity.py -q
+    evidence: JSON и локальные ссылки изменённых архитектурных документов
+  - command: $QR_PY scripts/ci_runtime_probe.py --profile unit
+    evidence: обязательный capability probe §2 п.3, тот же шаг, что ci.yml:252
+  - command: git diff --check
+    evidence: пробелы и конфликтные маркеры в изменённых файлах
 attempts: []
 findings: []
 remediation_commit: null
@@ -104,12 +195,33 @@ terminal_status: null
 next_task_ids: [CP1-L-01, CP1-S-01, CP1-O-01, CP1-E-01]
 ```
 
+**Что чинит это окно.** Шаг «Выгрузить отчёт гейта» получает
+`include-hidden-files: true` (отчёт — дотфайл) и `if-no-files-found: error`
+(пропажа обязательного evidence обязана красить прогон). Путь
+`.ci_last_report.xml` сохранён точно: он совпадает с `JUNIT` в
+`scripts/ci_regression_gate.py`, и расхождение дало бы ту же тихую потерю по
+другой причине. Шаги полос и `chaos` не трогались — они грузят каталог
+`.ci/reports/` и дефекту не подвержены.
+
+Правка `ci.yml` снова меняет зафиксированный §2 вход, поэтому тем же
+логическим коммитом переиздан пин (`c89bea9d70a4…` → `2805d8da7038…`) и
+добавлен сторож
+`test_gate_report_upload_preserves_evidence`: таблица §2 ловит факт изменения
+файла, но не сказала бы, какой именно параметр съехал. Сторож проверен
+мутациями — краснеет на `include-hidden-files: false`, на
+`if-no-files-found: warn` и на расхождении пути с `JUNIT`.
+
+Бюджет окна `CP1-P0-02`: попыток `0/2`, ремедиаций `0/1`; полный гейт не
+запускался.
+
 **Важно:** `c8475ed7` изменил `.github/workflows/ci.yml` и добавил
 исполняемый тест — по §6 политики это **не** receipt-only, поэтому полный гейт
 перед merge обязателен. Planning-docs поверх него гейта не требуют, но и не
 освобождают от него: исключение §6 действует только **после** зелёного source
 candidate, а его ещё не было. Окно одно, гейт один, покрывает весь диапазон.
-Гейт не запускался: бюджет нетронут (0 из 2).
+В окне `CP1-P0-01` гейт был запущен один раз (run `34216177648`) и израсходовал
+попытку `1/2`; окно закрыто со статусом `split`, счётчик на `CP1-P0-02` не
+переносится.
 
 **Почему preflight не использует селектор.** `-k "document_contract or receipt"`
 собирает 26 тестов из шести файлов (`test_ci_evidence_bundle`,

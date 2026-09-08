@@ -156,6 +156,26 @@ setup фикстуры. Правило §3.3 «прогон без выбран�
 `FRONTEND_RECEIPT` `scripts/ci_runtime_probe.py`, поэтому дублирующая константа
 в коде отсутствует и правки не требует.
 
+**Второе переиздание пина `.github/workflows/ci.yml` от 2026-09-08, окно
+`CP1-P0-02`.** Прогон `34216177648` окна `CP1-P0-01` показал, что шаг
+«Выгрузить отчёт гейта» терял квитанцию молча: `.ci_last_report.xml` — дотфайл,
+а `actions/upload-artifact@v4` по умолчанию (`include-hidden-files: false`)
+исключает скрытые файлы. Файл не выгружался, `if-no-files-found: warn`
+оставлял шаг зелёным, и прогон получал `conclusion=success` при пяти артефактах
+из шести. Полосы уцелели случайно: у них `path: .ci/reports/`, где скрытый
+сегмент становится корнем поиска.
+
+Шаг исправлен: `path` сохранён точно (`.ci_last_report.xml`, он же `JUNIT` в
+`scripts/ci_regression_gate.py`), добавлен `include-hidden-files: true`,
+`if-no-files-found` поднят с `warn` до `error` — пропажа обязательного evidence
+обязана красить прогон. Шаги полос и chaos не трогались.
+
+Переиздан снова **только** этот вход: `c89bea9d70a4…` → `2805d8da7038…`.
+Остальные двенадцать строк сверены с worktree и не изменились. Согласованность
+самих параметров выгрузки теперь сторожит
+`tests/test_acceptance_rework_policy.py::test_gate_report_upload_preserves_evidence`
+— таблица §2 ловит изменение файла, но не сказала бы, что именно изменилось.
+
 | Вход | SHA-256 |
 | --- | --- |
 | `requirements.txt` | `e517f305175010e974f5dcdb288135dd3ad59f5a8fd7b16f069f898ee9262df4` |
@@ -166,7 +186,7 @@ setup фикстуры. Правило §3.3 «прогон без выбран�
 | `frontend/package-lock.json` | `c679604b25329bdbcf89f80017011a0c51c07e770e326865b093f63633097040` |
 | `frontend/package.json` | `65749f5180ea6fd1e2d99f35c103365f9188f7e2cabaef3db53e8f051eef2075` |
 | `frontend/tsconfig.distributed.json` | `a3d3fb949642421af5563073f04658160534b04e78c3ebad895d4454eb487863` |
-| `.github/workflows/ci.yml` | `c89bea9d70a49913b55d5080f7a6c24578974ff56c7242a86e1aff1312a46cd7` |
+| `.github/workflows/ci.yml` | `2805d8da7038bcd5642efd6b0c7e17b67a6f7f4ed4d1e02b5d10fb7d5fb2b005` |
 | `scripts/ci_regression_gate.py` | `673644985e4e075adb5688acd6c05d5e9b8adecbdad001842dd91b5f8285bab4` |
 | `scripts/ci_known_failures.txt` | `e0305efb2517799497cbe0fb0989fc27e5ae63c1007a69ab36ec494f9908bea5` |
 | `tests/conftest.py` | `395646bd3f738f1da345bb75f2627844f8e27d447991c04ce305b97d13594706` |
