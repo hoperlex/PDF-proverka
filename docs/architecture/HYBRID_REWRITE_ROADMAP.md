@@ -59,8 +59,18 @@ budget:
   backward-compatible validation существующего endpoint разрешены всегда, если
   golden test доказывает отсутствие изменения бизнес-поведения;
 - `W0-LOG-01`, `W0-SEC-04` и `W0-OPS-02` относятся к этому классу: они не
-  создают endpoint, writer или storage format и не меняют бизнес-семантику
-  ответов, поэтому capability slot не расходуют;
+  создают **product/business** endpoint, writer или storage format и не меняют
+  бизнес-семантику ответов, поэтому capability slot не расходуют;
+- уточнение для `W0-OPS-02`: запрет выше не запрещает **bounded operational
+  probes**. Такой probe — ограниченная операционная поверхность без
+  бизнес-семантики, а не product/business endpoint, и слот он не расходует.
+  Границы исключения: только loopback/private operational listener; fixed
+  minimal response без путей, конфигурации, customer data и секретов; ни
+  writer, ни storage format, ни domain/business response; endpoint не
+  включается в публичный API/OpenAPI; `/api/info` не закрывается до production
+  shadow/cutover. Любое расширение ответа или публичной доступности требует
+  **нового** решения о capability slot. Источник:
+  [O-DEC-02](checkpoints/CP1_STATE_MATRIX.md);
 - рефакторинг без characterization test и прямой пользы текущему обязательству
   не начинается.
 

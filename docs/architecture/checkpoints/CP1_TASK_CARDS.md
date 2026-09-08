@@ -69,7 +69,6 @@ frozen_scope:
               любые правки redaction/auth/watchdog,
               создание CP1.json в любом виде,
               реализация или переразбиение scope по O-DEC-01..04,
-              правка формулировки capability slot в roadmap,
               # четыре долга интегратора — остаются вне окна P0:
               сведение EXC-0003 с review/0.0.04-debts@b0b79211,
               снятие устаревшей записи redaction из CP0.json,

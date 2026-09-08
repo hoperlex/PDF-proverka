@@ -121,12 +121,15 @@ domain/business response; endpoint не включается в публичны
 `/api/info` не закрывается до production shadow/cutover; любое расширение
 ответа или публичной доступности требует **нового** решения о capability slot.
 
-*Противоречие, которое обязано быть снято до freeze.* Roadmap относит
+*Противоречие снято — до freeze, как и требовалось.* Roadmap относил
 `W0-OPS-02` к классу задач, которые «не создают endpoint, writer или storage
-format» ([HYBRID_REWRITE_ROADMAP.md](../HYBRID_REWRITE_ROADMAP.md), правила
-capability slot). Формулировка обязана быть заменена на «не создают
-product/business endpoint; могут добавить bounded operational probes в рамках
-`W0-OPS-02`». Правка roadmap выполняется отдельным окном, не этой записью.
+format». Тем же коммитом, что и эта запись, формулировка в правилах capability
+slot ([HYBRID_REWRITE_ROADMAP.md](../HYBRID_REWRITE_ROADMAP.md), §2.1) заменена
+на «не создают **product/business** endpoint …» и дополнена уточнением, что
+`W0-OPS-02` вправе добавить bounded operational probes в перечисленных выше
+границах. Roadmap и O-DEC-02 согласованы; расхождения между ними больше нет.
+Правка не создаёт capability slot и не меняет бизнес-семантику — только
+разграничивает product/business endpoint и operational probe.
 
 **O-DEC-03 — liveness вне event loop.** Liveness обязан обслуживаться вне
 основного asyncio event loop. FastAPI-router внутри той же петли сам по себе
